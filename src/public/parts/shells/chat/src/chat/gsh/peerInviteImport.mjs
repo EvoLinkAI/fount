@@ -1,14 +1,13 @@
 /**
- * 从 DAG `peer_invite.encrypted_H` 导入群 GSH（本机成员 Ed25519 密钥解密）。
+ * 从 DAG `peer_invite.gshGrant` 导入群 GSH 历史代际。
  */
 import { Buffer } from 'node:buffer'
 
 import { publicKeyFromSeed } from '../../../../../../../scripts/p2p/crypto.mjs'
-import { decryptH } from '../../../../../../../scripts/p2p/gsh.mjs'
 import { normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 
-import { appendH, getCurrentH } from './store.mjs'
+import { applyGshGenerationGrant } from './historicalGrant.mjs'
 
 /**
  * @param {string} username 用户
@@ -18,8 +17,8 @@ import { appendH, getCurrentH } from './store.mjs'
  */
 export async function tryImportHFromPeerInvite(username, groupId, event) {
 	if (event?.type !== 'peer_invite') return
-	const encrypted = event.content?.encrypted_H
-	if (!encrypted || typeof encrypted !== 'object') return
+	const grant = event.content?.gshGrant
+	if (!grant || typeof grant !== 'object') return
 
 	let signer
 	try {
@@ -31,21 +30,5 @@ export async function tryImportHFromPeerInvite(username, groupId, event) {
 	const toHex = normalizeHex64(event.content?.to)
 	if (!toHex || toHex !== normalizeHex64(myEdPubHex)) return
 
-	const hHex = decryptH(encrypted, signer.secretKey)
-	if (!hHex || !/^[0-9a-f]{64}$/iu.test(hHex)) return
-
-	const gen = Number(event.content?.h_generation)
-	const targetGen = Number.isFinite(gen) && gen >= 0 ? Math.floor(gen) : null
-	const current = await getCurrentH(username, groupId)
-
-	if (current?.h === hHex) return
-
-	if (targetGen != null) {
-		if (!current || targetGen > current.generation)
-			await appendH(username, groupId, targetGen, hHex)
-		return
-	}
-
-	if (!current)
-		await appendH(username, groupId, 0, hHex)
+	await applyGshGenerationGrant(username, groupId, grant)
 }

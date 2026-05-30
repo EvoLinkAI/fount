@@ -67,6 +67,38 @@ export async function encryptEventContent(username, groupId, channelId, plaintex
 	return { gsh }
 }
 
+/** @alias encryptEventContent */
+export const encryptForWire = encryptEventContent
+
+/**
+ * 出站联邦前：本地明文 content → GSH wire 形态。
+ * @param {string} username 本地用户
+ * @param {string} groupId 群 ID
+ * @param {object} signPayload 签名事件
+ * @returns {Promise<object>} wire 形态事件
+ */
+export async function encryptSignedEventForWire(username, groupId, signPayload) {
+	if (!signPayload || !GSH_ENCRYPT_EVENT_TYPES.has(signPayload.type)) return signPayload
+	if (isGshEncryptedContent(signPayload.content)) return signPayload
+	const channelId = signPayload.channelId || signPayload.content?.channelId || 'default'
+	const content = await encryptEventContent(username, groupId, channelId, signPayload.content || {})
+	return { ...signPayload, content }
+}
+
+/**
+ * 补拉响应：频道消息行 content 转为 GSH wire 形态。
+ * @param {string} username 本地用户
+ * @param {string} groupId 群 ID
+ * @param {string} channelId 频道 ID
+ * @param {object} line 消息行
+ * @returns {Promise<object>} wire 形态行
+ */
+export async function encryptMessageLineForWire(username, groupId, channelId, line) {
+	if (!line?.content || isGshEncryptedContent(line.content)) return line
+	const content = await encryptEventContent(username, groupId, channelId, line.content)
+	return { ...line, content }
+}
+
 /**
  * 解密 GSH 信封为明文 content 对象；失败时保留信封并标注 `gshDecryptFailed`。
  * @param {string} username 本地用户
@@ -79,37 +111,36 @@ export async function decryptEventContent(username, groupId, channelId, content)
 	if (!content) return {}
 	if (!isGshEncryptedContent(content)) return /** @type {object} */ content
 
-	const env = /** @type {{ gsh: { scheme: string, generation?: number } }} */ content
-	const gen = env.gsh.generation ?? null
-	let H = gen != null ? await getHByGeneration(username, groupId, gen) : null
-	if (!H) {
-		const cur = await getCurrentH(username, groupId)
-		H = cur?.h ?? null
+	const encryptedEnvelope = /** @type {{ gsh: { scheme: string, generation?: number } }} */ content
+	const keyGeneration = encryptedEnvelope.gsh.generation ?? null
+	let groupKey = keyGeneration != null ? await getHByGeneration(username, groupId, keyGeneration) : null
+	if (!groupKey) {
+		groupKey = (await getCurrentH(username, groupId))?.h ?? null
 	}
-	if (!H) {
-		recordGshPendingDecrypt(username, groupId, gen)
+	if (!groupKey) {
+		recordGshPendingDecrypt(username, groupId, keyGeneration)
 		return {
 			.../** @type {object} */ content,
 			gshDecryptFailed: true,
-			gshPendingGeneration: gen,
+			gshPendingGeneration: keyGeneration,
 		}
 	}
 
-	const plain = decryptMessage(env.gsh, H, channelId)
-	if (plain == null) {
-		recordGshPendingDecrypt(username, groupId, gen)
+	const decryptedText = decryptMessage(encryptedEnvelope.gsh, groupKey, channelId)
+	if (decryptedText == null) {
+		recordGshPendingDecrypt(username, groupId, keyGeneration)
 		return {
 			.../** @type {object} */ content,
 			gshDecryptFailed: true,
-			gshPendingGeneration: gen,
+			gshPendingGeneration: keyGeneration,
 		}
 	}
 
 	try {
-		return JSON.parse(plain)
+		return JSON.parse(decryptedText)
 	}
 	catch {
-		return plain ? { type: 'text', content: plain } : plain
+		return decryptedText ? { type: 'text', content: decryptedText } : decryptedText
 	}
 }
 

@@ -5,6 +5,7 @@
  * 【数据结构】hubStore 及模块内 Map/Set 字段；见 core/state 与各函数 JSDoc。
  * 【关联】../src/entityProfileApi、../src/lib/entityHash、core/avatarCover、core/domUtils、core/state、profilePopup
  */
+import { memoizePromise } from '../../../../scripts/memo.mjs'
 import {
 	cachedProfileFromApi,
 	fetchEntityProfileApi,
@@ -26,9 +27,22 @@ import { dismissProfilePopup, resolveEntityFromAnchor, showProfilePopup } from '
 
 /** @typedef {{ avatar: string|null, name: string, description: string, description_markdown: string, tags: string[], links: object[], status: string, customStatus: string }} CachedProfile */
 
-const profileCache = new Map()
-/** @type {Map<string, Promise<CachedProfile|null>>} */
-const profileInflight = new Map()
+const loadProfileCached = memoizePromise(
+	key => key,
+	async cacheKey => {
+		const sep = cacheKey.indexOf(':')
+		const entityHash = sep === -1 ? cacheKey : cacheKey.slice(0, sep)
+		const groupId = sep === -1 ? undefined : cacheKey.slice(sep + 1)
+		try {
+			const data = await fetchEntityProfileApi(entityHash, groupId)
+			return cachedProfileFromApi(data?.profile, entityHash)
+		}
+		catch {
+			return null
+		}
+	},
+	{ max: 512 },
+)
 
 /**
  * @param {HTMLElement | null} el 状态点元素
@@ -82,28 +96,16 @@ export async function fetchUserProfile(entityHash, options = {}) {
 	if (!entityHash || !isEntityHash128(entityHash)) return null
 	const key = String(entityHash).toLowerCase()
 	const cacheKey = options.groupId ? `${key}:${options.groupId}` : key
-	if (!options.bypassCache && profileCache.has(cacheKey))
-		return profileCache.get(cacheKey) ?? null
-	if (!options.bypassCache && profileInflight.has(cacheKey))
-		return profileInflight.get(cacheKey) ?? null
-
-	const task = (async () => {
+	if (options.bypassCache) 
 		try {
 			const data = await fetchEntityProfileApi(key, options.groupId)
-			const cached = cachedProfileFromApi(data?.profile, key)
-			profileCache.set(cacheKey, cached)
-			return cached
+			return cachedProfileFromApi(data?.profile, key)
 		}
 		catch {
-			profileCache.set(cacheKey, null)
 			return null
 		}
-		finally {
-			profileInflight.delete(cacheKey)
-		}
-	})()
-	profileInflight.set(cacheKey, task)
-	return task
+	
+	return loadProfileCached(cacheKey)
 }
 
 /**
@@ -150,9 +152,9 @@ export function applySelfStatusToMemberList(status) {
 export function invalidateUserProfileCache(entityHash) {
 	if (!entityHash) return
 	const key = String(entityHash).toLowerCase()
-	for (const cacheKey of [...profileCache.keys()])
-		if (cacheKey === key || cacheKey.startsWith(`${key}:`))
-			profileCache.delete(cacheKey)
+	loadProfileCached.deleteMatching(cacheKey =>
+		cacheKey === key || cacheKey.startsWith(`${key}:`),
+	)
 }
 
 /**

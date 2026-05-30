@@ -7,14 +7,14 @@
  */
 export { getChatRequest } from './chatRequest.mjs'
 /**
- *
+ * 追加聊天日志条目（含导入路径）。
  */
 export { addChatLogEntry, addChatLogEntryImport } from './chatLogAppend.mjs'
 /**
- *
+ * 修改时间线与获取时间线游标。
  */
 export { modifyTimeLine, getChatTimelineCursor } from './timeLine.mjs'
 /**
- *
+ * 触发指定角色在群内的回复生成。
  */
 export { triggerCharReply } from './triggerReply.mjs'

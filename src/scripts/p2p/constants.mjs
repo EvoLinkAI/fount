@@ -42,3 +42,9 @@ export const EPOCH_CHAIN_MAX = 256
 
 /** 群文件经联邦复制的单块上限（字节，§10.2） */
 export const FEDERATION_CHUNK_MAX_BYTES = 512 * 1024
+
+/** TrustGraph fanout 默认 Top-K 邻居数 */
+export const FEDERATION_FANOUT_TOP_K = 8
+
+/** 全局 fed_chunk_get miss 时 fanout 邻居数 */
+export const FEDERATION_CHUNK_FETCH_FANOUT_K = 6

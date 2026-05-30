@@ -175,7 +175,7 @@ async function refreshEmojiPickerTabs(currentGroupId, getGroups) {
 async function renderRecentEmojiGrid(grid) {
 	const entries = await fetchFrequentEmojis(FREQUENT_EMOJI_LIMIT)
 	if (!entries.length) {
-		grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--hub-text-muted);padding:16px;font-size:13px;" data-i18n="chat.hub.recentEmojisEmpty"></div>'
+		grid.replaceChildren(await renderTemplate('hub/emoji/grid_empty', { i18nKey: 'chat.hub.recentEmojisEmpty' }))
 		return
 	}
 	for (const entry of entries) {
@@ -209,7 +209,7 @@ async function renderGroupEmojiGrid(grid, targetGroupId) {
 		if (!resp.ok) throw new Error(data.error || 'load failed')
 		const entries = data.entries || []
 		if (!entries.length) {
-			grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--hub-text-muted);padding:16px;font-size:13px;" data-i18n="chat.hub.groupEmojisEmpty"></div>'
+			grid.replaceChildren(await renderTemplate('hub/emoji/grid_empty', { i18nKey: 'chat.hub.groupEmojisEmpty' }))
 			return
 		}
 		for (const entry of entries) {
@@ -224,7 +224,7 @@ async function renderGroupEmojiGrid(grid, targetGroupId) {
 		}
 	}
 	catch {
-		grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--hub-text-muted);padding:16px;font-size:13px;" data-i18n="chat.hub.groupEmojisLoadFailed"></div>'
+		grid.replaceChildren(await renderTemplate('hub/emoji/grid_empty', { i18nKey: 'chat.hub.groupEmojisLoadFailed' }))
 	}
 }
 
@@ -384,7 +384,7 @@ export function initEmojiStickerPickers({ getUsername, getContext, getGroups, se
 
 		const emojiButton = event.target.closest('[data-emoji]')
 		if (!emojiButton) return
-		const {emoji} = emojiButton.dataset
+		const { emoji } = emojiButton.dataset
 		const input = document.getElementById('hub-message-input')
 		const cursorPos = input.selectionStart || input.value.length
 		input.value = input.value.substring(0, cursorPos) + emoji + input.value.substring(cursorPos)

@@ -8,11 +8,13 @@ export const MAX_BUCKET_ENTRIES = 10
 /** 单收件人×发送者桶：字节上限 */
 export const MAX_BUCKET_BYTES = 2 * 1024 * 1024
 /**
- *
+ * 单用户 mailbox 全局条数上限。
+ * @type {number}
  */
 export const MAX_MAILBOX_ENTRIES = 500
 /**
- *
+ * 单用户 mailbox 全局字节上限。
+ * @type {number}
  */
 export const MAX_MAILBOX_BYTES = 50 * 1024 * 1024
 

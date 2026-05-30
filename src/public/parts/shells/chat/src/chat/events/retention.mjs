@@ -12,13 +12,13 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 import { topologicalCanonicalOrder } from '../../../../../../../scripts/p2p/dag/index.mjs'
-import { deleteOrderCache } from '../../../../../../../scripts/p2p/dag_order_cache.mjs'
 import { retentionStartIndex } from '../../../../../../../scripts/p2p/retention_policy.mjs'
+import { invalidateTopologicalOrderMemo } from '../../../../../../../scripts/p2p/topo_order_memo.mjs'
 import { readJsonl } from '../dag/storage.mjs'
-import { eventsOrderCachePath, eventsPath, snapshotPath } from '../lib/paths.mjs'
+import { eventsPath, snapshotPath } from '../lib/paths.mjs'
 
 /**
- *
+ * 计算事件保留裁剪起点索引（自 `p2p/retention_policy` 再导出）。
  */
 export { retentionStartIndex }
 
@@ -84,6 +84,6 @@ export async function enforceEventRetention(username, groupId, checkpointHint = 
 		kept.map(JSON.stringify).join('\n') + (kept.length ? '\n' : ''),
 		'utf8',
 	)
-	await deleteOrderCache(eventsOrderCachePath(username, groupId))
+	invalidateTopologicalOrderMemo(`${username}:${groupId}`)
 	return { pruned: true, kept: kept.length, dropped }
 }

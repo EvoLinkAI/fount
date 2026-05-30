@@ -5,26 +5,21 @@
  * 【数据结构】hub { groupId, state }、上传进度、file meta。
  * 【关联】federationUpload.mjs、groupFileBlob.mjs、errors.mjs。
  */
+import { sha256HexFromBlob } from '../../../../../../pages/scripts/digest.mjs'
+import { groupEntityHash } from '../../../../../../scripts/p2p/entity/group_entity.mjs'
 import { renderTemplate, usingTemplates } from '../../../../scripts/template.mjs'
 import { escapeHtml } from '../../hub/core/domUtils.mjs'
-import { fetchDecryptedGroupBlob, fetchGroupFileAsBlobUrl } from '../groupFileBlob.mjs'
+import { entityFileUrl } from '../evfs.mjs'
+import { fetchGroupFileAsBlobUrl } from '../groupFileBlob.mjs'
 import { arrayBufferToBase64, FEDERATION_CHUNK_MAX_BYTES } from '../lib/federationUpload.mjs'
 
 import { handleUIError } from './errors.mjs'
 
 /**
- *
+ * 单块上传明文上限（与联邦 chunk 上限对齐）。
+ * @type {number}
  */
 export const CHUNK_UPLOAD_MAX_BYTES = FEDERATION_CHUNK_MAX_BYTES
-
-/**
- * @param {ArrayBuffer} buffer 文件字节
- * @returns {Promise<string>} 小写 hex SHA-256
- */
-async function sha256Hex(buffer) {
-	const digest = await crypto.subtle.digest('SHA-256', buffer)
-	return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
-}
 
 /**
  * 在输入区上方展示上传进度条。
@@ -63,13 +58,15 @@ async function createUploadProgress(fileName) {
 			if (labelEl && labelKey) labelEl.dataset.i18n = labelKey
 		},
 		/**
-		 *
+		 * 上传成功，移除进度条 DOM。
+		 * @returns {void}
 		 */
 		done() {
 			root.remove()
 		},
 		/**
-		 *
+		 * 上传失败，移除进度条 DOM。
+		 * @returns {void}
 		 */
 		fail() {
 			root.remove()
@@ -84,29 +81,31 @@ async function createUploadProgress(fileName) {
  * @param {string} plainB64 明文 base64
  * @param {number} byteLength 本块明文字节长度（与 `plainB64` 解码后一致）
  * @param {string} [channelId] 用于 `UPLOAD_FILES` 权限检查的频道 ID
+ * @param {'convergent'|'random'} [ceMode] 文件加密模式
  * @returns {Promise<object>} 块 manifest 字段
  */
-async function uploadEncryptedChunk(groupId, partFileId, plainB64, byteLength, channelId) {
+async function uploadEncryptedChunk(groupId, partFileId, plainB64, byteLength, channelId, ceMode = 'convergent') {
 	const channelField = channelId ? { channelId } : {}
+	const modeField = { ceMode }
 	const haveR = await fetch(
 		`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/chunks/have`,
 		{
 			method: 'POST',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ fileId: partFileId, data: plainB64, size: byteLength, ...channelField }),
+			body: JSON.stringify({ fileId: partFileId, data: plainB64, size: byteLength, ...channelField, ...modeField }),
 		},
 	)
 	if (!haveR.ok) throw new Error(`chunk have HTTP ${haveR.status}`)
 	const probe = await haveR.json()
-	if (probe?.have && probe.storageLocator) {
+	if (ceMode !== 'random' && probe?.have && probe.storageLocator) {
 		const regR = await fetch(
 			`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/chunks`,
 			{
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ fileId: partFileId, data: plainB64, registerOnly: true, ...channelField }),
+				body: JSON.stringify({ fileId: partFileId, data: plainB64, registerOnly: true, ...channelField, ...modeField }),
 			},
 		)
 		if (!regR.ok) throw new Error(`chunk register HTTP ${regR.status}`)
@@ -119,7 +118,7 @@ async function uploadEncryptedChunk(groupId, partFileId, plainB64, byteLength, c
 			method: 'POST',
 			credentials: 'include',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ fileId: partFileId, data: plainB64, ...channelField }),
+			body: JSON.stringify({ fileId: partFileId, data: plainB64, ...channelField, ...modeField }),
 		},
 	)
 	if (!uploadR.ok) throw new Error(`chunk HTTP ${uploadR.status}`)
@@ -132,7 +131,7 @@ async function uploadEncryptedChunk(groupId, partFileId, plainB64, byteLength, c
  * @returns {{ uploadGroupFile: Function, downloadGroupFile: Function, fetchGroupFileAsBlob: Function, enqueuePendingFile: Function, pendingFiles: Array }} 文件处理函数集与待发队列
  */
 export function createFileHandlers(hub) {
-	const { groupId, showToastI18n, loadMessages, getUploadChannelId } = hub
+	const { groupId, showToastI18n, loadMessages, getUploadChannelId, getCurrentState } = hub
 
 	/** 待发附件队列：{id, file}[] */
 	const pendingFiles = []
@@ -153,31 +152,34 @@ export function createFileHandlers(hub) {
 		const progress = await createUploadProgress(file.name)
 		const uploadChannelId = getUploadChannelId?.() || undefined
 		try {
+			const modeRaw = String(getCurrentState?.()?.groupSettings?.fileCeMode || 'convergent').trim().toLowerCase()
+			const ceMode = modeRaw === 'random' ? 'random' : 'convergent'
 			progress.set(3, 'chat.hub.fileUploadChecking')
 			const fileId = crypto.randomUUID()
-			const fullBuf = await file.arrayBuffer()
-			const contentHash = await sha256Hex(fullBuf)
-			const partCount = Math.max(1, Math.ceil(fullBuf.byteLength / CHUNK_UPLOAD_MAX_BYTES))
+			const contentHash = await sha256HexFromBlob(file, CHUNK_UPLOAD_MAX_BYTES)
+			const partCount = Math.max(1, Math.ceil(file.size / CHUNK_UPLOAD_MAX_BYTES))
 			/** @type {object[]} */
 			const parts = []
 			let skippedAny = false
 
 			for (let partIndex = 0; partIndex < partCount; partIndex++) {
 				const offset = partIndex * CHUNK_UPLOAD_MAX_BYTES
-				const slice = fullBuf.slice(offset, Math.min(offset + CHUNK_UPLOAD_MAX_BYTES, fullBuf.byteLength))
-				const plainB64 = arrayBufferToBase64(slice)
+				const slice = file.slice(offset, Math.min(offset + CHUNK_UPLOAD_MAX_BYTES, file.size))
+				const sliceBuf = await slice.arrayBuffer()
+				const plainB64 = arrayBufferToBase64(sliceBuf)
 				const partFileId = partCount === 1 ? fileId : `${fileId}:${partIndex}`
 				progress.set(10 + Math.floor((partIndex / partCount) * 55), 'chat.hub.fileUploadingChunk')
-				const chunk = await uploadEncryptedChunk(groupId, partFileId, plainB64, slice.byteLength, uploadChannelId)
+				const chunk = await uploadEncryptedChunk(groupId, partFileId, plainB64, sliceBuf.byteLength, uploadChannelId, ceMode)
 				if (chunk.have) skippedAny = true
 				parts.push({
 					index: partIndex,
-					partSize: slice.byteLength,
+					partSize: sliceBuf.byteLength,
 					contentHash: chunk.contentHash,
 					ciphertextHash: chunk.ciphertextHash,
 					wrappedKey: chunk.wrappedKey,
 					storageLocator: chunk.storageLocator,
 					key_generation: chunk.key_generation,
+					ceMode: chunk.ceMode || ceMode,
 				})
 			}
 
@@ -189,6 +191,7 @@ export function createFileHandlers(hub) {
 				size: file.size,
 				mimeType: file.type,
 				contentHash,
+				ceMode,
 			}
 			if (folderId) manifestBody.folderId = folderId
 			if (uploadChannelId) manifestBody.channelId = uploadChannelId
@@ -294,13 +297,16 @@ export function createFileHandlers(hub) {
 						headers: { 'Content-Type': 'application/json' },
 						body: JSON.stringify({}),
 					},
-				).catch(() => {})
+				).catch(() => { })
 
-			const plain = await fetchDecryptedGroupBlob(groupId, meta)
-			if (!plain) {
+			const fileIdForEvfs = String(meta?.fileId || meta?.id || '').trim()
+			const entityHash = groupEntityHash(groupId)
+			const plainRes = await fetch(entityFileUrl(entityHash, `chat/${fileIdForEvfs}`), { credentials: 'include' })
+			if (!plainRes.ok) {
 				handleUIError(new Error('downloadGroupFile decrypt failed'), 'chat.hub.fileDownloadFailed')
 				return
 			}
+			const plain = new Uint8Array(await plainRes.arrayBuffer())
 
 			const { createWriteStream } = await import('https://esm.sh/streamsaver@2.0.6')
 			const fileStream = createWriteStream(

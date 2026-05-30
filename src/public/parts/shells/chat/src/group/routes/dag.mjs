@@ -6,7 +6,6 @@
  * 【关联】被 group/endpoints.mjs 注册；依赖 chat/dag/*、chat/governance、localAuthz.mjs、access.mjs。
  */
 import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/governance_branch.mjs'
-import { encryptHForMember } from '../../../../../../../scripts/p2p/gsh.mjs'
 import { HEX_ID_64 as PUB_KEY_HEX_64, isHex64, normalizeHex64 as normalizePubKeyHex } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { getUserByReq } from '../../../../../../../server/auth.mjs'
 import { appendSignedLocalEvent } from '../../chat/dag/append.mjs'
@@ -22,11 +21,14 @@ import { saveGovernanceBranchTip } from '../../chat/governance/branchStore.mjs'
 import { forkGroupFromBranch } from '../../chat/governance/fork.mjs'
 import { blockOpposingForkBranch } from '../../chat/governance/forkBlockOpposing.mjs'
 import { loadReputation } from '../../chat/governance/reputation.mjs'
+import { buildGshGenerationGrant } from '../../chat/gsh/historicalGrant.mjs'
 import { getCurrentH } from '../../chat/gsh/store.mjs'
 import { eventsPath } from '../../chat/lib/paths.mjs'
 import { isSignedDagEventRow } from '../../chat/lib/wireIngress.mjs'
 import { canGovSlash, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
 import { validateLocalAuthzBatch } from '../localAuthz.mjs'
+
+import { requireGroupMember } from './middleware.mjs'
 
 /**
  * 注册 DAG 同步、分叉与事件推送路由。
@@ -35,12 +37,8 @@ import { validateLocalAuthzBatch } from '../localAuthz.mjs'
  * @returns {void}
  */
 export function registerDagRoutes(router, authenticate) {
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/dag\/tips$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/dag\/tips$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, state, groupId } = req.groupContext
 
 		const events = await readJsonl(eventsPath(username, groupId))
 		const tips = computeDagTipIdsFromEvents(events)
@@ -56,7 +54,8 @@ export function registerDagRoutes(router, authenticate) {
 			reputationBySender[String(nodeId).toLowerCase()] = Number(row?.score ?? 0)
 		const tipScores = computeTipAuthzScores(tips, eventsById, reputationBySender)
 		const tipConsensusScores = computeTipConsensusScores(tips, eventsById)
-		res.status(200).json({ tips,
+		res.status(200).json({
+			tips,
 			tipScores,
 			tipConsensusScores,
 			local_tips_hash: checkpoint?.local_tips_hash ?? computeLocalTipsHash(tips),
@@ -68,12 +67,9 @@ export function registerDagRoutes(router, authenticate) {
 		})
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/fork$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/fork$/, authenticate, requireGroupMember(), async (req, res) => {
 		const sourceGroupId = req.params[0]
-		const { state } = await getState(username, sourceGroupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, sourceGroupId, state))
-			return res.status(403).json({ error: 'Not a member' })
+		const { username } = req.groupContext
 		const body = req.body || {}
 		const result = await forkGroupFromBranch(username, sourceGroupId, {
 			tipId: body.tipId ? String(body.tipId) : undefined,
@@ -87,23 +83,15 @@ export function registerDagRoutes(router, authenticate) {
 		res.status(201).json({ ...result })
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/fork\/block-opposing$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/fork\/block-opposing$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId } = req.groupContext
 		const acceptedTipId = String(req.body?.acceptedTipId || '')
 		const result = await blockOpposingForkBranch(username, groupId, acceptedTipId)
 		res.status(200).json({ ...result })
 	})
 
-	router.put(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/governance-branch$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
+	router.put(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/governance-branch$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, state, groupId } = req.groupContext
 		const tipId = req.body?.tipId != null ? String(req.body.tipId).trim().toLowerCase() : null
 		if (tipId && !isHex64(tipId))
 			return res.status(400).json({ error: 'invalid tipId' })
@@ -112,31 +100,24 @@ export function registerDagRoutes(router, authenticate) {
 			return res.status(400).json({ error: 'tipId is not a current DAG tip' })
 		await saveGovernanceBranchTip(username, groupId, tipId)
 		const refreshed = await getState(username, groupId, { forceFullReplay: false })
-		res.status(200).json({ authzBranchTip: refreshed.state.authzBranchTip,
+		res.status(200).json({
+			authzBranchTip: refreshed.state.authzBranchTip,
 			consensusBranchTip: refreshed.state.consensusBranchTip ?? refreshed.state.authzBranchTip ?? null,
 			localViewBranchTip: refreshed.state.localViewBranchTip ?? null,
 			governanceFork: refreshed.state.governanceFork,
 		})
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/dag\/merge-tips$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/dag\/merge-tips$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId } = req.groupContext
 
 		const { sender, secretKey } = await resolveLocalEventSigner(username, groupId)
 		const event = await mergeDagTips(username, groupId, sender, secretKey)
 		res.status(200).json({ event })
 	})
 
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/events$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/events$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId } = req.groupContext
 		const channelId = String(req.query.channelId || '').trim() || undefined
 		const { events, truncated } = await syncEvents(username, groupId, {
 			since: req.query.since ? String(req.query.since) : undefined,
@@ -172,7 +153,7 @@ export function registerDagRoutes(router, authenticate) {
 					applied++
 				continue
 			}
-			const content = { ...event.content || {} }
+			const content = { ...event.content }
 
 			if (event.type === 'reputation_slash' && !content.verified && !content.proof) {
 				const { state: slashState } = await getState(username, groupId)
@@ -197,12 +178,12 @@ export function registerDagRoutes(router, authenticate) {
 				continue
 			}
 
-			if (event.type === 'peer_invite' && !content.encrypted_H) {
+			if (event.type === 'peer_invite' && !content.gshGrant) {
 				const peerPubKeyHex = normalizePubKeyHex(content.to || '')
-				const hEntry = await getCurrentH(username, groupId)
-				if (PUB_KEY_HEX_64.test(peerPubKeyHex) && hEntry) {
-					content.encrypted_H = encryptHForMember(hEntry.h, peerPubKeyHex)
-					content.h_generation = hEntry.generation
+				if (PUB_KEY_HEX_64.test(peerPubKeyHex)) {
+					const hEntry = await getCurrentH(username, groupId)
+					if (hEntry)
+						content.gshGrant = await buildGshGenerationGrant(username, groupId, peerPubKeyHex)
 				}
 			}
 

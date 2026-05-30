@@ -5,7 +5,7 @@
  * 【数据结构】`state`（成员/频道/消息 overlay 等物化视图）、`order`（拓扑序 id 列表）、`checkpoint`（含 `checkpoint_event_id`、`dag_tip_ids`、`epoch_chain`）。
  * 【关联】`wal.mjs`、`storage.mjs`、`events/retention.mjs`、`queries.mjs`、`remoteIngest.mjs`。
  */
-import { mkdir } from 'node:fs/promises'
+import { mkdir, stat } from 'node:fs/promises'
 
 import { buildCheckpointPayload, signCheckpoint } from '../../../../../../../scripts/p2p/checkpoint.mjs'
 import { EPOCH_CHAIN_MAX } from '../../../../../../../scripts/p2p/constants.mjs'
@@ -33,12 +33,17 @@ import {
 	serializeReactionsOverlay,
 	serializeVotesOverlay,
 } from '../../../../../../../scripts/p2p/materialized_state.mjs'
+import {
+	invalidateTopologicalOrderMemo,
+	resolveTopologicalOrderMemoCached,
+} from '../../../../../../../scripts/p2p/topo_order_memo.mjs'
 import { findStaleUnreachableChannels } from '../channel/gc.mjs'
 import { enforceEventRetention } from '../events/retention.mjs'
 import { flushPendingRelay } from '../federation/pendingRelay.mjs'
 import { loadGovernanceBranchTip } from '../governance/branchStore.mjs'
 import { loadReputation } from '../governance/reputation.mjs'
-import { groupDir, eventsOrderCachePath, eventsPath, snapshotPath } from '../lib/paths.mjs'
+import { mergeChannelMessagesForDisplay } from '../lib/messageMerge.mjs'
+import { eventsOrderCachePath, groupDir, eventsPath, messagesPath, snapshotPath } from '../lib/paths.mjs'
 import { safeReadJson } from '../lib/utils.mjs'
 
 import { readJsonl, writeJsonAtomicSynced } from './storage.mjs'
@@ -75,11 +80,26 @@ export async function getState(username, groupId, opts = {}) {
 	}
 	const forceReplay = opts.forceFullReplay || wal.forceFullReplay === true
 
+	const eventsFile = eventsPath(username, groupId)
+	let fingerprint = `0:0:${events.length}`
+	try {
+		const st = await stat(eventsFile)
+		fingerprint = `${st.mtimeMs}:${st.size}:${events.length}`
+	}
+	catch { /* empty or missing */ }
+	const memoKey = `${username}:${groupId}`
 	const orderCachePath = eventsOrderCachePath(username, groupId)
-	if (forceReplay)
+	if (forceReplay) {
 		await deleteOrderCache(orderCachePath)
+		invalidateTopologicalOrderMemo(memoKey)
+	}
 	const orderCache = forceReplay ? null : await readOrderCache(orderCachePath)
-	const order = resolveEventTopologicalOrder(events, orderCache, { forceFull: forceReplay })
+	const order = resolveTopologicalOrderMemoCached(
+		memoKey,
+		fingerprint,
+		() => resolveEventTopologicalOrder(events, orderCache, { forceFull: forceReplay }),
+		{ force: forceReplay },
+	)
 	if (events.length && !forceReplay)
 		await writeOrderCache(orderCachePath, buildOrderCachePayload(order, events))
 	const byId = new Map(events.map(event => [event.id, event]))
@@ -176,13 +196,13 @@ async function canUseSecretKeyForCheckpointSignature(state, secretKey) {
 }
 
 /**
- * 重放 DAG 授权类事件并写回 `checkpoint.json`。
+ * 重放 DAG 并写入 `checkpoint.json`（不含后续维护副作用）。
  * @param {string} username 用户名
  * @param {string} groupId 群组 ID
- * @param {{ checkpointOwnerSecretKey?: Uint8Array, skipChannelGc?: boolean }} [opts] checkpoint 选项
+ * @param {{ checkpointOwnerSecretKey?: Uint8Array }} [opts] checkpoint 选项
  * @returns {Promise<object | null>} 新检查点；无事件时为 null
  */
-export async function rebuildAndSaveCheckpoint(username, groupId, opts = {}) {
+export async function buildAndSaveCheckpoint(username, groupId, opts = {}) {
 	const { events, state, order } = await getState(username, groupId, { forceFullReplay: true })
 	if (!events.length) return null
 	const dagTipIds = computeDagTipIdsFromEvents(events)
@@ -223,6 +243,12 @@ export async function rebuildAndSaveCheckpoint(username, groupId, opts = {}) {
 			eventIdsInEpoch = previousCheckpoint.eventIdsInEpoch
 	}
 
+	state.channelMergedMessages = {}
+	for (const channelId of Object.keys(state.channels || {})) {
+		const lines = await readJsonl(messagesPath(username, groupId, channelId))
+		state.channelMergedMessages[channelId] = mergeChannelMessagesForDisplay(lines)
+	}
+
 	let checkpointPayload = buildCheckpointPayload({
 		local_node_id: null,
 		materialized: state,
@@ -239,6 +265,19 @@ export async function rebuildAndSaveCheckpoint(username, groupId, opts = {}) {
 		checkpointPayload = await signCheckpoint(checkpointPayload, opts.checkpointOwnerSecretKey)
 	await mkdir(groupDir(username, groupId), { recursive: true })
 	await writeJsonAtomicSynced(snapshotPath(username, groupId), checkpointPayload)
+	return checkpointPayload
+}
+
+/**
+ * checkpoint 写入后的维护：联邦 relay、频道 GC、留存与压缩。
+ * @param {string} username 用户名
+ * @param {string} groupId 群组 ID
+ * @param {object} checkpointPayload 已保存的检查点
+ * @param {{ skipChannelGc?: boolean }} [opts] 维护选项
+ * @returns {Promise<void>}
+ */
+export async function runPostCheckpointMaintenance(username, groupId, checkpointPayload, opts = {}) {
+	const { events, state } = await getState(username, groupId)
 
 	try {
 		const { invalidateKnownMemberIndex } = await import('../mailbox/memberIndex.mjs')
@@ -293,6 +332,18 @@ export async function rebuildAndSaveCheckpoint(username, groupId, opts = {}) {
 		catch (error) {
 			console.error('message_content_retention:', error)
 		}
+}
 
+/**
+ * 重放 DAG 授权类事件并写回 `checkpoint.json`。
+ * @param {string} username 用户名
+ * @param {string} groupId 群组 ID
+ * @param {{ checkpointOwnerSecretKey?: Uint8Array, skipChannelGc?: boolean }} [opts] checkpoint 选项
+ * @returns {Promise<object | null>} 新检查点；无事件时为 null
+ */
+export async function rebuildAndSaveCheckpoint(username, groupId, opts = {}) {
+	const checkpointPayload = await buildAndSaveCheckpoint(username, groupId, opts)
+	if (!checkpointPayload) return null
+	await runPostCheckpointMaintenance(username, groupId, checkpointPayload, opts)
 	return checkpointPayload
 }

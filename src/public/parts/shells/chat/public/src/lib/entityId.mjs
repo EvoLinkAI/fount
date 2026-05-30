@@ -5,26 +5,11 @@
  * 【数据结构】AGENT_SUBJECT_PREFIX、charPartPath、pubKeyHex。
  * 【关联】entityHash.mjs、friendBinding.mjs；资料与 DM 身份。
  */
+import { sha256Hex, sha256TextHex } from '../../../../../../pages/scripts/digest.mjs'
+
 import { isHex64, normalizeHex64 } from './pubKeyHex.mjs'
 
 const AGENT_SUBJECT_PREFIX = 'fount:chat:agent:'
-
-/**
- * @param {Uint8Array} bytes 输入字节
- * @returns {Promise<string>} 小写 hex 摘要
- */
-async function sha256Hex(bytes) {
-	const digest = await crypto.subtle.digest('SHA-256', bytes)
-	return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('')
-}
-
-/**
- * @param {string} text UTF-8 文本
- * @returns {Promise<string>} 小写 hex 摘要
- */
-async function sha256TextHex(text) {
-	return sha256Hex(new TextEncoder().encode(text))
-}
 
 /**
  * @param {unknown} pubKeyHex 32 字节公钥 hex
@@ -35,7 +20,7 @@ export async function hashFromPubKeyHex(pubKeyHex) {
 	if (!isHex64(hex)) throw new Error('invalid pubKeyHex')
 	const bytes = new Uint8Array(32)
 	for (let i = 0; i < 32; i++) bytes[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
-	return sha256Hex(bytes)
+	return sha256Hex(bytes.buffer)
 }
 
 /**

@@ -83,6 +83,28 @@ export function createMessagePipeline({
 		},
 
 		/**
+		 * 分批（按 rAF）追加多条消息，避免长批次阻塞主线程。
+		 * @param {object[]} items 消息数组
+		 * @param {boolean} [scroll] 末尾是否滚到底
+		 * @returns {Promise<void>}
+		 */
+		async appendItemsBatch(items, scroll) {
+			const rows = Array.isArray(items) ? items : []
+			if (!rows.length) return
+			if (scroll ?? shouldAutoScroll) markProgrammaticScroll()
+			const chunkSize = 50
+			for (let offset = 0; offset < rows.length; offset += chunkSize) {
+				if (offset > 0)
+					await new Promise(resolve => requestAnimationFrame(() => resolve()))
+				const chunk = rows.slice(offset, offset + chunkSize)
+				for (const row of chunk)
+					await virtualList.appendItem(row, false)
+			}
+			if (scroll ?? shouldAutoScroll)
+				container.scrollTop = container.scrollHeight
+		},
+
+		/**
 		 * @param {number} index 列表索引
 		 * @param {object} item 新消息数据
 		 * @returns {Promise<void>}

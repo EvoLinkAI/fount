@@ -53,9 +53,9 @@ export async function resolveActiveMemberKeyForLocalUser(replicaUsername, groupI
 export function resolveMemberKey(state, identifier) {
 	if (state.members[identifier]) return identifier
 	const lower = String(identifier || '').toLowerCase()
-	for (const [key, member] of Object.entries(state.members || {})) 
+	for (const [key, member] of Object.entries(state.members || {}))
 		if (member?.pubKeyHash?.toLowerCase() === lower) return key
-	
+
 	return null
 }
 

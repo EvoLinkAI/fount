@@ -4,9 +4,7 @@ import { info_t } from '../../../../../decl/basedefs.ts'
 
 /** ---- Channels（原 channelAPI.ts）---- */
 
-/**
- *
- */
+/** 频道内单项操作权限标识（与 DAG 角色/订阅者列表对照）。 */
 export type ChannelPermission =
 	| 'canPost'
 	| 'canEdit'
@@ -19,20 +17,13 @@ export type ChannelPermission =
 	| 'canDeleteChannel'
 	| 'canViewHistory'
 
-/**
- *
- */
+/** 频道成员角色层级（owner → subscriber）。 */
 export type ChannelRole = 'owner' | 'admin' | 'moderator' | 'member' | 'subscriber'
 
-/**
- *
- */
 /** 运行时 DAG 频道类型（见 `src/group/routes/channels.mjs`）。 */
 export type ChannelType = 'text' | 'list' | 'streaming'
 
-/**
- *
- */
+/** 频道配置快照（物化自 DAG channel_* 事件）。 */
 export interface ChannelConfig {
 	channelId: string
 	name: string
@@ -51,9 +42,7 @@ export interface ChannelConfig {
 	updatedAt: number
 }
 
-/**
- *
- */
+/** 频道内单条消息（文本/附件/置顶状态）。 */
 export interface ChannelMessage {
 	messageId: string
 	channelId: string
@@ -69,9 +58,7 @@ export interface ChannelMessage {
 	updatedAt?: number
 }
 
-/**
- *
- */
+/** 频道成员及其角色与加入时间。 */
 export interface ChannelMember {
 	username: string
 	role: ChannelRole
@@ -99,9 +86,7 @@ export class ChannelAPI_t {
 
 /** ---- Profile（原 profileAPI.ts）---- */
 
-/**
- *
- */
+/** 实体在线/勿扰等展示状态。 */
 export type UserStatus = 'online' | 'idle' | 'dnd' | 'invisible' | 'offline' | 'away' | 'busy'
 
 /**
@@ -159,9 +144,7 @@ export interface UserProfilePresentation extends UserProfile {
 	localeKeys?: string[]
 }
 
-/**
- *
- */
+/** 实体资料读写 API（多 locale 切片 + 头像上传）。 */
 export class ProfileAPI_t {
 	info: info_t
 
@@ -180,9 +163,7 @@ export class ProfileAPI_t {
 
 /** ---- Stickers（原 stickerAPI.ts）---- */
 
-/**
- *
- */
+/** 贴纸包内单个贴纸资源。 */
 export interface Sticker {
 	id: string
 	name: string
@@ -191,9 +172,7 @@ export interface Sticker {
 	animated: boolean
 }
 
-/**
- *
- */
+/** 贴纸包元数据与所含贴纸列表。 */
 export interface StickerPack {
 	packId: string
 	name: string
@@ -206,9 +185,7 @@ export interface StickerPack {
 	updatedAt: number
 }
 
-/**
- *
- */
+/** 用户已安装/收藏/最近使用的贴纸集合。 */
 export interface UserStickerCollection {
 	entityHash: string
 	installedPacks: string[]
@@ -216,9 +193,7 @@ export interface UserStickerCollection {
 	recentStickers: string[]
 }
 
-/**
- *
- */
+/** 聊天消息中的贴纸载荷（type=sticker）。 */
 export interface StickerMessage {
 	type: 'sticker'
 	packId: string
@@ -226,9 +201,7 @@ export interface StickerMessage {
 	url: string
 }
 
-/**
- *
- */
+/** 贴纸包 CRUD 与用户收藏 API。 */
 export class StickerAPI_t {
 	info: info_t
 

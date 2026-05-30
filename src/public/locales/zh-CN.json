@@ -939,6 +939,149 @@
 			}
 		}
 	},
+	"social": {
+		"title": "社交",
+		"description": "P2P 开放社交动态、关注与文件分享",
+		"identityNote": "Social 与 Chat 共用同一 P2P 实体（联邦 identity），无需单独注册账号。",
+		"mentionHint": "提及：输入 @ 后从列表选择，或直接 @<128位 entityHash>",
+		"nav": {
+			"feed": "首页",
+			"explore": "探索",
+			"notifications": "通知",
+			"saved": "收藏",
+			"profile": "我的"
+		},
+		"composer": {
+			"placeholder": "在想什么？支持 Chat Markdown；输入 @ 可提及",
+			"publish": "发布",
+			"addMedia": "添加媒体",
+			"visibilityPublic": "公开",
+			"visibilityFollowers": "仅关注者",
+			"postAsSelf": "本人",
+			"postAsAgent": "角色"
+		},
+		"feed": {
+			"loadMore": "加载更多",
+			"refresh": "刷新动态",
+			"repostedBy": "${author} 转发了"
+		},
+		"trending": {
+			"title": "热门话题",
+			"postCount": "${n} 条帖子"
+		},
+		"search": {
+			"placeholder": "搜索动态或 #话题（至少 2 字）",
+			"submit": "搜索",
+			"clear": "清除",
+			"hint": "在已关注与本人的时间线中搜索；以 # 开头仅匹配话题标签",
+			"empty": "没有匹配的帖子",
+			"tooShort": "请输入至少 2 个字符"
+		},
+		"profile": {
+			"viewPosts": "查看动态",
+			"editInChat": "在 Chat 编辑资料",
+			"protectedPost": "受保护帖子",
+			"mediaOnly": "[媒体]",
+			"postCount": "${n} 条动态",
+			"following": "正在关注",
+			"exploreSettings": "探索页设置",
+			"hideFromExplore": "从探索页隐藏账户",
+			"saveExplore": "保存探索设置"
+		},
+		"actions": {
+			"like": "点赞",
+			"unlike": "取消赞",
+			"repost": "转发",
+			"quote": "引用",
+			"delete": "删除",
+			"save": "收藏",
+			"saved": "已收藏",
+			"translate": "翻译",
+			"dm": "发私信",
+			"block": "拉黑",
+			"follow": "关注",
+			"following": "已关注",
+			"replies": "评论",
+			"copyLink": "复制链接",
+			"copied": "已复制"
+		},
+		"explore": {
+			"accounts": "推荐账户",
+			"posts": "随机帖子",
+			"mediaOnly": "仅含媒体的帖子"
+		},
+		"groupRef": {
+			"linking": "关联 Chat 群",
+			"clear": "取消关联",
+			"pickPlaceholder": "关联 Chat 群/频道…"
+		},
+		"notifications": {
+			"reply": "${author} 回复了你的帖子",
+			"mention": "${author} 在动态中 @ 了你",
+			"like": "${author} 赞了你的帖子",
+			"follow": "${author} 关注了你",
+			"view": "查看",
+			"markAllRead": "全部标为已读"
+		},
+		"replies": {
+			"placeholder": "写回复…",
+			"submit": "回复",
+			"empty": "暂无回复"
+		},
+		"repost": {
+			"placeholder": "添加转发评论（可选）…",
+			"submit": "确认转发"
+		},
+		"quote": {
+			"quoting": "正在引用",
+			"clear": "取消引用",
+			"viewOriginal": "查看原帖"
+		},
+		"a11y": {
+			"linkGroupSelect": "关联 Chat 群或频道",
+			"postAsEntity": "发帖身份",
+			"postVisibility": "可见范围",
+			"postLang": "内容语言",
+			"trendingHashtags": "热门话题",
+			"saveFolderSelect": "收藏文件夹"
+		},
+		"blocklist": {
+			"title": "拉黑列表",
+			"empty": "暂无拉黑账户",
+			"unblock": "解除拉黑"
+		},
+		"translate": {
+			"label": "译文："
+		},
+		"saved": {
+			"folders": "文件夹",
+			"unfiled": "未归档",
+			"createFolder": "新建文件夹",
+			"newFolderPlaceholder": "文件夹名称",
+			"pickFolder": "输入序号选择文件夹（0=未归档）",
+			"pickFolderTitle": "收藏到",
+			"confirm": "确认",
+			"cancel": "取消",
+			"remove": "移除收藏",
+			"renameFolder": "重命名",
+			"renameFolderPrompt": "新文件夹名称",
+			"deleteFolder": "删除文件夹",
+			"deleteFolderConfirm": "删除文件夹？其中的帖子将移到「未归档」。"
+		},
+		"time": {
+			"justNow": "刚刚",
+			"minutesAgo": "${n} 分钟前",
+			"hoursAgo": "${n} 小时前"
+		},
+		"empty": {
+			"feed": "暂无动态，去关注一些人吧",
+			"profilePosts": "暂无动态",
+			"notifications": "暂无通知",
+			"saved": "暂无收藏",
+			"explorePosts": "暂无探索帖子",
+			"noIdentity": "请先在 Chat 配置联邦 identity 后再使用 Social"
+		}
+	},
 	"chat": {
 		"title": "聊天",
 		"description": "言语飞扬，故事在此展开。与您的 AI 伙伴互动，共同塑造叙事，沉浸在数字对话的潮起潮落中。fount 的心跳，于此间回响。",
@@ -1098,6 +1241,8 @@
 				"keyRotateConfirm": "确定手动轮换本群 GSH 密钥？新成员需重新同步。",
 				"keyRotateOk": "密钥已轮换",
 				"keyRotateFailed": "密钥轮换失败：${error}",
+				"gshGenerationRetentionHint": "当前仅保留最近 64 代群密钥历史。超出后最早历史消息/文件可能无法解密，建议定期归档重要数据。",
+				"gshGenerationNearLimit": "当前已轮换到第 ${generation} 代（上限 ${maxGenerations} 代）。继续频繁轮换将导致最早历史密钥被淘汰。",
 				"ownerSuccession": "群主继任",
 				"ownerSuccessionOk": "群主继任已生效",
 				"ownerSuccessionFailed": "群主继任失败：${error}",
@@ -1233,9 +1378,15 @@
 			"settingsEventRetentionMs": "DAG 事件保留时间",
 			"settingsCompactTriggerDepth": "物化压缩触发深度",
 			"settingsMessageRateLimit": "消息限速（条/分钟/实体）",
+			"settingsAutoReplyTokenBucket": "自动回复压力调度（Token Bucket）",
+			"settingsAutoReplyTokenBucketHint": "开启后，每个角色按频道维护令牌桶；桶空时暂不触发 onMessage，可抑制高峰期连续刷屏。",
 			"settingsIceServers": "ICE / TURN 服务器",
 			"settingsIceServersAdd": "添加服务器",
 			"settingsIceServersHint": "用于 WebRTC 与联邦 P2P 穿透；TURN 凭据仅存本机物化设置，不经联邦广播。",
+			"settingsFileCeMode": "文件加密模式",
+			"settingsFileCeModeConvergent": "收敛加密（可去重）",
+			"settingsFileCeModeRandom": "高隐私模式（随机密钥，不去重）",
+			"settingsFileCeModeHint": "高隐私模式会为每个分块使用随机 contentKey，并标记 ceMode=random；可降低明文可猜测风险，但会增加存储与带宽占用。",
 			"channelsTitle": "频道",
 			"createGroup": "新建群组",
 			"members": "成员",
@@ -1466,11 +1617,15 @@
 			"fedRepEmpty": "（空）",
 			"fedSlashTitle": "信誉惩戒",
 			"fedSlashTargetLabel": "目标 pubKeyHash（64 hex）",
-			"fedSlashTarget": { "placeholder": "成员公钥哈希" },
+			"fedSlashTarget": {
+				"placeholder": "成员公钥哈希"
+			},
 			"fedSlashClaimLabel": "主张强度 claim（0–1）",
 			"fedSlashVerifiedLabel": "可验证（须填 proof event id）",
 			"fedSlashProofLabel": "proof.eventId（可选）",
-			"fedSlashProof": { "placeholder": "64 hex event id" },
+			"fedSlashProof": {
+				"placeholder": "64 hex event id"
+			},
 			"fedSlashSubmitLabel": "投递 reputation_slash",
 			"fedResetSubmitLabel": "重置目标信誉",
 			"fedSlashNeedHash": "需要 64 位 hex pubKeyHash",
@@ -1742,6 +1897,8 @@
 			"voteCount": "${count} 票 · ${pct}%",
 			"loadGroupFailed": "加载群组失败：${error}",
 			"sendFailed": "发送失败：${error}",
+			"sendFailedPending": "发送失败",
+			"retrySend": "重试",
 			"sendImageFailed": "发送图片失败：${error}",
 			"sendStickerFailed": "发送贴纸失败：${error}",
 			"voteMinOptions": "至少需要 2 个选项",
@@ -1873,6 +2030,13 @@
 			"pinPreviewVote": "[投票] ${question}",
 			"pinPreviewInvite": "[邀请] ${groupName}",
 			"reactionRemovePrompt": "移除谁的 ${emoji}？\n${candidates}",
+			"ariaDagTip": {
+				"aria-label": "DAG 分叉 tip"
+			},
+			"ariaClose": {
+				"aria-label": "关闭"
+			},
+			"membersDigestPagesTitle": "${expected}\n${pages} 页",
 			"discoveryTitle": "群发现",
 			"discoveryEmpty": "暂无推荐群；打开联邦同步后会从邻居同步发现列表",
 			"discoveryLoadFailed": "加载发现列表失败：${message}",
@@ -1951,7 +2115,6 @@
 				"tagLocal": "本机账户"
 			},
 			"channelCtx": {
-				"copyLink": "复制频道链接",
 				"copyLinkDone": "频道链接已复制",
 				"rename": "重命名频道",
 				"renameOk": "频道已重命名",

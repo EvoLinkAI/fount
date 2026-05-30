@@ -33,6 +33,7 @@ function bootstrapCooldownKey(username, groupId) {
 	return `${username}\0${groupId}`
 }
 
+/** 重导出 bootstrap wire 解析函数。 */
 export { parseFedBootstrapRequest, parseFedBootstrapResponse } from './bootstrap/wire.mjs'
 
 /**
@@ -104,7 +105,7 @@ export async function applyFedBootstrapResponse(username, groupId, response) {
 	void catchUpGroupFromPeers(username, groupId, {
 		waitMs: 2000,
 		extraWantIds: creds.settingsEventId ? [creds.settingsEventId] : undefined,
-	}).catch(() => {})
+	})
 	return true
 }
 
@@ -132,7 +133,7 @@ export async function broadcastFedBootstrapRequest(slot, username, groupId, node
 	const targets = await pickFederationTargetPeerIds(
 		username,
 		groupId,
-		slot.getRoster?.() || [],
+		slot.getRoster(),
 		groupSettings,
 		nodeId,
 	)
@@ -155,11 +156,10 @@ export async function broadcastFedBootstrapRequest(slot, username, groupId, node
  * @returns {Promise<void>}
  */
 export async function maybeRequestBootstrapAfterCatchup(username, groupId, catchupResult, slot) {
-	const rosterEmpty = !slot?.getRoster?.()?.length
 	const syncFailed = catchupResult.tipsCollected > 0
 		&& catchupResult.eventsFilled === 0
 		&& catchupResult.wantIds > 0
-	if (!rosterEmpty && !syncFailed) return
+	if (!syncFailed) return
 
 	markMqttCredentialsStale(username, groupId)
 	if (!slot) return

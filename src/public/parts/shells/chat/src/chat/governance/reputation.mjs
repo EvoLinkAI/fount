@@ -15,7 +15,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { assertHex64, isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import {
 	clampReputationScore,
 	computeRepMaxEff,
@@ -58,7 +58,7 @@ const CHUNK_FETCH_FAIL_PENALTY = 0.08
 const MAX_RELAY_BUMP_SEEN = 2000
 
 /**
- *
+ * 联邦中继信誉 bump 去重（自 `p2p/reputation_relay_dedupe` 再导出）。
  */
 export { relayBumpIsDuplicate } from '../../../../../../../scripts/p2p/reputation_relay_dedupe.mjs'
 
@@ -121,6 +121,8 @@ export async function saveReputation(username, groupId, data) {
 	if (clean.relayBumpSeen.length > MAX_RELAY_BUMP_SEEN)
 		clean.relayBumpSeen = clean.relayBumpSeen.slice(-MAX_RELAY_BUMP_SEEN)
 	await writeFile(p, JSON.stringify(clean, null, '\t'), 'utf8')
+	const { invalidateTrustGraphCache } = await import('../../../../../../../scripts/p2p/trust_graph_cache.mjs')
+	invalidateTrustGraphCache(username)
 }
 
 /** 合法中继/应答微增信誉（§22.1）。 */
@@ -258,11 +260,9 @@ export async function applyVolatileSlashAlert(username, groupId, alert) {
  */
 export async function buildAndApplyUnverifiedSlashAlert(senderPubKeyHash, groupId, content, groupSettings = {}) {
 	void groupId
-	const targetPubKeyHash = String(content.targetPubKeyHash || '').trim().toLowerCase()
+	const targetPubKeyHash = assertHex64(content.targetPubKeyHash, 'slash target')
 	const claim = Number.isFinite(Number(content.claim)) ? Number(content.claim) : 0.2
-	const sender = String(senderPubKeyHash || '').trim().toLowerCase()
-	if (!isHex64(targetPubKeyHash) || !isHex64(sender))
-		throw new Error('invalid slash alert sender or target')
+	const sender = assertHex64(senderPubKeyHash, 'slash sender')
 	const ttl = resolveSlashAlertTtlMs(groupSettings)
 	return {
 		type: 'reputation_slash_alert',
@@ -283,9 +283,8 @@ export async function buildAndApplyUnverifiedSlashAlert(senderPubKeyHash, groupI
 export async function applySubjectiveSlashFromEvent(username, groupId, event) {
 	if (event?.type !== 'reputation_slash') return
 	const content = event.content || {}
-	const target = String(content.targetPubKeyHash || '').trim().toLowerCase()
-	const sender = String(event.sender || '').trim().toLowerCase()
-	if (!isHex64(target) || !isHex64(sender)) return
+	const target = content.targetPubKeyHash.trim().toLowerCase()
+	const sender = event.sender.trim().toLowerCase()
 
 	const data = await loadReputation(username, groupId)
 	const repMaxEff = computeRepMaxEff(data)
@@ -307,8 +306,8 @@ export async function applySubjectiveSlashFromEvent(username, groupId, event) {
  * @returns {Promise<boolean>} 证据 id 是否存在于本地 DAG
  */
 async function verifySlashProof(username, groupId, content) {
-	const eventId = String(content?.proof?.eventId || '').trim().toLowerCase()
-	if (!isHex64(eventId)) return false
+	const eventId = content?.proof?.eventId?.trim().toLowerCase()
+	if (!eventId) return false
 	const events = await readJsonl(eventsPath(username, groupId))
 	return events.some(e => e?.id === eventId)
 }
@@ -322,9 +321,8 @@ async function verifySlashProof(username, groupId, content) {
  * @returns {Promise<void>}
  */
 export async function applyDecayCollusionAfterSlash(username, groupId, targetPubKeyHash, inviteEdges) {
-	const t = String(targetPubKeyHash || '').trim().toLowerCase()
-	if (!isHex64(t)) return
-	const edges = Array.isArray(inviteEdges) ? inviteEdges : []
+	const t = targetPubKeyHash.trim().toLowerCase()
+	const edges = inviteEdges ?? []
 	const lambda = 0.07
 	const delta = 0.62
 	const data = await loadReputation(username, groupId)
@@ -355,8 +353,7 @@ export async function applyDecayCollusionAfterSlash(username, groupId, targetPub
  * @returns {Promise<void>}
  */
 export async function applyReputationResetToScores(username, groupId, targetPubKeyHash) {
-	const t = String(targetPubKeyHash || '').trim().toLowerCase()
-	if (!isHex64(t)) return
+	const t = targetPubKeyHash.trim().toLowerCase()
 	const data = await loadReputation(username, groupId)
 	data.byNodeId[t] = { score: 0 }
 	await saveReputation(username, groupId, data)
@@ -372,12 +369,11 @@ export async function applyReputationResetToScores(username, groupId, targetPubK
  * @returns {Promise<void>}
  */
 export async function seedMemberReputationFromIntroducer(username, groupId, memberPubKeyHash, introducerPubKeyHash, repEdge) {
-	const memberKey = String(memberPubKeyHash || '').trim().toLowerCase()
-	if (!isHex64(memberKey)) return
-	const introducerKey = String(introducerPubKeyHash || '').trim().toLowerCase()
+	const memberKey = memberPubKeyHash.trim().toLowerCase()
+	const introducerKey = introducerPubKeyHash?.trim().toLowerCase() || ''
 	const data = await loadReputation(username, groupId)
 	if (data.byNodeId[memberKey]) return
-	const introducerReputation = isHex64(introducerKey)
+	const introducerReputation = introducerKey
 		? Number(data.byNodeId[introducerKey]?.score ?? 0)
 		: 0
 	data.byNodeId[memberKey] = { score: seedReputationFromIntro(introducerReputation, repEdge) }

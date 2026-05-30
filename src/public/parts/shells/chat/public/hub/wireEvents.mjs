@@ -5,8 +5,8 @@
  * 【数据结构】hubStore（core/state）及本模块函数入参/返回值；详见 JSDoc。
  * 【关联】hashNav、groupNav、messages、mode；依赖 i18n、template、groupApi、composerFiles 等。
  */
+import { openDialogFromTemplate } from '../../../../scripts/dialog.mjs'
 import { confirmI18n } from '../../../../scripts/i18n.mjs'
-import { renderTemplate } from '../../../../scripts/template.mjs'
 import { showToastI18n } from '../../../../scripts/toast.mjs'
 import {
 	castChannelVote,
@@ -43,28 +43,26 @@ import { openGroupSettingsModal } from './privateGroup.mjs'
 
 /** 弹出「创建 / 加入群组」选择对话框。 @returns {Promise<void>} */
 async function showServerActionPicker() {
-	const modal = document.createElement('dialog')
-	modal.className = 'modal'
-	modal.appendChild(await renderTemplate('hub/modals/server_action_picker', {
+	await openDialogFromTemplate('hub/modals/server_action_picker', {
 		createIconHtml: iconifyImg('mdi/sparkles', { width: 28, height: 28 }),
 		joinIconHtml: iconifyImg('mdi/link-variant', { width: 28, height: 28 }),
-	}))
-	modal.querySelector('[data-action="create"]').addEventListener('click', () => {
-		modal.close()
-		modal.remove()
-		showCreateGroupModal()
+	}, {
+		/**
+		 * @param {HTMLDialogElement} dialog 对话框
+		 * @returns {void}
+		 */
+		onReady: dialog => {
+			dialog.querySelector('[data-action="create"]')?.addEventListener('click', () => {
+				dialog.close()
+				showCreateGroupModal()
+			})
+			dialog.querySelector('[data-action="join"]')?.addEventListener('click', () => {
+				dialog.close()
+				joinGroupById()
+			})
+			dialog.querySelector('[data-cancel]')?.addEventListener('click', () => dialog.close())
+		},
 	})
-	modal.querySelector('[data-action="join"]').addEventListener('click', () => {
-		modal.close()
-		modal.remove()
-		joinGroupById()
-	})
-	modal.querySelector('[data-cancel]').addEventListener('click', () => {
-		modal.close()
-		modal.remove()
-	})
-	document.body.appendChild(modal)
-	modal.showModal()
 }
 
 /**

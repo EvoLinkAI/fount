@@ -86,7 +86,7 @@ async function renderCharInfoCardInner(name, details, { active }) {
 	const charDisplayName = profile?.name || info.name || name
 	const avatarUrl = profile?.avatar || info.avatar || details?.avatar || ''
 	const viewerDisplayName = getViewerDisplayNameRef()
-	const viewerEntityHash = hubStore.viewerEntityHash
+	const { viewerEntityHash } = hubStore
 	const memberList = document.getElementById('hub-member-list')
 	const charName = escapeHtml(charDisplayName)
 	const charAvatarInner = await charAvatarHtml(charDisplayName, avatarUrl)
@@ -126,7 +126,8 @@ async function renderCharInfoCardInner(name, details, { active }) {
 		if (entityHash)
 			wireProfileEditButton(card, entityHash, {
 				/**
-				 *
+				 * 资料保存后重绘角色信息卡。
+				 * @returns {Promise<void>}
 				 */
 				onSaved: async () => {
 					await renderCharInfoCardInner(name, await getCharDetails(name), { active })

@@ -8,9 +8,9 @@
 import { renderTemplateAsHtmlString } from '../../../../scripts/template.mjs'
 import { isHex64 } from '../src/lib/pubKeyHex.mjs'
 
+import { refreshBoundBanners, refreshMailboxBannerBound } from './core/bindings.mjs'
 import { escapeHtml } from './core/domUtils.mjs'
 import { hubStore } from './core/state.mjs'
-import { getMailboxPendingCount, refreshMailboxPendingCount } from './hubNotifications.mjs'
 
 /**
  * 显示或隐藏置顶/书签侧栏容器。
@@ -26,55 +26,17 @@ export function setPinsBookmarksWrapVisible(on) {
 
 /** @returns {void} */
 export function updatePlaintextMainBanner() {
-	const el = document.getElementById('hub-plaintext-main-banner')
-	const textEl = document.getElementById('hub-plaintext-main-banner-text')
-	if (!el || !textEl) return
-	const channel = hubStore.currentState?.channels?.[hubStore.currentChannelId]
-	const show = hubStore.currentMode === 'groups'
-		&& hubStore.currentGroupId
-		&& hubStore.currentState?.isMember
-		&& channel?.syncScope === 'channel'
-	if (show) {
-		textEl.dataset.i18n = 'chat.hub.banners.plaintextSidecar'
-		el.removeAttribute('hidden')
-		return
-	}
-	el.setAttribute('hidden', '')
+	refreshBoundBanners()
 }
 
 /** @returns {void} */
 export function refreshQuarantineBanner() {
-	const el = document.getElementById('hub-quarantine-banner')
-	const textEl = document.getElementById('hub-quarantine-banner-text')
-	if (!el || !textEl) return
-	const count = Number(hubStore.currentState?.quarantineCount) || 0
-	const show = hubStore.currentMode === 'groups'
-		&& hubStore.currentGroupId
-		&& hubStore.currentState?.isMember
-		&& count > 0
-	if (show) {
-		textEl.dataset.count = String(count)
-		textEl.dataset.i18n = 'chat.hub.banners.quarantine'
-		el.removeAttribute('hidden')
-		return
-	}
-	el.setAttribute('hidden', '')
+	refreshBoundBanners()
 }
 
 /** @returns {Promise<void>} */
 export async function refreshMailboxBanner() {
-	const el = document.getElementById('hub-mailbox-banner')
-	const textEl = document.getElementById('hub-mailbox-banner-text')
-	if (!el || !textEl) return
-	await refreshMailboxPendingCount()
-	const pending = getMailboxPendingCount()
-	if (pending > 0) {
-		textEl.dataset.count = String(pending)
-		textEl.dataset.i18n = 'chat.hub.banners.mailboxPending'
-		el.removeAttribute('hidden')
-		return
-	}
-	el.setAttribute('hidden', '')
+	await refreshMailboxBannerBound()
 }
 
 /** @returns {Promise<void>} */
@@ -111,9 +73,8 @@ export async function refreshDagForkBanner() {
 	if (tipSelect) {
 		const preferred = data.consensusBranchTip || data.authzBranchTip || hubStore.currentState?.consensusBranchTip || ''
 		const tipScores = data.tipConsensusScores || data.tipScores || {}
-		if (!tips.length) 
+		if (!tips.length)
 			tipSelect.innerHTML = ''
-		
 		else {
 			const tipRows = tips.map(id => {
 				const short = id.length > 12 ? `${id.slice(0, 10)}…` : id
@@ -140,21 +101,12 @@ export async function refreshDagForkBanner() {
  * @returns {void}
  */
 export function setSyncBanner(on, opts) {
-	const el = document.getElementById('hub-sync-banner')
-	const textEl = document.getElementById('hub-sync-banner-text')
-	if (!el) return
-	if (on) {
-		el.removeAttribute('hidden')
-		if (textEl) {
-			const key = opts?.i18nKey || 'chat.hub.banners.syncing'
-			textEl.dataset.i18n = key
-			for (const k of Object.keys(textEl.dataset))
-				if (k !== 'i18n') delete textEl.dataset[k]
-			for (const [k, v] of Object.entries(opts?.params || {}))
-				textEl.dataset[k] = String(v)
-		}
+	hubStore.syncBanner = {
+		visible: on,
+		i18nKey: opts?.i18nKey || 'chat.hub.banners.syncing',
+		params: opts?.params || {},
 	}
-	else el.setAttribute('hidden', '')
+	refreshBoundBanners()
 }
 
 /**
@@ -198,30 +150,12 @@ export async function refreshChannelPinsBar() {
 
 /** @returns {void} */
 export function refreshGshBufferBanner() {
-	const el = document.getElementById('hub-group-state-host-buffer-banner')
-	const textEl = document.getElementById('hub-group-state-host-buffer-banner-text')
-	if (!el || !textEl) return
-	const total = Number(hubStore.currentState?.gshBuffer?.total) || 0
-	if (hubStore.currentMode === 'groups' && hubStore.currentGroupId && hubStore.currentState?.isMember && total > 0) {
-		textEl.dataset.total = String(total)
-		textEl.dataset.i18n = 'chat.hub.banners.gshBuffer'
-		el.removeAttribute('hidden')
-		return
-	}
-	el.setAttribute('hidden', '')
+	refreshBoundBanners()
 }
 
 /** @returns {void} */
 export function refreshLocalViewBanner() {
-	const el = document.getElementById('hub-local-view-banner')
-	if (!el) return
-	const consensus = hubStore.currentState?.consensusBranchTip || hubStore.currentState?.authzBranchTip || ''
-	const localView = hubStore.currentState?.localViewBranchTip || ''
-	const hasDiff = !!localView && !!consensus && localView !== consensus
-	const show = hubStore.currentMode === 'groups' && hubStore.currentGroupId && hubStore.currentState?.isMember
-		&& hasDiff
-	if (show) el.removeAttribute('hidden')
-	else el.setAttribute('hidden', '')
+	refreshBoundBanners()
 }
 
 /** @returns {void} */

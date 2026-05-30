@@ -88,7 +88,7 @@ export async function joinMqttRoomWithDefaults({ appId, password, roomId, relayU
 	const room = await joinMqttRoom({
 		...base,
 		rtcPolyfill,
-		...(rtcConfig ? { rtcConfig } : {}),
+		...rtcConfig ? { rtcConfig } : {},
 	}, roomId)
 	await attachTrysteroMqttRelayErrorHandlers()
 	return room

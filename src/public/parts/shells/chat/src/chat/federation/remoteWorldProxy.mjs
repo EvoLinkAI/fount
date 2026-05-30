@@ -10,7 +10,7 @@
 /** @typedef {import('../../../../../decl/chatLog.ts').chatReplyRequest_t} chatReplyRequest_t */
 /** @typedef {import('../../../../../decl/prompt_struct.ts').chatLogEntry_t} chatLogEntry_t */
 
-import { normalizeJsonBoundaryValue } from '../lib/jsonBoundary.mjs'
+import { encodeWireJson } from '../lib/wireJson.mjs'
 
 /** 标记 `createRemoteWorldProxy` 生成的对象，供类型识别。 */
 export const REMOTE_WORLD_PROXY_SYMBOL = Symbol.for('fount.remoteWorldProxy')
@@ -37,8 +37,8 @@ export function createRemoteWorldProxy(memberId, sourceHost, interfaces = {}, rp
 			err.code = 'REMOTE_UNAVAILABLE'
 			throw err
 		}
-		const raw = await rpcCall(method, normalizeJsonBoundaryValue(args, `rpc.args:${method}`))
-		return normalizeJsonBoundaryValue(raw ?? null, `rpc.result:${method}`)
+		const rpcResult = await rpcCall(method, encodeWireJson(args, `rpc.args:${method}`))
+		return encodeWireJson(rpcResult ?? null, `rpc.result:${method}`)
 	}
 
 	if (useChat)
@@ -102,7 +102,7 @@ export function createRemoteWorldProxy(memberId, sourceHost, interfaces = {}, rp
 		}
 
 	const proxy = {
-		info: normalizeJsonBoundaryValue({}, 'remoteWorldProxy.info'),
+		info: {},
 		interfaces: iface,
 	}
 

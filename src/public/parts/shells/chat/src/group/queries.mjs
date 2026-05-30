@@ -63,7 +63,7 @@ function markStaleGeneratingMessages(lines, idleMs = DEFAULT_STREAM_GENERATING_I
  */
 export async function enumerateJoinedFederatedGroups(username) {
 	const rows = []
-	for (const groupId of await listUserGroups(username)) 
+	for (const groupId of await listUserGroups(username))
 		try {
 			const { state } = await getState(username, groupId)
 			if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state)) continue
@@ -83,7 +83,7 @@ export async function enumerateJoinedFederatedGroups(username) {
 		catch {
 			// 新建群物化尚未就绪时跳过该条，避免整表 GET /groups 失败导致侧栏空白
 		}
-	
+
 	return rows
 }
 
@@ -116,9 +116,13 @@ export async function readChannelReactionEvents(username, groupId, channelId) {
  * @returns {Promise<object[]>} 消息行对象数组
  */
 export async function readChannelMessagesForUser(username, groupId, channelId, q) {
-	let lines = await readJsonl(messagesPath(username, groupId, channelId))
+	const { state } = await getState(username, groupId)
+	let lines = state.channelMergedMessages?.[channelId]
+	if (!lines) {
+		lines = await readJsonl(messagesPath(username, groupId, channelId))
+		lines = mergeChannelMessagesForDisplay(lines)
+	}
 	lines = await decryptChannelMessageLines(username, groupId, channelId, lines)
-	lines = mergeChannelMessagesForDisplay(lines)
 	if (q.since) {
 		const sinceIndex = lines.findIndex(message => message.eventId === q.since)
 		// 含 since 行本身：`message_edit` 终稿会就地更新同 eventId，slice(+1) 会漏掉终稿
@@ -130,7 +134,6 @@ export async function readChannelMessagesForUser(username, groupId, channelId, q
 	}
 	const lim = q.limit != null ? Number(q.limit) : undefined
 	if (Number.isFinite(lim) && lim > 0) lines = lines.slice(-lim)
-	const { state } = await getState(username, groupId)
 	const idle = Number(state.groupSettings?.streamGeneratingIdleMs)
 	const streamIdleMs = Number.isFinite(idle) && idle > 0 ? idle : undefined
 	const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)

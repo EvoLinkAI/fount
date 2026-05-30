@@ -13,9 +13,11 @@ const DEFAULT_CHANNEL_PARTITIONS = 8
  * @returns {number} 频道哈希分区数（至少 2，至多 64）
  */
 export function channelPartitionCount(groupSettings = {}) {
-	const n = Number(groupSettings.federationPartitionCount)
-	const raw = Number.isFinite(n) && n >= 2 ? Math.floor(n) : DEFAULT_CHANNEL_PARTITIONS
-	return Math.min(64, Math.max(2, raw))
+	const configuredPartitionCount = Number(groupSettings.federationPartitionCount)
+	const partitionCount = Number.isFinite(configuredPartitionCount) && configuredPartitionCount >= 2
+		? Math.floor(configuredPartitionCount)
+		: DEFAULT_CHANNEL_PARTITIONS
+	return Math.min(64, Math.max(2, partitionCount))
 }
 
 /**
@@ -24,9 +26,9 @@ export function channelPartitionCount(groupSettings = {}) {
  * @returns {string} 分区 id，如 `ch-03`
  */
 export function channelPartitionFor(channelId, count) {
-	const h = createHash('sha256').update(String(channelId || 'default'), 'utf8').digest()
-	const idx = h.readUInt32BE(0) % count
-	return `ch-${String(idx).padStart(2, '0')}`
+	const channelHash = createHash('sha256').update(String(channelId || 'default'), 'utf8').digest()
+	const partitionIndex = channelHash.readUInt32BE(0) % count
+	return `ch-${String(partitionIndex).padStart(2, '0')}`
 }
 
 /**
@@ -36,9 +38,9 @@ export function channelPartitionFor(channelId, count) {
  */
 export function resolveNodePartitionIds(groupSettings = {}, channelId = null) {
 	const count = channelPartitionCount(groupSettings)
-	const out = new Set([LOGIC_SYNC_PARTITION])
-	out.add(channelPartitionFor(channelId || 'default', count))
-	return [...out]
+	const partitionIds = new Set([LOGIC_SYNC_PARTITION])
+	partitionIds.add(channelPartitionFor(channelId || 'default', count))
+	return [...partitionIds]
 }
 
 /**
@@ -47,8 +49,8 @@ export function resolveNodePartitionIds(groupSettings = {}, channelId = null) {
  * @returns {string} Trystero 房间名
  */
 export function partitionRoomName(baseRoomId, partitionId) {
-	const pid = String(partitionId || LOGIC_SYNC_PARTITION).trim() || LOGIC_SYNC_PARTITION
-	return `${baseRoomId}~${pid}`
+	const normalizedPartitionId = String(partitionId || LOGIC_SYNC_PARTITION).trim() || LOGIC_SYNC_PARTITION
+	return `${baseRoomId}~${normalizedPartitionId}`
 }
 
 /**

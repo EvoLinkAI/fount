@@ -12,7 +12,7 @@ export const DEFAULT_ICE_SERVERS = [
 
 /**
  * @param {unknown} raw 单条 ICE 配置
- * @returns {{ urls: string, username?: string, credential?: string } | null}
+ * @returns {{ urls: string, username?: string, credential?: string } | null} 合法条目或 null
  */
 function normalizeIceEntry(raw) {
 	if (!raw || typeof raw !== 'object') return null
@@ -28,7 +28,7 @@ function normalizeIceEntry(raw) {
 	if ((username && !credential) || (!username && credential)) return null
 	return {
 		urls: urlsList.length === 1 ? urlsList[0] : urlsList,
-		...(username ? { username, credential } : {}),
+		...username ? { username, credential } : {},
 	}
 }
 
@@ -58,7 +58,7 @@ export function resolveIceServersForTrystero(groupSettings) {
 /**
  * 校验并规范化待写入 DAG 的 iceServers 数组。
  * @param {unknown} raw 请求体字段
- * @returns {{ urls: string, username?: string, credential?: string }[]}
+ * @returns {{ urls: string, username?: string, credential?: string }[]} 校验后的 ICE 列表
  */
 export function sanitizeIceServersForSettings(raw) {
 	if (!Array.isArray(raw)) return [...DEFAULT_ICE_SERVERS]

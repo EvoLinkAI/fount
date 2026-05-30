@@ -3,7 +3,7 @@
  * 【职责】在 Char 回复预览链中解析工具调用定界符（成对 start/end），将未完成块渲染为占位、已完成块渲染为结果，并支持内联工具异步执行缓存。
  * 【原理】defineToolUseBlocks 用命名捕获组正则替换 content_for_show；defineInlineToolUses 对 content 中每个匹配 exec 一次并缓存 Promise/Error，pending 时显示「正在调用工具」；占位文案经 getChatI18n 按 html/markdown 能力分支。
  * 【数据结构】toolPairs/toolDefs、args.extension.streamInlineToolsResults（Map id→Promise[]）、CharReplyPreviewUpdater_t 链式 next。
- * 【关联】被 stream/index 导出；被 char 插件 GetReply 预览 updater 组合；依赖 markdown.getChatI18n。
+ * 【关联】被 char 插件与其它 shell 直接 import；依赖 markdown.getChatI18n。
  */
 import { escapeRegExp } from '../../../../../../scripts/regex.mjs'
 
@@ -15,17 +15,17 @@ import { getChatI18n } from './markdown.mjs'
  */
 function renderToolCallingPlaceholder(args) {
 	/**
-	 *
+	 * 获取本地化「正在调用工具」占位文案。
+	 * @returns {string} 本地化文案
 	 */
-	/** @returns {string} 本地化「正在调用工具」文案 */
 	const toolCallingText = () => getChatI18n(args, 'chat.messageView.commonToolCalling')
 	if (args.supported_functions.html)
 		return `\
 <div class="tool-call-placeholder card bg-base-100 shadow-xl">
 	<div class="card-body">
 	${args.supported_functions.fount_i18nkeys
-		? '<span class="tool-call-placeholder-text" data-i18n="chat.messageView.commonToolCalling"></span>'
-		: `<span class="tool-call-placeholder-text">${toolCallingText()}</span>`}
+				? '<span class="tool-call-placeholder-text" data-i18n="chat.messageView.commonToolCalling"></span>'
+				: `<span class="tool-call-placeholder-text">${toolCallingText()}</span>`}
 	</div>
 </div>
 `

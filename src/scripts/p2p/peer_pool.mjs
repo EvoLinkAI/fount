@@ -54,8 +54,8 @@ export function resolveFederationPoolLimits(groupSettings = {}) {
  * @returns {number} 排序分
  */
 function repScore(nodeId, rep) {
-	const s = Number(rep.byNodeId?.[nodeId]?.score ?? 0)
-	return clampReputationScore(Number.isFinite(s) ? s : 0)
+	const score = Number(rep.byNodeId?.[nodeId]?.score ?? 0)
+	return clampReputationScore(Number.isFinite(score) ? score : 0)
 }
 
 /**
@@ -78,50 +78,53 @@ export function selectPeerIdsFromPool({ roster, peers, rep, limits, selfNodeId, 
 		? inRoomNodeIds
 		: new Set(Array.isArray(inRoomNodeIds) ? inRoomNodeIds : [])
 	const onlineAll = roster.filter(
-		p => p.peerId && p.remoteNodeId && p.remoteNodeId !== selfNodeId && !blocked.has(p.remoteNodeId),
+		rosterEntry => rosterEntry.peerId
+			&& rosterEntry.remoteNodeId
+			&& rosterEntry.remoteNodeId !== selfNodeId
+			&& !blocked.has(rosterEntry.remoteNodeId),
 	)
 	const onlineInRoom = roomSet.size
-		? onlineAll.filter(p => roomSet.has(p.remoteNodeId))
+		? onlineAll.filter(rosterEntry => roomSet.has(rosterEntry.remoteNodeId))
 		: onlineAll
 	const online = onlineInRoom.length ? onlineInRoom : onlineAll
 	if (!online.length) return []
 
-	const byNode = new Map(online.map(p => [p.remoteNodeId, p.peerId]))
-	const trustedSet = new Set(peers.trustedPeers.filter(id => byNode.has(id)))
-	const exploreSet = new Set(peers.explorePeers.filter(id => byNode.has(id) && !trustedSet.has(id)))
+	const peerIdByNodeId = new Map(online.map(rosterEntry => [rosterEntry.remoteNodeId, rosterEntry.peerId]))
+	const trustedSet = new Set(peers.trustedPeers.filter(nodeId => peerIdByNodeId.has(nodeId)))
+	const exploreSet = new Set(peers.explorePeers.filter(nodeId => peerIdByNodeId.has(nodeId) && !trustedSet.has(nodeId)))
 
 	const outPeerIds = new Set()
 	/**
 	 * @param {string} nid 远端节点 ID
 	 */
-	const pushNode = nid => {
-		const pid = byNode.get(nid)
-		if (pid) outPeerIds.add(pid)
+	const pushNode = nodeId => {
+		const peerId = peerIdByNodeId.get(nodeId)
+		if (peerId) outPeerIds.add(peerId)
 	}
 
 	const trustedSorted = [...trustedSet].sort((a, b) => repScore(b, rep) - repScore(a, rep))
-	for (const nid of trustedSorted.slice(0, limits.trustedSlots)) {
+	for (const nodeId of trustedSorted.slice(0, limits.trustedSlots)) {
 		if (outPeerIds.size >= limits.maxPeers) break
-		pushNode(nid)
+		pushNode(nodeId)
 	}
 
 	// Fisher-Yates shuffle for uniform random explore selection
 	const exploreArray = [...exploreSet]
 	for (let index = exploreArray.length - 1; index > 0; index--) {
 		const randomIndex = Math.floor(Math.random() * (index + 1))
-		;[exploreArray[index], exploreArray[randomIndex]] = [exploreArray[randomIndex], exploreArray[index]]
+			;[exploreArray[index], exploreArray[randomIndex]] = [exploreArray[randomIndex], exploreArray[index]]
 	}
-	for (const nid of exploreArray.slice(0, limits.exploreSlots)) {
+	for (const nodeId of exploreArray.slice(0, limits.exploreSlots)) {
 		if (outPeerIds.size >= limits.maxPeers) break
-		pushNode(nid)
+		pushNode(nodeId)
 	}
 
-	const rest = [...byNode.keys()]
-		.filter(nid => !trustedSet.has(nid) && !exploreSet.has(nid))
+	const remainingNodeIds = [...peerIdByNodeId.keys()]
+		.filter(nodeId => !trustedSet.has(nodeId) && !exploreSet.has(nodeId))
 		.sort((a, b) => repScore(b, rep) - repScore(a, rep))
-	for (const nid of rest) {
+	for (const nodeId of remainingNodeIds) {
 		if (outPeerIds.size >= limits.maxPeers) break
-		pushNode(nid)
+		pushNode(nodeId)
 	}
 
 	return [...outPeerIds].slice(0, limits.maxPeers)
@@ -171,9 +174,9 @@ export function applyPexHints({ peers, rep, hints, limits }) {
  */
 export function applyRosterToPeerPool({ peers, rep, roster, limits }) {
 	const explore = new Set(peers.explorePeers)
-	for (const p of roster) {
-		const nid = p.remoteNodeId?.trim()
-		if (nid && !peers.blockedPeers.includes(nid)) explore.add(nid)
+	for (const rosterEntry of roster) {
+		const nodeId = rosterEntry.remoteNodeId?.trim()
+		if (nodeId && !peers.blockedPeers.includes(nodeId)) explore.add(nodeId)
 	}
 	const newExplorePeers = [...explore]
 		.filter(id => !peers.blockedPeers.includes(id))

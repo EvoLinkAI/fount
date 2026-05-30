@@ -58,7 +58,8 @@ export async function showMemberContextMenu(event, memberEl) {
 	openMenuEl = menu
 
 	/**
-	 *
+	 * 关闭成员右键菜单并移除文档级监听。
+	 * @returns {void}
 	 */
 	const closeOnce = () => {
 		dismissMemberContextMenu()
@@ -96,9 +97,9 @@ export async function showMemberContextMenu(event, memberEl) {
 		closeOnce()
 	})
 	menu.querySelector('.hub-member-menu-kick')?.addEventListener('click', async () => {
-		if (memberKey.toLowerCase() === viewer.toLowerCase()) 
+		if (memberKey.toLowerCase() === viewer.toLowerCase())
 			if (!confirmI18n('chat.hub.memberCtx.kickSelfNodeWarning', { name: displayName })) return
-		
+
 		if (!confirmI18n('chat.group.settingsPage.kickConfirm', { name: displayName })) return
 		const groupId = hubStore.currentGroupId
 		const resp = await fetch(

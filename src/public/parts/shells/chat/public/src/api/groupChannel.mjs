@@ -149,7 +149,7 @@ export async function getChannelMessages(groupId, channelId, options = {}) {
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID
  * @param {string} pendingStreamId DAG 占位 message eventId
- * @returns {Promise<{ chunkSeq: number, slices: object[] }[]>}
+ * @returns {Promise<{ chunkSeq: number, slices: object[] }[]>} 流式 diff 块列表
  */
 export async function getStreamBufferChunks(groupId, channelId, pendingStreamId) {
 	const data = await groupFetch(

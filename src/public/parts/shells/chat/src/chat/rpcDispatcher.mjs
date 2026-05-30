@@ -1,7 +1,7 @@
 /**
  * 【文件】src/chat/rpcDispatcher.mjs
  * 【职责】在群 WebSocket RPC 通道上，将远程 memberId 映射到本节点已加载的 Char/World part 并执行对应 interfaces 方法。
- * 【原理】createCharRpcDispatcher 先 normalizeJsonBoundaryValue 参数，再经 getActiveGroupRuntime 与 getCharBind 判定是否本地；支持嵌套路径 method、GetReply 的 serializableRequest 转 triggerCharReply、以及 UpdateInfo/GetPrompt/onMessage 等固定分支；结果统一为 `{ kind: result|not_local|method_not_found|error }` 供 groupWsHub 回写 WS。
+ * 【原理】createCharRpcDispatcher 经 getActiveGroupRuntime 与 getCharBind 判定是否本地；支持嵌套路径 method、GetReply 的 serializableRequest 转 triggerCharReply、以及 UpdateInfo/GetPrompt/onMessage 等固定分支；结果统一为 `{ kind: result|not_local|method_not_found|error }` 供 groupWsHub 回写 WS。
  * 【数据结构】memberId（`owner:char` 或 charname）、method/args、chatMetadata.LastTimeSlice.chars、RPC kind 判别联合类型、normalizeRpcErrorCode 错误码表。
  * 【关联】被 session.mjs 导出 tryInvokeLocal*；被 chat/stream/groupWsHub 调用；依赖 session/dagSession、session/runtime、session/generation。
  */
@@ -27,6 +27,32 @@ function resolveNestedCallable(root, path) {
 		current = current[segment]
 	}
 	return current instanceof Function ? current : null
+}
+
+/**
+ * 将内部异常映射为对外稳定的 RPC 错误码。
+ * @param {unknown} err 原始异常
+ * @returns {string} 规范化后的错误码
+ */
+function normalizeRpcErrorCode(err) {
+	const code = err?.code
+	if (code === 'RPC_INVALID_ARGUMENT') return 'RPC_INVALID_ARGUMENT'
+	if (code === 'RPC_INVALID_RESULT') return 'RPC_INVALID_RESULT'
+	if (code === 'JSON_SERIALIZATION_ERROR') return 'JSON_SERIALIZATION_ERROR'
+	if (code === 'REMOTE_UNAVAILABLE') return 'REMOTE_UNAVAILABLE'
+	return 'EXECUTION_ERROR'
+}
+
+/**
+ * @param {string} method 方法名
+ * @param {unknown} value RPC 返回值
+ * @returns {{ kind: 'result', value: unknown }} 归一化后的成功结果
+ */
+function resultOk(method, value) {
+	return {
+		kind: 'result',
+		value: normalizeJsonBoundaryValue(value, `rpcDispatcher.result:${method}`),
+	}
 }
 
 /**
@@ -79,9 +105,9 @@ export function createCharRpcDispatcher(getActiveGroupRuntime, getChatRequest) {
 		}
 
 		/**
-		 *
+		 * 从 RPC 参数列表首项的 extension/channelId 推断目标频道 id。
+		 * @returns {string | null} 频道 id，无法推断时为 null
 		 */
-		/** @returns {string | null} 从 RPC 参数推断频道 id */
 		const inferChannelId = () => {
 			const firstArg = list[0]
 			const fromExtension = resolveChannelId(firstArg?.extension?.channelId, '')
@@ -96,18 +122,18 @@ export function createCharRpcDispatcher(getActiveGroupRuntime, getChatRequest) {
 				case 'UpdateInfo': {
 					const updateInfo = char.interfaces?.info?.UpdateInfo
 					if (!updateInfo) return { kind: 'method_not_found' }
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await updateInfo(list[0] ?? []), `rpcDispatcher.result:${method}`) }
+					return resultOk(method, await updateInfo(list[0] ?? []))
 				}
 				case 'GetData': {
 					const getData = char.interfaces?.config?.GetData
 					if (!getData) return { kind: 'method_not_found' }
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await getData(), `rpcDispatcher.result:${method}`) }
+					return resultOk(method, await getData())
 				}
 				case 'SetData': {
 					const setData = char.interfaces?.config?.SetData
 					if (!setData) return { kind: 'method_not_found' }
 					await setData(list[0])
-					return { kind: 'result', value: null }
+					return resultOk(method, null)
 				}
 				case 'GetGreeting':
 				case 'GetGroupGreeting': {
@@ -116,7 +142,7 @@ export function createCharRpcDispatcher(getActiveGroupRuntime, getChatRequest) {
 						: char.interfaces?.chat?.GetGroupGreeting
 					if (!greeting) return { kind: 'method_not_found' }
 					const request = await getChatRequest(groupId, charname, inferChannelId())
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await greeting(request, Number(list[1]) || 0), `rpcDispatcher.result:${method}`) }
+					return resultOk(method, await greeting(request, Number(list[1]) || 0))
 				}
 				case 'GetPrompt':
 				case 'GetPromptForOther': {
@@ -125,17 +151,17 @@ export function createCharRpcDispatcher(getActiveGroupRuntime, getChatRequest) {
 						: char.interfaces?.chat?.GetPromptForOther
 					if (!getPrompt) return { kind: 'method_not_found' }
 					const request = await getChatRequest(groupId, charname, inferChannelId())
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await getPrompt(request), `rpcDispatcher.result:${method}`) }
+					return resultOk(method, await getPrompt(request))
 				}
 				case 'TweakPrompt':
 				case 'TweakPromptForOther': {
 					const tweakPrompt = method === 'TweakPrompt'
 						? char.interfaces?.chat?.TweakPrompt
 						: char.interfaces?.chat?.TweakPromptForOther
-					if (!tweakPrompt) return { kind: 'result', value: null }
+					if (!tweakPrompt) return resultOk(method, null)
 					const request = await getChatRequest(groupId, charname, inferChannelId())
 					await tweakPrompt(request, list[1], list[2], Number(list[3]) || 0)
-					return { kind: 'result', value: null }
+					return resultOk(method, null)
 				}
 				case 'GetReply': {
 					const serial = list[0]
@@ -152,33 +178,33 @@ export function createCharRpcDispatcher(getActiveGroupRuntime, getChatRequest) {
 								fromRpc: true,
 							},
 						)
-						return { kind: 'result', value: null }
+						return resultOk(method, null)
 					}
 					const getReply = char.interfaces?.chat?.GetReply
 					if (!getReply) return { kind: 'method_not_found' }
 					const request = await getChatRequest(groupId, charname, inferChannelId(), { replicaUsername: owner })
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await getReply(request), `rpcDispatcher.result:${method}`) }
+					return resultOk(method, await getReply(request))
 				}
 				case 'onMessage': {
 					const onMessage = char.interfaces?.chat?.onMessage
-					if (!onMessage) return { kind: 'result', value: false }
+					if (!onMessage) return resultOk(method, false)
 					const envelope = list[0] || {}
 					const onlineCount = Number(envelope.onlineCount) || 1
 					const replyCharname = envelope.chatReplyRequest?.char_id || charname
 					const request = await getChatRequest(groupId, replyCharname, inferChannelId())
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await onMessage({ chatReplyRequest: request, onlineCount }), `rpcDispatcher.result:${method}`) }
+					return resultOk(method, await onMessage({ chatReplyRequest: request, onlineCount }))
 				}
 				case 'MessageEdit':
 				case 'MessageEditing':
 				case 'MessageDelete': {
 					const handler = char.interfaces?.chat?.[method]
 					if (!handler) return { kind: 'method_not_found' }
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await handler(list[0]), `rpcDispatcher.result:${method}`) }
+					return resultOk(method, await handler(list[0]))
 				}
 				default: {
 					const nested = resolveNestedCallable(char.interfaces, method)
 					if (!nested) return { kind: 'method_not_found' }
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await nested(...list), `rpcDispatcher.result:${method}`) }
+					return resultOk(method, await nested(...list))
 				}
 			}
 		}
@@ -190,20 +216,6 @@ export function createCharRpcDispatcher(getActiveGroupRuntime, getChatRequest) {
 			}
 		}
 	}
-}
-
-/**
- * 将内部异常映射为对外稳定的 RPC 错误码。
- * @param {unknown} err 原始异常
- * @returns {string} 规范化后的错误码
- */
-function normalizeRpcErrorCode(err) {
-	const code = err?.code
-	if (code === 'RPC_INVALID_ARGUMENT') return 'RPC_INVALID_ARGUMENT'
-	if (code === 'RPC_INVALID_RESULT') return 'RPC_INVALID_RESULT'
-	if (code === 'JSON_SERIALIZATION_ERROR') return 'JSON_SERIALIZATION_ERROR'
-	if (code === 'REMOTE_UNAVAILABLE') return 'REMOTE_UNAVAILABLE'
-	return 'EXECUTION_ERROR'
 }
 
 /**
@@ -221,7 +233,7 @@ export function createWorldRpcDispatcher(getChatRequest) {
 	return async function tryInvokeLocalWorldRpc(groupId, memberId, method, args = []) {
 		let list
 		try {
-			list = normalizeJsonBoundaryValue(Array.isArray(args) ? args : [], `rpcDispatcher.world.args:${method}`)
+			list = normalizeJsonBoundaryValue(Array.isArray(args) ? args : [], `rpcDispatcher.args:${method}`)
 		}
 		catch (error) {
 			return {
@@ -270,7 +282,7 @@ export function createWorldRpcDispatcher(getChatRequest) {
 						: world.interfaces?.chat?.GetGroupGreeting
 					if (!fn) return { kind: 'method_not_found' }
 					const request = await getChatRequest(groupId, undefined, inferChannelId(), { replicaUsername: owner })
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await fn(request, Number(list[1]) || 0), `rpcDispatcher.world.result:${method}`) }
+					return resultOk(method, await fn(request, Number(list[1]) || 0))
 				}
 				case 'GetSpeakingOrder': {
 					const fn = world.interfaces?.chat?.GetSpeakingOrder
@@ -282,13 +294,13 @@ export function createWorldRpcDispatcher(getChatRequest) {
 						for await (const turn of order) turns.push(turn)
 					else if (order)
 						turns.push(...order)
-					return { kind: 'result', value: normalizeJsonBoundaryValue(turns, `rpcDispatcher.world.result:${method}`) }
+					return resultOk(method, turns)
 				}
 				case 'GetChatLogForCharname': {
 					const fn = world.interfaces?.chat?.GetChatLogForCharname
 					if (!fn) return { kind: 'method_not_found' }
 					const request = list[0] || await getChatRequest(groupId, list[1], inferChannelId(), { replicaUsername: owner })
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await fn(request, list[1]), `rpcDispatcher.world.result:${method}`) }
+					return resultOk(method, await fn(request, list[1]))
 				}
 				case 'AddChatLogEntry':
 				case 'AfterAddChatLogEntry':
@@ -296,12 +308,12 @@ export function createWorldRpcDispatcher(getChatRequest) {
 				case 'MessageDelete': {
 					const handler = world.interfaces?.chat?.[method]
 					if (!handler) return { kind: 'method_not_found' }
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await handler(...list), `rpcDispatcher.world.result:${method}`) }
+					return resultOk(method, await handler(...list))
 				}
 				default: {
 					const nested = resolveNestedCallable(world.interfaces, method)
 					if (!nested) return { kind: 'method_not_found' }
-					return { kind: 'result', value: normalizeJsonBoundaryValue(await nested(...list), `rpcDispatcher.world.result:${method}`) }
+					return resultOk(method, await nested(...list))
 				}
 			}
 		}

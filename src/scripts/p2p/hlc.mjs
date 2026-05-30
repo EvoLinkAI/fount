@@ -32,17 +32,17 @@ export class HLC {
 	update(remote) {
 		const localWall = Date.now()
 
-		if (localWall > this.wall && localWall > remote.wall) 
+		if (localWall > this.wall && localWall > remote.wall)
 			return new HLC(localWall, 0)
-		
 
-		if (this.wall === remote.wall) 
+
+		if (this.wall === remote.wall)
 			return new HLC(this.wall, Math.max(this.logical, remote.logical) + 1)
-		
 
-		if (this.wall > remote.wall) 
+
+		if (this.wall > remote.wall)
 			return new HLC(this.wall, this.logical + 1)
-		
+
 
 		return new HLC(remote.wall, remote.logical + 1)
 	}
@@ -54,9 +54,9 @@ export class HLC {
 	tick() {
 		const localWall = Date.now()
 
-		if (localWall > this.wall) 
+		if (localWall > this.wall)
 			return new HLC(localWall, 0)
-		
+
 
 		return new HLC(this.wall, this.logical + 1)
 	}
@@ -67,9 +67,9 @@ export class HLC {
 	 * @returns {number} 小于零、零或大于零（与 `this - other` 同号）
 	 */
 	compare(other) {
-		if (this.wall !== other.wall) 
+		if (this.wall !== other.wall)
 			return this.wall - other.wall
-		
+
 		return this.logical - other.logical
 	}
 

@@ -25,7 +25,7 @@ import { getState } from './materialize.mjs'
  * @returns {string} 写入 DAG 的 agent 正文
  */
 function entryContentToMirrorText(entry) {
-	const content = entry.content
+	const { content } = entry
 	return content?.text || content || channelMessageAgentText(content) || ''
 }
 
@@ -42,7 +42,7 @@ async function storeContentRef(username, groupId, text) {
 	const storage = getStorageForGroup(username, state.groupSettings, { groupId })
 	const { storageLocator } = await storage.putChunk(groupId, hash, buffer)
 	if (storage.storagePeerId === 'federation_swarm')
-		void replicateChunkToFederation(username, groupId, hash, buffer).catch(() => {})
+		void replicateChunkToFederation(username, groupId, hash, buffer).catch(() => { })
 	return {
 		contentHash: hash,
 		alg: 'sha256',

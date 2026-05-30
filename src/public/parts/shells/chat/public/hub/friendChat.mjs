@@ -37,18 +37,17 @@ async function findExistingFriendGroup(binding) {
  * @returns {Promise<void>}
  */
 async function ensureCharOnGroup(groupId, charname) {
-	try {
-		const cr = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/chars`, { credentials: 'include' })
-		const chars = cr.ok ? await cr.json() : []
-		if (Array.isArray(chars) && chars.includes(charname)) return
-	}
-	catch { /* 拉列表失败则尝试 add */ }
-	await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/char`, {
+	const cr = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/chars`, { credentials: 'include' })
+	if (!cr.ok) throw new Error(`HTTP ${cr.status}`)
+	const chars = await cr.json()
+	if (Array.isArray(chars) && chars.includes(charname)) return
+	const add = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/char`, {
 		method: 'POST',
 		credentials: 'include',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ charname }),
 	})
+	if (!add.ok) throw new Error(`HTTP ${add.status}`)
 }
 
 /**
@@ -120,7 +119,7 @@ async function openFriendGroupChat(groupId, binding) {
 
 	document.getElementById('hub-channel-name-display').textContent = displayName
 	if (binding.charname) {
-		const details = await getCharDetails(binding.charname).catch(() => null)
+		const details = await getCharDetails(binding.charname)
 		renderCharInfoCardActive(binding.charname, details)
 	}
 	else
@@ -128,16 +127,13 @@ async function openFriendGroupChat(groupId, binding) {
 
 	window.history.replaceState(null, '', `${location.pathname}${location.search}#group:${encodeURIComponent(groupId)}:${channelId}`)
 
-	try {
-		await setGroupFriendBinding(groupId, binding)
-		await loadGroups()
-	}
-	catch { /* non-fatal */ }
+	await setGroupFriendBinding(groupId, binding)
+	await loadGroups()
 
 	const { enableComposer, loadMessages } = await import('./messages/messages.mjs')
 	enableComposer()
 	const input = document.getElementById('hub-message-input')
-	if (input) 
+	if (input)
 		if (binding.charname) {
 			input.dataset.name = binding.charname
 			input.setAttribute('data-i18n', 'chat.hub.charChatComposer')
@@ -146,7 +142,7 @@ async function openFriendGroupChat(groupId, binding) {
 			delete input.dataset.name
 			input.setAttribute('data-i18n', 'chat.hub.friendChatComposer')
 		}
-	
+
 
 	connectGroupWebSocket(groupId, channelId)
 	await loadMessages()
@@ -191,7 +187,7 @@ export async function enterFriendChat(opts = {}) {
  */
 export async function dispatchFriendChat(entity) {
 	if (entity.type === 'char' && entity.id) {
-		const nodeHash = hubStore.nodeHash
+		const { nodeHash } = hubStore
 		if (!nodeHash) {
 			showToastI18n('error', 'chat.hub.noUsername')
 			return

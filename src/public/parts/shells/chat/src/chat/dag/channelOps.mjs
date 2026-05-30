@@ -178,6 +178,7 @@ export async function appendFileUploadEvent(username, groupId, meta) {
 		size: meta.size,
 		mimeType: meta.mimeType,
 		folderId: meta.folderId,
+		ceMode: meta.ceMode || 'convergent',
 	}
 	content.contentHash = meta.contentHash
 	if (Array.isArray(meta.parts) && meta.parts.length)

@@ -14,14 +14,12 @@ import {
 	takeRtcJoinSlot,
 } from '../../../../../../../scripts/p2p/rtc_connection_budget.mjs'
 import { takeIncomingWantIdsSlot } from '../../../../../../../scripts/p2p/want_ids.mjs'
-import { loadShellData } from '../../../../../../../server/setting_loader.mjs'
-import { sanitizeFederatedEvents } from '../events/wire.mjs'
 import { mergePexNodeHints, pickFederationTargetPeerIds } from '../governance/peerPool.mjs'
 import { isSubjectBlocked, loadPeers } from '../governance/peers.mjs'
 import { bumpReputationOnRelay, recordGossipAllUnknownWant } from '../governance/reputation.mjs'
-import { normalizeJsonBoundaryValue } from '../lib/jsonBoundary.mjs'
 import { eventsPath } from '../lib/paths.mjs'
 import { extractInboundSignedEvent, isPlainObject } from '../lib/wireIngress.mjs'
+import { encodeWireJson } from '../lib/wireJson.mjs'
 import {
 	ingestMailboxGive,
 	ingestMailboxPut,
@@ -45,7 +43,8 @@ import {
 	parseCharRpcRequest,
 	safeSendCharRpcResponse,
 } from './charRpc.mjs'
-import { attachFedChunkHandlers, unregisterChunkSwarm } from './chunks.mjs'
+import { attachFedChunkHandlers, attachTrustGraphChunkHandlers, unregisterChunkSwarm } from './chunks.mjs'
+import { getFederationSettings } from './config.mjs'
 import { loadFederationGroupSettings, loadFederationMaterializedState, requireDagDeps } from './deps.mjs'
 import {
 	handleDiscoveryQuery,
@@ -75,6 +74,8 @@ import {
 	takePartitionBridgeSlot,
 } from './partitionBridge.mjs'
 import { LOGIC_SYNC_PARTITION, partitionForOutboundEvent, resolveNodePartitionIds } from './partitions.mjs'
+import { resolveMemberEdPubKeyHex, validatePullAttestationForGroup } from './pullAttestation.mjs'
+import { buildPullResponseEnvelope } from './pullEnvelope.mjs'
 import {
 	EVENT_ID_HEX,
 	federationPartitionRoomKey,
@@ -131,7 +132,7 @@ function ingestRemoteTipsForExchange(username, groupId, tips) {
 	for (const tipId of tips)
 		if (EVENT_ID_HEX.test(String(tipId)))
 			pending.collected.add(String(tipId).trim().toLowerCase())
-	
+
 }
 
 /**
@@ -220,14 +221,14 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 	}
 	if (federationRoomInflight.has(key)) return await federationRoomInflight.get(key)
 
-	const p = (async () => {
+	const roomJoinTask = (async () => {
 		const genAtJoin = federationRoomRebindGeneration.get(key) || 0
 		const { nodeId, readJsonl, ingestRemoteEvent } = requireDagDeps()
 		const trysteroRoomName = mqttCreds.roomId
 		try {
 			const localEvents = await readJsonl(eventsPath(username, groupId))
 			warmSeenFromLocalEvents(username, groupId, localEvents)
-			const data = loadShellData(username, 'chat', 'federation') || {}
+			const data = getFederationSettings(username)
 			const relayUrls = Array.isArray(data.relayUrls)
 				? data.relayUrls.map(url => String(url).trim()).filter(url => url.startsWith('wss://'))
 				: undefined
@@ -272,8 +273,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 			getIdentity((data, peerId) => {
 				const remoteNodeId = String(data?.nodeId || '').trim()
 				if (!remoteNodeId) return
-				const prev = peerToNode.get(peerId)
-				if (prev) nodeToPeer.delete(prev)
+				const previousNodeId = peerToNode.get(peerId)
+				if (previousNodeId) nodeToPeer.delete(previousNodeId)
 				peerToNode.set(peerId, remoteNodeId)
 				nodeToPeer.set(remoteNodeId, peerId)
 			})
@@ -289,14 +290,13 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 					try {
 						sendIdentity({ nodeId }, peerId)
 					}
-					catch (e) {
-						console.error('federation: identity_announce failed', e)
+					catch (error) {
+						console.error('federation: identity_announce failed', error)
 					}
 				})
 				if (!isFederationActionAllowedUnderLoad(key, 'fed_pex', rtcLimits)) return
 				void (async () => {
 					const stored = await loadPeers(username, groupId)
-					const gs = await loadFederationGroupSettings(username, groupId)
 					const hints = [...stored.trustedPeers, ...stored.explorePeers].slice(0, 48)
 					if (hints.length)
 						fedOut.enqueue(3, () => {
@@ -304,12 +304,15 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 							try {
 								sendFedPex({ nodeId, hints }, peerId)
 							}
-							catch (e) {
-								console.error('federation: fed_pex failed', e)
+							catch (error) {
+								console.error('federation: fed_pex failed', error)
 							}
 						})
 
-				})().catch(e => console.error('federation: onPeerJoin pex failed', e))
+				})().catch(error => console.error('federation: onPeerJoin pex failed', error))
+				void import('../../../../../../../scripts/p2p/trust_graph_cache.mjs').then(({ invalidateTrustGraphCache }) => {
+					invalidateTrustGraphCache(username)
+				}).catch(error => console.warn('federation: invalidateTrustGraphCache failed on join', error))
 			})
 
 			getFedPex((data, peerId) => {
@@ -321,13 +324,13 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 					const groupSettings = await loadFederationGroupSettings(username, groupId)
 					await mergePexNodeHints(username, groupId, hints, groupSettings)
 					if (hints.length)
-						void bumpReputationOnRelay(username, groupId, remoteNode, `pex:${remoteNode}`).catch(() => {})
-				})().catch(e => console.error('federation: fed_pex ingest failed', e))
+						await bumpReputationOnRelay(username, groupId, remoteNode, `pex:${remoteNode}`)
+				})().catch(error => console.error('federation: fed_pex ingest failed', error))
 			})
 
 			getPartitionBridge((data, peerId) => {
 				void (async () => {
-					const envelope = data && typeof data === 'object' ? data : null
+					const envelope = isPlainObject(data) ? data : null
 					const actionName = String(envelope?.actionName || '').trim()
 					const targetPartition = String(envelope?.targetPartition || '').trim()
 					const dedupeId = String(envelope?.dedupeId || '').trim()
@@ -357,8 +360,10 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						else
 							targetSlot.sendToPeer(null, actionName, envelope.payload)
 					}
-					catch { /* ignore */ }
-				})().catch(e => console.error('federation: partition bridge ingest failed', e))
+					catch (error) {
+						console.warn('federation: partition bridge dispatch failed', error)
+					}
+				})().catch(error => console.error('federation: partition bridge ingest failed', error))
 			})
 
 			const [sendBootstrapRequestRaw, getBootstrapRequest] = room.makeAction('fed_bootstrap_request')
@@ -376,8 +381,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 					try {
 						sendBootstrapResponseRaw(payload, targetPeerId)
 					}
-					catch (e) {
-						console.error('federation: fed_bootstrap_response failed', e)
+					catch (error) {
+						console.error('federation: fed_bootstrap_response failed', error)
 					}
 				})
 
@@ -391,14 +396,14 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 					request,
 					peerId,
 					sendBootstrapResponse,
-				).catch(e => console.error('federation: fed_bootstrap_request handler failed', e))
+				).catch(error => console.error('federation: fed_bootstrap_request handler failed', error))
 			})
 
 			getBootstrapResponse(data => {
 				const response = parseFedBootstrapResponse(data)
 				if (!response) return
-				void applyFedBootstrapResponse(username, groupId, response).catch(e =>
-					console.error('federation: fed_bootstrap_response apply failed', e),
+				void applyFedBootstrapResponse(username, groupId, response).catch(error =>
+					console.error('federation: fed_bootstrap_response apply failed', error),
 				)
 			})
 
@@ -420,19 +425,19 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 							try {
 								sendJoinSnapshotResponseRaw(payload, targetPeer)
 							}
-							catch (e) {
-								console.error('federation: fed_join_snapshot_response failed', e)
+							catch (error) {
+								console.error('federation: fed_join_snapshot_response failed', error)
 							}
 						})
 					},
-				).catch(e => console.error('federation: fed_join_snapshot_request failed', e))
+				).catch(error => console.error('federation: fed_join_snapshot_request failed', error))
 			})
 
 			getJoinSnapshotResponse(data => {
 				const response = parseJoinSnapshotResponse(data)
 				if (!response) return
-				void applyJoinSnapshotResponse(username, groupId, response).catch(e =>
-					console.error('federation: fed_join_snapshot_response apply failed', e),
+				void applyJoinSnapshotResponse(username, groupId, response).catch(error =>
+					console.error('federation: fed_join_snapshot_response apply failed', error),
 				)
 			})
 
@@ -446,8 +451,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 			getDiscoveryAnnounce(data => {
 				const announce = parseDiscoveryAnnounce(data)
 				if (!announce) return
-				void ingestDiscoveryAnnounce(username, announce).catch(e =>
-					console.error('federation: discovery_announce failed', e),
+				void ingestDiscoveryAnnounce(username, announce).catch(error =>
+					console.error('federation: discovery_announce failed', error),
 				)
 			})
 
@@ -461,8 +466,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 					try {
 						sendDiscoveryQueryResponseRaw(payload, targetPeerId)
 					}
-					catch (e) {
-						console.error('federation: discovery_query_response failed', e)
+					catch (error) {
+						console.error('federation: discovery_query_response failed', error)
 					}
 				})
 
@@ -475,14 +480,14 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 					query,
 					peerId,
 					sendDiscoveryQueryResponse,
-				).catch(e => console.error('federation: discovery_query failed', e))
+				).catch(error => console.error('federation: discovery_query failed', error))
 			})
 
 			getDiscoveryQueryResponse(data => {
 				const response = parseDiscoveryQueryResponse(data)
 				if (!response) return
 				void ingestDiscoveryAnnounce(username, response)
-					.catch(e => console.error('federation: discovery_query_response ingest failed', e))
+					.catch(error => console.error('federation: discovery_query_response ingest failed', error))
 			})
 
 			const [sendMailboxPutRaw, getMailboxPut] = room.makeAction('mailbox_put')
@@ -496,8 +501,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 				if (!isFederationActionAllowedUnderLoad(key, 'mailbox_put', rtcLimits)) return
 				const put = parseMailboxPut(data)
 				if (!put) return
-				void ingestMailboxPut(username, put).catch(e =>
-					console.error('federation: mailbox_put failed', e),
+				void ingestMailboxPut(username, put).catch(error =>
+					console.error('federation: mailbox_put failed', error),
 				)
 			})
 
@@ -509,26 +514,34 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendMailboxGiveRaw(payload, targetPeerId)
 						}
-						catch (e) {
-							console.error('federation: mailbox_give failed', e)
+						catch (error) {
+							console.error('federation: mailbox_give failed', error)
 						}
 					}), peerId,
-				).catch(e => console.error('federation: mailbox_want failed', e))
+				).catch(error => console.error('federation: mailbox_want failed', error))
 			})
 
 			getMailboxGive(data => {
 				const give = parseMailboxGive(data)
 				if (!give) return
-				void ingestMailboxGive(username, groupId, give).catch(e =>
-					console.error('federation: mailbox_give ingest failed', e),
+				void ingestMailboxGive(username, groupId, give).catch(error =>
+					console.error('federation: mailbox_give ingest failed', error),
 				)
 			})
 
+			attachTrustGraphChunkHandlers(username, room, fedOut, rtcLimits, key)
+
+			const { registerSocialFederationActions } = await import('../social/federationHooks.mjs')
+			registerSocialFederationActions(username, room, senderRegistry)
+
 			room.onPeerLeave(peerId => {
-				const nid = peerToNode.get(peerId)
-				if (nid) nodeToPeer.delete(nid)
+				const remoteNodeId = peerToNode.get(peerId)
+				if (remoteNodeId) nodeToPeer.delete(remoteNodeId)
 				peerToNode.delete(peerId)
 				releaseRtcPeer(key, peerId)
+				void import('../../../../../../../scripts/p2p/trust_graph_cache.mjs').then(({ invalidateTrustGraphCache }) => {
+					invalidateTrustGraphCache(username)
+				}).catch(error => console.warn('federation: invalidateTrustGraphCache failed on leave', error))
 			})
 
 			const [sendCharRpc, getCharRpc] = room.makeAction('char_rpc')
@@ -541,22 +554,21 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 				if (!request) return
 				const { requestId, memberId, method, args } = request
 				/**
-				 *
+				 * 处理联邦 `char_rpc` 入站：本地执行 Char/World 方法并回传响应。
+				 * @returns {Promise<void>}
 				 */
 				const handleCharRpc = async () => {
-					const normalizedArgs = normalizeJsonBoundaryValue(args, `federation.char_rpc.args:${method}`)
 					const isWorld = String(memberId || '').includes(':world:')
 					const { tryInvokeLocalCharRpc, tryInvokeLocalWorldRpc } = await import('../session.mjs')
 					const result = isWorld
-						? await tryInvokeLocalWorldRpc(groupId, memberId, method, normalizedArgs)
-						: await tryInvokeLocalCharRpc(groupId, memberId, method, normalizedArgs)
+						? await tryInvokeLocalWorldRpc(groupId, memberId, method, args)
+						: await tryInvokeLocalCharRpc(groupId, memberId, method, args)
 					let response
 					if (result.kind === 'result')
 						response = {
 							type: 'rpc_end',
 							requestId,
-							// 明确在响应边界执行 JSON 校验，防止跨端 silent drop。
-							result: normalizeJsonBoundaryValue(result.value, `federation.char_rpc.result:${method}`),
+							result: encodeWireJson(result.value, `federation.char_rpc.result:${method}`),
 						}
 					else if (result.kind === 'method_not_found')
 						response = buildRpcErrorResponse(requestId, 'method not found', 'METHOD_NOT_FOUND')
@@ -567,10 +579,10 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 
 					safeSendCharRpcResponse(sendCharRpcResponse, response, peerId)
 				}
-				void handleCharRpc().catch(e => {
+				void handleCharRpc().catch(error => {
 					safeSendCharRpcResponse(
 						sendCharRpcResponse,
-						buildRpcErrorResponse(requestId, String(e?.message || e), e?.code),
+						buildRpcErrorResponse(requestId, String(error?.message || error), error?.code),
 						peerId,
 					)
 				})
@@ -579,7 +591,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 			getCharRpcResponse(data => {
 				if (!isPlainObject(data)) return
 				/**
-				 *
+				 * 处理联邦 `char_rpc_response` 入站：转交 groupWsHub 中继或消费。
+				 * @returns {Promise<void>}
 				 */
 				const handleCharRpcResponse = async () => {
 					const { relayOrConsumeRpcResponse } = await import('../stream/groupWsHub.mjs')
@@ -603,7 +616,7 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 					await ingestRemoteEvent(username, groupId, signedEvent)
 					markSeenFederationEvent(username, groupId, eventId)
 					if (remoteNodeId)
-						void bumpReputationOnRelay(username, groupId, remoteNodeId, `dag:${eventId}`).catch(() => {})
+						await bumpReputationOnRelay(username, groupId, remoteNodeId, `dag:${eventId}`)
 				})().catch(console.error)
 			})
 			const [sendGossipRequestRaw, getGossipRequest] = room.makeAction('gossip_request')
@@ -616,7 +629,7 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 
 			getFedVolatileRaw((data, peerId) => {
 				void handleIncomingFedVolatile(username, groupId, data, peerId, peerToNode)
-					.catch(e => console.error('federation: fed_volatile failed', e))
+					.catch(error => console.error('federation: fed_volatile failed', error))
 			})
 
 			getFedTipPing((data, peerId) => {
@@ -634,11 +647,11 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendFedTipPongRaw(pong, peerId)
 						}
-						catch (e) {
-							console.error('federation: fed_tip_pong failed', e)
+						catch (error) {
+							console.error('federation: fed_tip_pong failed', error)
 						}
 					})
-				})().catch(e => console.error('federation: fed_tip_ping failed', e))
+				})().catch(error => console.error('federation: fed_tip_ping failed', error))
 			})
 
 			getFedTipPong((data, peerId) => {
@@ -650,11 +663,15 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 				void (async () => {
 					const gossipRequest = parseGossipRequest(data)
 					if (!gossipRequest) return
-					const { wantIds, ttl, requesterId, archiveSummary } = gossipRequest
+					const { wantIds, ttl, requesterId, archiveSummary, attestation } = gossipRequest
 					const { nodeId, readJsonl } = requireDagDeps()
 					if (requesterId === nodeId) return
 					const peers = await loadPeers(username, groupId)
-					if (isSubjectBlocked(peers, requesterId)) return
+					if (isSubjectBlocked(peers, attestation.requesterPubKeyHash)) return
+					const fedState = await loadFederationMaterializedState(username, groupId)
+					if (!fedState || !await validatePullAttestationForGroup(fedState, groupId, attestation)) return
+					const recipientEdPubKeyHex = resolveMemberEdPubKeyHex(fedState, attestation.requesterPubKeyHash)
+					if (!recipientEdPubKeyHex) return
 					const dedupeKey = `${requesterId}\0${wantIds.slice().sort().join(',')}\0${ttl}`
 					if (!takeGossipRequestSlot(dedupeKey)) return
 					const groupSettingsIn = await loadFederationGroupSettings(username, groupId)
@@ -666,53 +683,36 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 					)) return
 
 					const localArchive = await loadLocalFederationArchive(username, groupId, readJsonl)
-					const hs = evaluateArchiveHandshake(
+					const handshake = evaluateArchiveHandshake(
 						archiveSummary,
 						localArchive.summary,
 						localArchive.events,
 						wantIds,
 					)
-					if (!hs.allow) return
+					if (!handshake.allow) return
 
-					const prev = localArchive.events
-					const byId = new Map(prev.map(e => [e.id, e]))
+					const localEvents = localArchive.events
+					const byId = new Map(localEvents.map(event => [event.id, event]))
 					const allUnknown = wantIds.length > 0 && wantIds.every(id => !byId.has(id))
-					if (allUnknown && prev.length > 0 && hs.strictAligned)
+					if (allUnknown && localEvents.length > 0 && handshake.strictAligned)
 						void recordGossipAllUnknownWant(username, groupId, requesterId).catch(console.error)
 
-					const events = sanitizeFederatedEvents(
-						wantIds.map(id => byId.get(id)).filter(Boolean),
-					)
-					const remoteEventCount = Number(archiveSummary?.eventCount ?? -1)
-					const isFreshJoin = remoteEventCount === 0 && wantIds.length === 0
-					/** @type {Record<string, object[]> | undefined} */
-					let channelHistories
-					const fedState = await loadFederationMaterializedState(username, groupId)
-					if (isFreshJoin && fedState) {
-						const { listChannelMessages, JOIN_CHANNEL_HISTORY_LIMIT } = await import('../dag/queries.mjs')
-						channelHistories = {}
-						for (const channelId of Object.keys(fedState?.channels || {}))
-							channelHistories[channelId] = await listChannelMessages(username, groupId, channelId, {
-								limit: JOIN_CHANNEL_HISTORY_LIMIT,
-								limitCap: JOIN_CHANNEL_HISTORY_LIMIT,
-								decrypt: true,
-							})
-						
-					}
-					const hasHistories = channelHistories && Object.values(channelHistories).some(rows => rows?.length)
-					if (peerId && (events.length || hasHistories)) {
-						const responseCheckpoint = localArchive.checkpoint || undefined
+					const events = wantIds.map(id => byId.get(id)).filter(Boolean)
+					if (peerId && events.length) {
+						const envelope = await buildPullResponseEnvelope(username, groupId, {
+							requestId: '',
+							requesterNodeId: requesterId,
+							requesterPubKeyHash: attestation.requesterPubKeyHash,
+							recipientEdPubKeyHex,
+							events,
+							checkpoint: localArchive.checkpoint || undefined,
+						})
 						fedOut.enqueue(2, () => {
 							try {
-								sendGossipResponseRaw({
-									events,
-									requesterId,
-									checkpoint: responseCheckpoint,
-									...hasHistories ? { channelHistories } : {},
-								}, peerId)
+								sendGossipResponseRaw(envelope, peerId)
 							}
-							catch (e) {
-								console.error('federation: gossip_response failed', e)
+							catch (error) {
+								console.error('federation: gossip_response failed', error)
 							}
 						})
 						void bumpReputationOnRelay(
@@ -720,14 +720,14 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 							groupId,
 							requesterId,
 							`gossip:${dedupeKey}`,
-						).catch(() => {})
+						).catch(error => console.warn('federation: gossip reputation update failed', error))
 					}
 
 					const groupSettings = await loadFederationGroupSettings(username, groupId)
 					const { gossipTtl: maxTtl } = resolveFederationPoolLimits(groupSettings)
 					const forwardTtl = Math.min(ttl, maxTtl)
 					if (forwardTtl > 0) {
-						const roster = [...peerToNode.entries()].map(([pid, nid]) => ({ peerId: pid, remoteNodeId: nid }))
+						const roster = [...peerToNode.entries()].map(([peerId, remoteNodeId]) => ({ peerId, remoteNodeId }))
 						const forwardPeers = await pickFederationTargetPeerIds(
 							username,
 							groupId,
@@ -740,18 +740,18 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 							ttl: forwardTtl - 1,
 							requesterId,
 							archiveSummary,
+							attestation,
 						}
 						fedOut.enqueue(1, () => {
 							try {
-								if (forwardPeers.length) 
-									for (const fp of forwardPeers)
-										sendGossipRequestRaw(forwardPayload, fp)
-								
+								if (forwardPeers.length)
+									for (const forwardPeerId of forwardPeers)
+										sendGossipRequestRaw(forwardPayload, forwardPeerId)
 								else
 									sendGossipRequestRaw(forwardPayload, null)
 							}
-							catch (e) {
-								console.error('federation: gossip_request forward failed', e)
+							catch (error) {
+								console.error('federation: gossip_request forward failed', error)
 							}
 						})
 					}
@@ -784,8 +784,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 								messages,
 							}, peerId)
 						}
-						catch (e) {
-							console.error('federation: channel_history_response failed', e)
+						catch (error) {
+							console.error('federation: channel_history_response failed', error)
 						}
 					})
 				})().catch(console.error)
@@ -809,8 +809,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendDagRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendDag failed', e)
+						catch (error) {
+							console.error('federation: sendDag failed', error)
 						}
 					}),
 				/**
@@ -824,8 +824,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendGossipRequestRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendGossipRequest failed', e)
+						catch (error) {
+							console.error('federation: sendGossipRequest failed', error)
 						}
 					}),
 				/**
@@ -839,8 +839,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendGossipResponseRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendGossipResponse failed', e)
+						catch (error) {
+							console.error('federation: sendGossipResponse failed', error)
 						}
 					}),
 				/**
@@ -854,8 +854,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendChannelHistoryWantRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: channel_history_want failed', e)
+						catch (error) {
+							console.error('federation: channel_history_want failed', error)
 						}
 					}),
 				/**
@@ -869,8 +869,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendFedVolatileRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendFedVolatile failed', e)
+						catch (error) {
+							console.error('federation: sendFedVolatile failed', error)
 						}
 					}),
 				/**
@@ -884,8 +884,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendFedTipPingRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendTipPing failed', e)
+						catch (error) {
+							console.error('federation: sendTipPing failed', error)
 						}
 					}),
 				/**
@@ -900,8 +900,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendPartitionBridgeRaw(envelope, peerId)
 						}
-						catch (e) {
-							console.error('federation: fed_partition_bridge failed', e)
+						catch (error) {
+							console.error('federation: fed_partition_bridge failed', error)
 						}
 					}),
 				/**
@@ -932,8 +932,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendBootstrapRequestRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendBootstrapRequest failed', e)
+						catch (error) {
+							console.error('federation: sendBootstrapRequest failed', error)
 						}
 					}),
 				/**
@@ -947,8 +947,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendBootstrapResponseRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendBootstrapResponse failed', e)
+						catch (error) {
+							console.error('federation: sendBootstrapResponse failed', error)
 						}
 					}),
 				/**
@@ -962,8 +962,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendJoinSnapshotRequestRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: fed_join_snapshot_request failed', e)
+						catch (error) {
+							console.error('federation: fed_join_snapshot_request failed', error)
 						}
 					}),
 				mqttPassword: mqttCreds.password,
@@ -978,8 +978,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendDiscoveryAnnounceRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendDiscoveryAnnounce failed', e)
+						catch (error) {
+							console.error('federation: sendDiscoveryAnnounce failed', error)
 						}
 					}),
 				/**
@@ -993,8 +993,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendDiscoveryQueryRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendDiscoveryQuery failed', e)
+						catch (error) {
+							console.error('federation: sendDiscoveryQuery failed', error)
 						}
 					}),
 				/**
@@ -1008,8 +1008,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendDiscoveryQueryResponseRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendDiscoveryQueryResponse failed', e)
+						catch (error) {
+							console.error('federation: sendDiscoveryQueryResponse failed', error)
 						}
 					}),
 				/**
@@ -1023,8 +1023,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendMailboxPutRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendMailboxPut failed', e)
+						catch (error) {
+							console.error('federation: sendMailboxPut failed', error)
 						}
 					}),
 				/**
@@ -1038,8 +1038,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendMailboxWantRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendMailboxWant failed', e)
+						catch (error) {
+							console.error('federation: sendMailboxWant failed', error)
 						}
 					}),
 				/**
@@ -1053,8 +1053,8 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 						try {
 							sendMailboxGiveRaw(payload, peerId)
 						}
-						catch (e) {
-							console.error('federation: sendMailboxGive failed', e)
+						catch (error) {
+							console.error('federation: sendMailboxGive failed', error)
 						}
 					}),
 			}
@@ -1089,18 +1089,20 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 			}
 			federationRooms.set(key, slot)
 			groupFederationOwner.set(groupId, username)
-			void publishDiscoveryAnnounceForGroup(username, groupId, nodeId, slot).catch(() => {})
-			void onFederationRoomReadyForMailbox(username, groupId).catch(() => {})
+			void publishDiscoveryAnnounceForGroup(username, groupId, nodeId, slot)
+				.catch(error => console.warn('federation: initial discovery announce failed', error))
+			void onFederationRoomReadyForMailbox(username, groupId)
+				.catch(error => console.warn('federation: mailbox ready hook failed', error))
 			return slot
 		}
-		catch (e) {
-			console.error('federation: joinMqttRoom failed', e)
+		catch (error) {
+			console.error('federation: joinMqttRoom failed', error)
 			return null
 		}
 		finally {
 			federationRoomInflight.delete(key)
 		}
 	})()
-	federationRoomInflight.set(key, p)
-	return p
+	federationRoomInflight.set(key, roomJoinTask)
+	return roomJoinTask
 }

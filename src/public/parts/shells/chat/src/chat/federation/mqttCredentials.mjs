@@ -34,7 +34,7 @@ export async function resolveTrysteroFedRoomName(username, groupId) {
 	const loadGroupState = dag.getStateForFederation
 	if (!loadGroupState) return `fount-fed-${groupId}`
 	const { state } = await loadGroupState(username, groupId)
-	const groupMeta = state.groupMeta
+	const { groupMeta } = state
 	if (groupMeta?.dmKind === 'ecdh' && groupMeta.dmSessionTag)
 		return `dm:${groupMeta.dmSessionTag.trim().toLowerCase()}`
 	return `fount-fed-${groupId}`

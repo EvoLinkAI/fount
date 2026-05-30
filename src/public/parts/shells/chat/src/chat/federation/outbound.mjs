@@ -18,7 +18,8 @@ export function createFedOutQueue() {
 	let scheduled = false
 
 	/**
-	 *
+	 * 按优先级顺序执行队列中全部出站发送闭包。
+	 * @returns {void}
 	 */
 	function flush() {
 		scheduled = false

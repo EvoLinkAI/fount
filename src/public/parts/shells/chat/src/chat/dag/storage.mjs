@@ -5,9 +5,13 @@
  * 【数据结构】JSONL 行为事件对象数组；原子 JSON 为完整 checkpoint 或侧车对象。
  * 【关联】`events/wire.mjs`、`materialize.mjs`、`append.mjs`、`remoteIngest.mjs`、`groupLock.mjs`。
  */
-import { appendFile, mkdir, open, readFile, rename, writeFile } from 'node:fs/promises'
-import { dirname } from 'node:path'
-
+import {
+	appendJsonl as appendJsonlBase,
+	appendJsonlSynced as appendJsonlSyncedBase,
+	readJsonl as readJsonlBase,
+	writeJsonAtomic as writeJsonAtomicBase,
+	writeJsonAtomicSynced as writeJsonAtomicSyncedBase,
+} from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 
 /**
@@ -16,13 +20,7 @@ import { sanitizeFederatedEvent } from '../events/wire.mjs'
  * @returns {Promise<object[]>} 各行解析后的对象列表
  */
 export async function readJsonl(filePath) {
-	try {
-		const text = await readFile(filePath, 'utf8')
-		return text.split('\n').filter(Boolean).map(line => sanitizeFederatedEvent(JSON.parse(line)))
-	}
-	catch {
-		return []
-	}
+	return readJsonlBase(filePath, { sanitize: sanitizeFederatedEvent })
 }
 
 /**
@@ -32,8 +30,7 @@ export async function readJsonl(filePath) {
  * @returns {Promise<void>} 写入完成，无业务返回值
  */
 export async function appendJsonl(filePath, record) {
-	await mkdir(dirname(filePath), { recursive: true })
-	await appendFile(filePath, `${JSON.stringify(record)}\n`, 'utf8')
+	await appendJsonlBase(filePath, record)
 }
 
 /**
@@ -43,15 +40,7 @@ export async function appendJsonl(filePath, record) {
  * @returns {Promise<void>}
  */
 export async function appendJsonlSynced(filePath, record) {
-	await mkdir(dirname(filePath), { recursive: true })
-	const fh = await open(filePath, 'a')
-	try {
-		await fh.appendFile(`${JSON.stringify(record)}\n`, 'utf8')
-		await fh.sync()
-	}
-	finally {
-		await fh.close()
-	}
+	await appendJsonlSyncedBase(filePath, record)
 }
 
 /**
@@ -61,11 +50,7 @@ export async function appendJsonlSynced(filePath, record) {
  * @returns {Promise<void>}
  */
 export async function writeJsonAtomic(filePath, obj) {
-	const dir = dirname(filePath)
-	await mkdir(dir, { recursive: true })
-	const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`
-	await writeFile(tmp, JSON.stringify(obj, null, '\t'), 'utf8')
-	await rename(tmp, filePath)
+	await writeJsonAtomicBase(filePath, obj)
 }
 
 /**
@@ -75,23 +60,5 @@ export async function writeJsonAtomic(filePath, obj) {
  * @returns {Promise<void>}
  */
 export async function writeJsonAtomicSynced(filePath, obj) {
-	const dir = dirname(filePath)
-	await mkdir(dir, { recursive: true })
-	const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`
-	await writeFile(tmp, JSON.stringify(obj, null, '\t'), 'utf8')
-	const fh = await open(tmp, 'r+')
-	try {
-		await fh.sync()
-	}
-	finally {
-		await fh.close()
-	}
-	await rename(tmp, filePath)
-	const outFh = await open(filePath, 'r+')
-	try {
-		await outFh.sync()
-	}
-	finally {
-		await outFh.close()
-	}
+	await writeJsonAtomicSyncedBase(filePath, obj)
 }

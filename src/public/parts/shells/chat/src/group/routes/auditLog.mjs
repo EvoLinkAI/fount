@@ -6,10 +6,10 @@
  * 【关联】被 group/endpoints.mjs 注册；依赖 chat/auditLog.mjs、access.mjs。
  */
 import { PERMISSIONS } from '../../../../../../../scripts/p2p/permissions.mjs'
-import { getUserByReq } from '../../../../../../../server/auth.mjs'
 import { AUDIT_LOG_EVENT_TYPES, listAuditLogEntries } from '../../chat/auditLog.mjs'
-import { getState } from '../../chat/dag/materialize.mjs'
-import { canInChannel, governanceChannelId, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
+import { canInChannel, governanceChannelId } from '../access.mjs'
+
+import { requireGroupMember } from './middleware.mjs'
 
 /**
  * 注册群审计日志路由（仅管理员可读）。
@@ -18,14 +18,8 @@ import { canInChannel, governanceChannelId, resolveActiveMemberKeyForLocalUser }
  * @returns {void}
  */
 export function registerAuditLogRoutes(router, authenticate) {
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/audit-log$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/audit-log$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId, state, member } = req.groupContext
 		if (!canInChannel(state, member, PERMISSIONS.ADMIN, governanceChannelId(state)))
 			return res.status(403).json({ error: 'ADMIN required' })
 
@@ -41,7 +35,8 @@ export function registerAuditLogRoutes(router, authenticate) {
 			limit: req.query.limit !== undefined ? Number(req.query.limit) : undefined,
 			types,
 		})
-		res.status(200).json({ entries,
+		res.status(200).json({
+			entries,
 			hasMore,
 			total: total ?? entries.length,
 			types: [...AUDIT_LOG_EVENT_TYPES].sort(),

@@ -191,7 +191,6 @@ function walkFountJsonFiles(rootPath) {
 			const fullPath = path.join(current, dirent.name)
 			if (dirent.isDirectory())
 				stack.push(fullPath)
-
 			else if (dirent.isFile() && dirent.name === 'fount.json')
 				files.push(fullPath)
 		}
@@ -284,7 +283,7 @@ export function getPartBranches(username, { nocache = false } = {}) {
  * 它首先检查用户特定的部件，然后回退到公共部件。
  *
  * @param {string} username - 用户的用户名。
- * @param {string} partpath - 部件的路径（例如，'shells:chat'）。
+ * @param {string} partpath - 部件路径（例如 `shells/chat`；斜杠分隔，非 URL 中的冒号形式）。
  * @returns {string} 部件目录的路径。
  */
 export function GetPartPath(username, partpath) {

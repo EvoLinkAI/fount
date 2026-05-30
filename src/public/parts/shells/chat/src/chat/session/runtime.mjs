@@ -5,7 +5,7 @@
  * 【数据结构】groupMetadatas 条目中的 chatMetadata（chatMetadata_t）；物化 session 的 chars/world/channelWorlds/personas/plugins/charFrequencies。
  * 【关联】dagSession、models、wsLifecycle、hydration、resolvePart、partConfig。
  */
-import { getAllDefaultParts, getAnyDefaultPart, loadPart } from '../../../../../../../server/parts_loader.mjs'
+import { loadPart } from '../../../../../../../server/parts_loader.mjs'
 import { hydrateChatLogFromDag } from '../dag/hydration.mjs'
 import { ensureGroup } from '../dag/lifecycle.mjs'
 import { getLocalNodeHash } from '../lib/replica.mjs'
@@ -13,6 +13,7 @@ import { registerGroupReplicaForUser } from '../stream/groupWsRooms.mjs'
 
 import { getMaterializedSession } from './dagSession.mjs'
 import { chatMetadata_t, timeSlice_t } from './models.mjs'
+import { loadPlayerForReplica, loadPluginsForReplica } from './timeSliceParts.mjs'
 import { groupMetadatas } from './wsLifecycle.mjs'
 
 /**
@@ -47,7 +48,7 @@ export function invalidateGroupRuntime(groupId) {
  */
 export async function buildTimeSliceFromSession(session, replicaUsername, groupId, channelId) {
 	const slice = new timeSlice_t()
-	const localNode = getLocalNodeHash()
+	const localNode = getLocalNodeHash(replicaUsername)
 
 	/**
 	 * @param {string} charname 角色名
@@ -73,16 +74,8 @@ export async function buildTimeSliceFromSession(session, replicaUsername, groupI
 		slice.world_id = worldBind.worldname
 	}
 
-	const personaname = session?.personas?.[replicaUsername]
-		|| getAnyDefaultPart(replicaUsername, 'personas')
-	if (personaname) {
-		slice.player_id = personaname
-		slice.player = await loadPart(replicaUsername, `personas/${personaname}`)
-	}
-
-	const pluginNames = session?.plugins?.[replicaUsername] || getAllDefaultParts(replicaUsername, 'plugins')
-	for (const pluginname of pluginNames)
-		slice.plugins[pluginname] = await loadPart(replicaUsername, `plugins/${pluginname}`)
+	Object.assign(slice, await loadPlayerForReplica(replicaUsername, session?.personas))
+	Object.assign(slice.plugins, await loadPluginsForReplica(replicaUsername, session?.plugins))
 
 	for (const [charname, frequency] of Object.entries(session?.charFrequencies || {}))
 		slice.chars_speaking_frequency[charname] = frequency
@@ -152,7 +145,7 @@ export function getCharBind(session, charname) {
  * @returns {boolean} 是否为本机节点
  */
 export function isLocalNode(homeNodeHash, replicaUsername) {
-	return homeNodeHash === getLocalNodeHash()
+	return homeNodeHash === getLocalNodeHash(replicaUsername)
 }
 
 /**

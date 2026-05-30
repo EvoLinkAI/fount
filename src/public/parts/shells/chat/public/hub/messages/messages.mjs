@@ -13,32 +13,29 @@ import {
 import { showToastI18n } from '../../../../../scripts/toast.mjs'
 import {
 	getChannelMessages,
-	getStreamingChannelAuth,
 	requestChannelHistoryFromPeers,
 	sendGroupMessage,
 } from '../../src/api/groupApi.mjs'
 import { viewerCanAddReactions, viewerCanManageMessages, viewerCanPinMessages } from '../../src/groupViewerPermissions.mjs'
 import { hubEmptyWaveIcon } from '../../src/lib/emojiSvg.mjs'
+import { isHex64 } from '../../src/lib/pubKeyHex.mjs'
 import { createMessagePipeline } from '../../src/MessagePipeline.mjs'
 import { applyChannelDisplayChain } from '../../src/ui/channelDisplay.mjs'
 import { refreshChannelPinsBar } from '../banners.mjs'
-import { renderListChannel, renderStreamingChannel, renderWebRtcStreamingChannel } from '../channels.mjs'
 import { getChatGestures } from '../chatGestures.mjs'
 import { clearSelectedFiles, selectedFiles, stopVoiceIfRecording } from '../composerFiles.mjs'
 import { activeCharPartNames } from '../core/domUtils.mjs'
 import { hubStore } from '../core/state.mjs'
-import { selectChannel, saveListChannelItems } from '../groupNav.mjs'
 import {
-	catchUpVolatileStreamFromServer,
 	dismissVolatileStreamPreview,
 	getActiveVolatileStreamIds,
 	syncStreamingSlotsFromDom,
 	waitForGroupWebSocketOpen,
 } from '../groupStream.mjs'
 import { applyAvatarsTo } from '../presence.mjs'
-import { leaveHubAvSession } from '../streamingAv.mjs'
 import { isThreadDrawerOpen } from '../threadDrawer.mjs'
 
+import { loadNonTextChannel } from './channelTypeRouter.mjs'
 import { bindChannelMessageActions } from './messageActionsHandlers.mjs'
 import { setChannelMessageActionsContext } from './messageActionsState.mjs'
 import {
@@ -350,60 +347,9 @@ export async function loadMessages() {
 	if (searchInput instanceof HTMLInputElement) searchInput.value = ''
 	const container = document.getElementById('hub-messages')
 	const channel = hubStore.currentState?.channels?.[hubStore.currentChannelId]
-	const chType = channel?.type || 'text'
 	await mountTemplate(container, 'hub/empty/loading', {})
 	destroyChannelVirtualList()
-	if (chType === 'list') {
-		await renderListChannel(container, hubStore.currentGroupId, hubStore.currentChannelId, channel, selectChannel, {
-			canEdit: !!hubStore.currentState?.channelCaps?.[hubStore.currentChannelId]?.canEditList,
-			onSave: saveListChannelItems,
-		})
-		hubStore.lastMessageId = null
-		refreshChannelPinsBar()
-		return
-	}
-	if (chType === 'streaming') {
-		await leaveHubAvSession()
-		const groupSettings = hubStore.currentState?.groupSettings || {}
-		const useSfu = !!groupSettings.streamingSfuWss?.trim()
-		if (!useSfu) {
-			const clientId = hubStore.currentState?.viewerMemberPubKeyHash || 'local'
-			await renderWebRtcStreamingChannel(container, channel, {
-				groupId: hubStore.currentGroupId,
-				channelId: hubStore.currentChannelId,
-				clientId,
-			})
-			hubStore.lastMessageId = null
-			refreshChannelPinsBar()
-			return
-		}
-		const groupId = hubStore.currentGroupId
-		const channelId = hubStore.currentChannelId
-		const streamingViewPageUrl =
-			`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/channels/${encodeURIComponent(channelId)}/streaming-view`
-		await renderStreamingChannel(container, channel, {
-			streamingSfuWss: groupSettings.streamingSfuWss,
-			embedUrl: streamingViewPageUrl,
-			/**
-			 *
-			 */
-			onRefreshAuth: async () => {
-				const iframe = document.getElementById('hub-stream-iframe')
-				if (!(iframe instanceof HTMLIFrameElement)) return
-				try {
-					const auth = await getStreamingChannelAuth(groupId, channelId)
-					if (auth?.embedUrl) iframe.src = auth.embedUrl
-					else iframe.src = `${streamingViewPageUrl}?reload=${Date.now()}`
-				}
-				catch {
-					iframe.src = `${streamingViewPageUrl}?reload=${Date.now()}`
-				}
-			},
-		})
-		hubStore.lastMessageId = null
-		refreshChannelPinsBar()
-		return
-	}
+	if (await loadNonTextChannel(container, channel)) return
 	try {
 		hubStore.composerPendingId = null
 		hubStore.channelOlderExhausted.value = false
@@ -549,7 +495,7 @@ function channelRowFromPostedEvent(event) {
 	const eventId = event?.id ?? event?.eventId
 	const viewerPubKeyHash = String(hubStore.currentState?.viewerMemberPubKeyHash || '').trim().toLowerCase()
 	const senderKey = String(event.sender || '').trim().toLowerCase()
-	const authorPubKeyHash = /^[0-9a-f]{64}$/i.test(senderKey) ? senderKey : null
+	const authorPubKeyHash = isHex64(senderKey) ? senderKey : null
 	return {
 		eventId,
 		type: 'message',
@@ -573,7 +519,7 @@ function pendingRowFromComposer(content, tempId) {
 		eventId: tempId,
 		pending: true,
 		type: 'message',
-		content: typeof content === 'string' ? { type: 'text', content } : content,
+		content: { type: 'text', content },
 		sender: viewerPubKeyHash,
 		authorPubKeyHash: viewerPubKeyHash,
 		timestamp: Date.now(),
@@ -630,16 +576,62 @@ async function confirmPendingRow(tempId, event) {
  * @param {string} tempId 临时 id
  * @returns {Promise<void>}
  */
-async function removePendingRow(tempId) {
-	hubStore.composerPendingId = null
-	const idx = hubStore.channelMessages.findIndex(m => String(m.eventId) === tempId)
-	hubStore.channelMessagesSource = hubStore.channelMessagesSource.filter(m => String(m.eventId) !== tempId)
+/**
+ * 发送失败：保留行并标记可重试。
+ * @param {string} tempId 临时 id
+ * @param {string} content 正文
+ * @param {File[]} [files] 附件
+ * @returns {Promise<void>}
+ */
+async function failPendingRow(tempId, content, files = []) {
+	const idx = hubStore.channelMessagesSource.findIndex(m => String(m.eventId) === tempId)
+	if (idx >= 0)
+		hubStore.channelMessagesSource[idx] = {
+			...hubStore.channelMessagesSource[idx],
+			sendFailed: true,
+			pending: true,
+		}
+
+	hubStore.failedPendingPayloads.set(tempId, { content, files: [...files] })
 	refreshChannelView()
-	if (idx >= 0 && hubStore.channelMessagePipeline)
-		await hubStore.channelMessagePipeline.deleteItem(idx)
-	else if (hubStore.channelMessagePipeline)
+	const container = document.getElementById('hub-messages')
+	if (hubStore.channelMessagePipeline)
 		await hubStore.channelMessagePipeline.refresh()
 	syncChannelActionsContext()
+	if (container) decorateRenderedMessages(container, false)
+}
+
+/**
+ * @param {string} tempId 临时 id
+ * @returns {Promise<void>}
+ */
+export async function retryFailedPendingMessage(tempId) {
+	const payload = hubStore.failedPendingPayloads.get(tempId)
+	if (!payload) return
+	hubStore.failedPendingPayloads.delete(tempId)
+	const idx = hubStore.channelMessagesSource.findIndex(m => String(m.eventId) === tempId)
+	if (idx >= 0)
+		hubStore.channelMessagesSource[idx] = {
+			...hubStore.channelMessagesSource[idx],
+			sendFailed: false,
+			pending: true,
+		}
+
+	hubStore.composerPendingId = tempId
+	refreshChannelView()
+	try {
+		const event = await sendGroupMessage(
+			hubStore.currentGroupId,
+			hubStore.currentChannelId,
+			payload.content,
+			payload.files?.length ? payload.files : undefined,
+		)
+		await confirmPendingRow(tempId, event)
+	}
+	catch (error) {
+		await failPendingRow(tempId, payload.content, payload.files)
+		throw error
+	}
 }
 
 /**
@@ -667,17 +659,13 @@ async function applyIncomingMessage(message, { scroll = false } = {}) {
 
 	const viewIdx = hubStore.channelMessages.findIndex(m => String(m.eventId) === eventId)
 	const row = viewIdx >= 0 ? hubStore.channelMessages[viewIdx] : null
-	if (row) 
+	if (row)
 		if (hadInSource)
 			await hubStore.channelMessagePipeline.replaceItem(viewIdx, row)
 		else
 			await hubStore.channelMessagePipeline.appendItem(row, scroll)
-	
 	else
 		await hubStore.channelMessagePipeline.refresh()
-
-	if (isChannelMessageGenerating(message))
-		void catchUpVolatileStreamFromServer(eventId)
 
 	if (!isThreadDrawerOpen()) syncChannelActionsContext()
 	updateLastMessageId()
@@ -690,10 +678,45 @@ async function applyIncomingMessage(message, { scroll = false } = {}) {
  * @returns {Promise<void>}
  */
 async function applyIncomingMessageBatch(batch, { scroll = false } = {}) {
-	for (const message of batch)
-		await applyIncomingMessage(message, { scroll: false })
 	const container = document.getElementById('hub-messages')
-	if (container && scroll) scrollToBottom()
+	if (!container || !Array.isArray(batch) || !batch.length) {
+		if (container && scroll) scrollToBottom()
+		return
+	}
+
+	const oldIds = new Set(hubStore.channelMessagesSource.map(row => String(row.eventId || '')))
+	hubStore.channelMessagesSource = mergeIncrementalChannelBatch(hubStore.channelMessagesSource, batch)
+	refreshChannelView()
+
+	if (container.querySelector('.hub-empty')) container.innerHTML = ''
+	if (!hubStore.channelMessagePipeline) initChannelVirtualList(container)
+
+	/** @type {{ index: number, row: object }[]} */
+	const replaceRows = []
+	/** @type {object[]} */
+	const appendRows = []
+	for (const message of batch) {
+		const eventId = String(message?.eventId || '')
+		if (!eventId) continue
+		const viewIndex = hubStore.channelMessages.findIndex(row => String(row.eventId) === eventId)
+		if (viewIndex < 0) continue
+		const row = hubStore.channelMessages[viewIndex]
+		if (oldIds.has(eventId))
+			replaceRows.push({ index: viewIndex, row })
+		else
+			appendRows.push(row)
+	}
+
+	for (const { index, row } of replaceRows)
+		await hubStore.channelMessagePipeline.replaceItem(index, row)
+	if (appendRows.length)
+		await hubStore.channelMessagePipeline.appendItemsBatch(appendRows, scroll)
+	if (!replaceRows.length && !appendRows.length)
+		await hubStore.channelMessagePipeline.refresh()
+
+	if (!isThreadDrawerOpen()) syncChannelActionsContext()
+	updateLastMessageId()
+	decorateRenderedMessages(container, scroll)
 }
 
 /**
@@ -843,52 +866,6 @@ export async function refreshChannelMessagesIncremental() {
 	await applyIncomingMessageBatch(messages, { scroll: nearBottom })
 }
 
-/** @returns {void} */
-export function refreshHubHeaderButtons() {
-	const filesButton = document.getElementById('hub-header-files-button')
-	if (filesButton)
-		if (hubStore.currentMode === 'groups' && hubStore.currentGroupId && hubStore.currentState?.isMember)
-			filesButton.removeAttribute('hidden')
-		else filesButton.setAttribute('hidden', '')
-
-	const settingsButton = document.getElementById('hub-header-settings-button')
-	if (settingsButton)
-		if (hubStore.currentMode === 'groups' && hubStore.currentGroupId)
-			settingsButton.setAttribute('hidden', '')
-		else settingsButton.removeAttribute('hidden')
-}
-
-/** @returns {void} */
-export function enableComposer() {
-	const input = document.getElementById('hub-message-input')
-	const channelName = hubStore.currentState?.channels?.[hubStore.currentChannelId]?.name || hubStore.currentChannelId || ''
-	input.disabled = false
-	input.dataset.channel = channelName
-	input.removeAttribute('data-i18n')
-	input.setAttribute('data-i18n', 'chat.hub.composer')
-	for (const id of ['hub-emoji-button', 'hub-upload-button', 'hub-voice-button', 'hub-photo-button', 'hub-sticker-button', 'hub-vote-button', 'hub-send-button']) {
-		const el = document.getElementById(id)
-		if (el) el.disabled = false
-	}
-	refreshHubHeaderButtons()
-}
-
-/**
- * @param {string} [i18nKey] placeholder 的 i18n 键
- * @returns {void}
- */
-export function disableComposer(i18nKey = 'chat.hub.composerDisabled') {
-	const input = document.getElementById('hub-message-input')
-	input.disabled = true
-	input.dataset.i18n = i18nKey
-	delete input.dataset.channel
-	for (const id of ['hub-emoji-button', 'hub-upload-button', 'hub-voice-button', 'hub-photo-button', 'hub-sticker-button', 'hub-vote-button', 'hub-send-button']) {
-		const el = document.getElementById(id)
-		if (el) el.disabled = true
-	}
-	refreshHubHeaderButtons()
-}
-
 /**
  * @param {string} content 消息正文
  * @returns {Promise<void>}
@@ -903,10 +880,11 @@ export async function sendCurrentMessage(content) {
 	try {
 		const event = await sendGroupMessage(hubStore.currentGroupId, hubStore.currentChannelId, content, files)
 		clearSelectedFiles()
+		hubStore.failedPendingPayloads.delete(tempId)
 		await confirmPendingRow(tempId, event)
 	}
 	catch (error) {
-		await removePendingRow(tempId)
+		await failPendingRow(tempId, content, files)
 		throw error
 	}
 }
@@ -932,3 +910,8 @@ export async function submitComposer() {
 			input.dispatchEvent(new Event('input', { bubbles: true }))
 	}
 }
+
+/**
+ * 转发 composer 启停与顶栏按钮刷新（由 composerController 实现）。
+ */
+export { disableComposer, enableComposer, refreshHubHeaderButtons } from './composerController.mjs'

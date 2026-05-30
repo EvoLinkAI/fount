@@ -41,7 +41,7 @@ export function attachOffscreenEmbedGuard(root) {
 	const io = new IntersectionObserver(
 		(entries) => {
 			for (const intersectionEntry of entries) {
-				const target = intersectionEntry.target
+				const { target } = intersectionEntry
 				if (!(target instanceof HTMLElement)) continue
 				if (intersectionEntry.isIntersecting)
 					target.querySelectorAll('iframe[data-suspended-src],video[data-suspended-src]').forEach(resume)
@@ -66,7 +66,8 @@ export function attachUntrustedMarkdownOffscreenGuard(bubble, { onReveal }) {
 		return () => { }
 
 	/**
-	 *
+	 * 在气泡离屏且已 hydrate 时挂载「显示 Markdown」按钮。
+	 * @returns {void}
 	 */
 	const showRevealBtn = () => {
 		if (bubble.querySelector('.hub-markdown-reveal-button')) return

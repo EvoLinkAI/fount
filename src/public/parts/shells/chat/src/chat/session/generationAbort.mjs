@@ -25,7 +25,8 @@ export function createGenerationStream(groupId, messageId, dagEventId = null) {
 	for (const id of trackIds) idToGenerationKey.set(id, generationKey)
 
 	/**
-	 *
+	 * 从活跃生成表与 id 索引中移除本流对应的 trackIds。
+	 * @returns {void}
 	 */
 	const release = () => {
 		const entry = activeGenerations.get(generationKey)

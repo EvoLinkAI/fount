@@ -5,6 +5,12 @@
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 
 import {
+	pubKeyHash,
+	publicKeyFromSeed,
+	randomKeyPair,
+	sign,
+} from '../../../../../scripts/p2p/crypto.mjs'
+import {
 	computeTipConsensusScores,
 	selectConsensusBranchTip,
 } from '../../../../../scripts/p2p/governance_branch.mjs'
@@ -21,6 +27,7 @@ import {
 import { PERMISSIONS } from '../../../../../scripts/p2p/permissions.mjs'
 import { retentionStartIndex } from '../../../../../scripts/p2p/retention_policy.mjs'
 import { findStaleUnreachableChannels } from '../src/chat/channel/gc.mjs'
+import { parsePullResponseEnvelope } from '../src/chat/federation/fedPullWire.mjs'
 import {
 	parseJoinSnapshotRequest,
 	parseJoinSnapshotResponse,
@@ -29,8 +36,24 @@ import {
 	partitionForOutboundEvent,
 	resolveNodePartitionIds,
 } from '../src/chat/federation/partitions.mjs'
+import {
+	isHistoricalPullMember,
+	pullAttestationSignBytes,
+	validatePullAttestationForGroup,
+	verifyPullAttestation,
+} from '../src/chat/federation/pullAttestation.mjs'
+import { wrapPullResponseInner, unwrapPullResponseEnvelope } from '../src/chat/federation/pullResponse.mjs'
+import { parseGossipRequest } from '../src/chat/federation/wireSchemas.mjs'
 
 const GC_IDLE_MS = 30 * 24 * 3600 * 1000
+
+/**
+ * @param {Uint8Array} bytes 字节序列
+ * @returns {string} hex
+ */
+function bytesToHex(bytes) {
+	return Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
+}
 
 Deno.test('messageRateEntityKey distinguishes user and char', () => {
 	assertEquals(messageRateEntityKey({ sender: 'a'.repeat(64) }), 'a'.repeat(64))
@@ -71,19 +94,143 @@ Deno.test('retentionStartIndex respects depth cutoff', () => {
 
 Deno.test('joinSnapshot wire parse', () => {
 	assertEquals(parseJoinSnapshotRequest(null), null)
+	const sender = 'a'.repeat(64)
+	const attBody = {
+		requesterPubKeyHash: sender,
+		groupId: 'g1',
+		requestId: 'r1',
+		timestamp: Date.now(),
+		wantIds: [],
+		signature: '00'.repeat(64),
+	}
 	const req = parseJoinSnapshotRequest({
 		requestId: 'r1',
-		requesterId: 'node-a',
+		requesterNodeId: 'node-a',
 		groupId: 'g1',
+		attestation: attBody,
 	})
 	assertEquals(req?.groupId, 'g1')
-	const res = parseJoinSnapshotResponse({
+	assertEquals(req?.requesterPubKeyHash, sender)
+	assertEquals(parseJoinSnapshotResponse({
 		requestId: 'r1',
-		requesterId: 'node-a',
-		responderNodeId: 'node-b',
-		checkpoint: { tipsHash: 'abc' },
-	})
-	assertEquals(res?.responderNodeId, 'node-b')
+		requesterPubKeyHash: sender,
+		requesterNodeId: 'node-a',
+		ephemPub: 'x',
+		iv: 'y',
+		ciphertext: 'z',
+		authTag: 'w',
+	}), null)
+	assertEquals(parseJoinSnapshotResponse({
+		requestId: 'r1',
+		requesterNodeId: 'node-a',
+		requesterPubKeyHash: sender,
+		ephemPub: 'aa',
+		iv: 'bb',
+		ciphertext: 'cc',
+		authTag: 'dd',
+		scheme: 'fed_pull_v1',
+	})?.requesterNodeId, 'node-a')
+})
+
+Deno.test('gossip request requires attestation', () => {
+	const eventId = 'a'.repeat(64)
+	assertEquals(parseGossipRequest({ wantIds: [eventId], ttl: 2, requesterId: 'n1' }), null)
+	const sender = 'b'.repeat(64)
+	const att = {
+		requesterPubKeyHash: sender,
+		groupId: 'g1',
+		requestId: '',
+		timestamp: Date.now(),
+		wantIds: [eventId],
+		signature: '11'.repeat(64),
+	}
+	assertEquals(parseGossipRequest({
+		wantIds: [eventId],
+		ttl: 2,
+		requesterId: 'n1',
+		attestation: att,
+	})?.wantIds.length, 1)
+})
+
+Deno.test('historical pull member policy', () => {
+	const key = 'c'.repeat(64)
+	const state = {
+		members: {
+			[key]: { status: 'active', pubKeyHex: 'd'.repeat(64) },
+			['e'.repeat(64)]: { status: 'kicked' },
+			['f'.repeat(64)]: { status: 'left' },
+			['g'.repeat(64)]: { status: 'banned' },
+		},
+	}
+	assertEquals(isHistoricalPullMember(state, key), true)
+	assertEquals(isHistoricalPullMember(state, 'e'.repeat(64)), true)
+	assertEquals(isHistoricalPullMember(state, 'f'.repeat(64)), true)
+	assertEquals(isHistoricalPullMember(state, 'g'.repeat(64)), false)
+	assertEquals(isHistoricalPullMember(state, 'h'.repeat(64)), false)
+})
+
+Deno.test('pull attestation sign and verify', async () => {
+	const kp = await randomKeyPair()
+	const body = {
+		requesterPubKeyHash: 'a'.repeat(64),
+		groupId: 'g-test',
+		requestId: 'req-1',
+		timestamp: Date.now(),
+		wantIds: ['b'.repeat(64)],
+		signature: '',
+	}
+	const sig = await sign(pullAttestationSignBytes(body), kp.secretKey)
+	body.signature = bytesToHex(sig)
+	const ok = await verifyPullAttestation(body, 'g-test', kp.publicKey)
+	assertEquals(ok, true)
+	assertEquals(await verifyPullAttestation(body, 'other-group', kp.publicKey), false)
+})
+
+Deno.test('validatePullAttestationForGroup member gate', async () => {
+	const kp = await randomKeyPair()
+	const edPub = publicKeyFromSeed(kp.secretKey)
+	const sender = pubKeyHash(edPub)
+	const pubHex = bytesToHex(edPub)
+	const body = {
+		requesterPubKeyHash: sender,
+		groupId: 'g-gate',
+		requestId: 'req-gate',
+		timestamp: Date.now(),
+		wantIds: [],
+		signature: '',
+	}
+	body.signature = bytesToHex(await sign(pullAttestationSignBytes(body), kp.secretKey))
+	assertEquals(await validatePullAttestationForGroup({ members: {} }, 'g-gate', body), false)
+	const kicked = {
+		members: {
+			[sender]: { status: 'kicked', pubKeyHex: pubHex },
+		},
+	}
+	assertEquals(await validatePullAttestationForGroup(kicked, 'g-gate', body), true)
+})
+
+Deno.test('pull response rejects legacy plaintext gossip shape', () => {
+	const eventId = 'a'.repeat(64)
+	assertEquals(parsePullResponseEnvelope({ events: [{ id: eventId }], checkpoint: {} }), null)
+	assertEquals(parsePullResponseEnvelope({
+		channelHistories: { default: [{ type: 'message' }] },
+		requesterNodeId: 'n1',
+	}), null)
+})
+
+Deno.test('HPKE pull envelope roundtrip', async () => {
+	const recipient = await randomKeyPair()
+	const inner = { gshGrant: { generations: [] }, events: [] }
+	const wrapped = wrapPullResponseInner(bytesToHex(recipient.publicKey), inner)
+	const envelope = {
+		requestId: 'r1',
+		requesterPubKeyHash: 'a'.repeat(64),
+		requesterNodeId: 'node-1',
+		...wrapped,
+	}
+	assertEquals(parsePullResponseEnvelope(envelope)?.requestId, 'r1')
+	const out = unwrapPullResponseEnvelope(envelope, recipient.secretKey)
+	assertEquals(Array.isArray(out?.events), true)
 })
 
 Deno.test('resolveIceServers filters invalid URLs', () => {

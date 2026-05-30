@@ -150,7 +150,7 @@ export async function getChatRequest(groupId, charname, channelId = null, option
 			groupId,
 			channelId: effectiveChannelId,
 			memberId: charname
-				? agentEntityHash(getLocalNodeHash(), `chars/${charname}`)
+				? agentEntityHash(getLocalNodeHash(replicaUsername), `chars/${charname}`)
 				: getOperatorEntityHash(replicaUsername),
 			member_roles: [],
 			personaForOther: options.personaForOther || undefined,

@@ -37,7 +37,7 @@ function normalizePubKeyHash(pubKeyHash) {
  */
 export async function syncTrustedAuthorsFromShell() {
 	try {
-		const response = await fetch('/api/parts/shells:chat/trusted-authors', { credentials: 'include' })
+		const response = await fetch('/api/user/trusted-authors', { credentials: 'include' })
 		if (!response.ok) return
 		const data = await response.json()
 		const hashes = Array.isArray(data.hashes) ? data.hashes : []
@@ -96,7 +96,7 @@ async function pushTrustedAuthorsToShell() {
 		/** @returns {void} */
 		request.onerror = () => reject(request.error)
 	})
-	await fetch('/api/parts/shells:chat/trusted-authors', {
+	await fetch('/api/user/trusted-authors', {
 		method: 'PUT',
 		credentials: 'include',
 		headers: { 'Content-Type': 'application/json' },

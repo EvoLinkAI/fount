@@ -9,7 +9,8 @@ import { initTranslations } from '../../scripts/i18n.mjs'
 import { applyTheme } from '../../scripts/theme.mjs'
 
 /**
- *
+ * 应用主题与 i18n 后，将 hash 旧链接重定向到 Hub。
+ * @returns {Promise<void>}
  */
 async function init() {
 	applyTheme()

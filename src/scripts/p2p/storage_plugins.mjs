@@ -2,6 +2,19 @@ import { Buffer } from 'node:buffer'
 import { mkdir, writeFile, readFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { debugLog } from '../debug_log.mjs'
+
+/**
+ * @param {unknown} error 存储删除错误
+ * @returns {boolean} 是否为「对象不存在」类错误
+ */
+function isAbsentStorageError(error) {
+	const err = /** @type {{ code?: string, name?: string, $metadata?: { httpStatusCode?: number } }} */ error
+	return err?.code === 'ENOENT'
+		|| err?.name === 'NotFound'
+		|| err?.$metadata?.httpStatusCode === 404
+}
+
 /**
  * @typedef {{
  *   putChunk: (groupId: string, chunkHash: string, data: Uint8Array) => Promise<{ storageLocator: string }>,
@@ -54,10 +67,10 @@ export function createLocalStoragePlugin(baseDir) {
 		 * @returns {Promise<Uint8Array>} 文件内容
 		 */
 		async getChunk(locator) {
-			const m = String(locator).match(/^local:([^/]+)\/chunks\/(.+)$/)
-			if (!m) throw new Error('Invalid local locator')
-			const path = join(baseDir, 'groups', m[1], 'chunks', m[2])
-			return new Uint8Array(await readFile(path))
+			const localLocatorMatch = String(locator).match(/^local:([^/]+)\/chunks\/(.+)$/)
+			if (!localLocatorMatch) throw new Error('Invalid local locator')
+			const chunkPath = join(baseDir, 'groups', localLocatorMatch[1], 'chunks', localLocatorMatch[2])
+			return new Uint8Array(await readFile(chunkPath))
 		},
 		/**
 		 * 删除本地分块文件（忽略不存在）
@@ -66,13 +79,16 @@ export function createLocalStoragePlugin(baseDir) {
 		 * @returns {Promise<void>}
 		 */
 		async deleteChunk(locator) {
-			const m = String(locator).match(/^local:([^/]+)\/chunks\/(.+)$/)
-			if (!m) return
-			const path = join(baseDir, 'groups', m[1], 'chunks', m[2])
+			const localLocatorMatch = String(locator).match(/^local:([^/]+)\/chunks\/(.+)$/)
+			if (!localLocatorMatch) return
+			const chunkPath = join(baseDir, 'groups', localLocatorMatch[1], 'chunks', localLocatorMatch[2])
 			try {
-				await unlink(path)
+				await unlink(chunkPath)
 			}
-			catch { /* ignore */ }
+			catch (error) {
+				if (!isAbsentStorageError(error))
+					await debugLog('p2p-chunk-delete', { locator, message: error?.message }).catch(() => {})
+			}
 		},
 	}
 	return plugin
@@ -108,9 +124,9 @@ async function createS3Client(config) {
  * @returns {string} Put/Get 共用的 Key
  */
 function s3ObjectKey(config, groupId, chunkHash) {
-	const p = (config.prefix || '').replace(/\/+$/u, '')
+	const normalizedPrefix = (config.prefix || '').replace(/\/+$/u, '')
 	const base = `groups/${groupId}/chunks/${chunkHash}.bin`
-	return p ? `${p}/${base}` : base
+	return normalizedPrefix ? `${normalizedPrefix}/${base}` : base
 }
 
 /**
@@ -153,14 +169,14 @@ export function createS3StoragePlugin(config) {
 		 */
 		async putChunk(groupId, chunkHash, data) {
 			const { PutObjectCommand } = await import('npm:@aws-sdk/client-s3')
-			const c = await client()
-			const Key = s3ObjectKey(config, groupId, chunkHash)
-			await c.send(new PutObjectCommand({
+			const s3Client = await client()
+			const objectKey = s3ObjectKey(config, groupId, chunkHash)
+			await s3Client.send(new PutObjectCommand({
 				Bucket: config.bucket,
-				Key,
+				Key: objectKey,
 				Body: Buffer.from(data),
 			}))
-			return { storageLocator: `s3://${config.bucket}/${Key}` }
+			return { storageLocator: `s3://${config.bucket}/${objectKey}` }
 		},
 		/**
 		 * 自 S3 拉取对象体并拼为 Uint8Array
@@ -170,12 +186,12 @@ export function createS3StoragePlugin(config) {
 		 */
 		async getChunk(locator) {
 			const { GetObjectCommand } = await import('npm:@aws-sdk/client-s3')
-			const m = String(locator).match(/^s3:\/\/([^/]+)\/(.+)$/u)
-			if (!m) throw new Error('Invalid s3 locator')
-			const Bucket = m[1]
-			const Key = m[2]
-			const c = await client()
-			const out = await c.send(new GetObjectCommand({ Bucket, Key }))
+			const s3LocatorMatch = String(locator).match(/^s3:\/\/([^/]+)\/(.+)$/u)
+			if (!s3LocatorMatch) throw new Error('Invalid s3 locator')
+			const bucket = s3LocatorMatch[1]
+			const objectKey = s3LocatorMatch[2]
+			const s3Client = await client()
+			const out = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: objectKey }))
 			const body = out.Body
 			if (!body) throw new Error('S3 empty body')
 			const chunks = []
@@ -191,15 +207,18 @@ export function createS3StoragePlugin(config) {
 		 */
 		async deleteChunk(locator) {
 			const { DeleteObjectCommand } = await import('npm:@aws-sdk/client-s3')
-			const m = String(locator).match(/^s3:\/\/([^/]+)\/(.+)$/u)
-			if (!m) return
-			const Bucket = m[1]
-			const Key = m[2]
+			const s3LocatorMatch = String(locator).match(/^s3:\/\/([^/]+)\/(.+)$/u)
+			if (!s3LocatorMatch) return
+			const bucket = s3LocatorMatch[1]
+			const objectKey = s3LocatorMatch[2]
 			try {
-				const c = await client()
-				await c.send(new DeleteObjectCommand({ Bucket, Key }))
+				const s3Client = await client()
+				await s3Client.send(new DeleteObjectCommand({ Bucket: bucket, Key: objectKey }))
 			}
-			catch { /* ignore */ }
+			catch (error) {
+				if (!isAbsentStorageError(error))
+					await debugLog('p2p-chunk-delete', { locator, message: error?.message }).catch(() => {})
+			}
 		},
 	}
 }
@@ -222,12 +241,12 @@ export function createFederatedChunksPlugin(config) {
 	/**
 	 * 按副本索引懒建客户端
 	 *
-	 * @param {number} i `replicas` 下标
+	 * @param {number} replicaIndex `replicas` 下标
 	 * @returns {Promise<import('@aws-sdk/client-s3').S3Client>} 对应副本索引的 S3 客户端
 	 */
-	async function clientAt(i) {
-		if (!clients[i]) clients[i] = await createS3Client(replicas[i])
-		return clients[i]
+	async function clientAt(replicaIndex) {
+		if (!clients[replicaIndex]) clients[replicaIndex] = await createS3Client(replicas[replicaIndex])
+		return clients[replicaIndex]
 	}
 
 	return {
@@ -243,12 +262,12 @@ export function createFederatedChunksPlugin(config) {
 			const { PutObjectCommand } = await import('npm:@aws-sdk/client-s3')
 			const buf = Buffer.from(data)
 			const canonical = federatedCanonicalKey(groupId, chunkHash)
-			for (let i = 0; i < replicas.length; i++) {
-				const cfg = replicas[i]
-				const objectKey = s3ObjectKey(cfg, groupId, chunkHash)
-				const c = await clientAt(i)
-				await c.send(new PutObjectCommand({
-					Bucket: cfg.bucket,
+			for (let replicaIndex = 0; replicaIndex < replicas.length; replicaIndex++) {
+				const replicaConfig = replicas[replicaIndex]
+				const objectKey = s3ObjectKey(replicaConfig, groupId, chunkHash)
+				const s3Client = await clientAt(replicaIndex)
+				await s3Client.send(new PutObjectCommand({
+					Bucket: replicaConfig.bucket,
 					Key: objectKey,
 					Body: buf,
 				}))
@@ -263,19 +282,19 @@ export function createFederatedChunksPlugin(config) {
 		 */
 		async getChunk(locator) {
 			const { GetObjectCommand } = await import('npm:@aws-sdk/client-s3')
-			const m = String(locator).match(/^fed:(.+)$/u)
-			if (!m) throw new Error('Invalid federated locator')
-			const canonical = m[1]
-			let lastErr
-			for (let i = 0; i < replicas.length; i++) {
-				const cfg = replicas[i]
-				const p = (cfg.prefix || '').replace(/\/+$/u, '')
-				const Key = p ? `${p}/${canonical}` : canonical
+			const federatedLocatorMatch = String(locator).match(/^fed:(.+)$/u)
+			if (!federatedLocatorMatch) throw new Error('Invalid federated locator')
+			const canonical = federatedLocatorMatch[1]
+			let lastError
+			for (let replicaIndex = 0; replicaIndex < replicas.length; replicaIndex++) {
+				const replicaConfig = replicas[replicaIndex]
+				const prefix = (replicaConfig.prefix || '').replace(/\/+$/u, '')
+				const objectKey = prefix ? `${prefix}/${canonical}` : canonical
 				try {
-					const c = await clientAt(i)
-					const out = await c.send(new GetObjectCommand({
-						Bucket: cfg.bucket,
-						Key,
+					const s3Client = await clientAt(replicaIndex)
+					const out = await s3Client.send(new GetObjectCommand({
+						Bucket: replicaConfig.bucket,
+						Key: objectKey,
 					}))
 					const body = out.Body
 					if (!body) continue
@@ -284,11 +303,11 @@ export function createFederatedChunksPlugin(config) {
 						chunks.push(part)
 					return new Uint8Array(Buffer.concat(chunks))
 				}
-				catch (e) {
-					lastErr = e
+				catch (error) {
+					lastError = error
 				}
 			}
-			throw lastErr || new Error('federated getChunk: all replicas failed')
+			throw lastError || new Error('federated getChunk: all replicas failed')
 		},
 		/**
 		 * 尽力删除所有副本上的同一对象
@@ -298,18 +317,21 @@ export function createFederatedChunksPlugin(config) {
 		 */
 		async deleteChunk(locator) {
 			const { DeleteObjectCommand } = await import('npm:@aws-sdk/client-s3')
-			const m = String(locator).match(/^fed:(.+)$/u)
-			if (!m) return
-			const canonical = m[1]
-			for (let i = 0; i < replicas.length; i++) {
-				const cfg = replicas[i]
-				const p = (cfg.prefix || '').replace(/\/+$/u, '')
-				const Key = p ? `${p}/${canonical}` : canonical
+			const federatedLocatorMatch = String(locator).match(/^fed:(.+)$/u)
+			if (!federatedLocatorMatch) return
+			const canonical = federatedLocatorMatch[1]
+			for (let replicaIndex = 0; replicaIndex < replicas.length; replicaIndex++) {
+				const replicaConfig = replicas[replicaIndex]
+				const prefix = (replicaConfig.prefix || '').replace(/\/+$/u, '')
+				const objectKey = prefix ? `${prefix}/${canonical}` : canonical
 				try {
-					const c = await clientAt(i)
-					await c.send(new DeleteObjectCommand({ Bucket: cfg.bucket, Key }))
+					const s3Client = await clientAt(replicaIndex)
+					await s3Client.send(new DeleteObjectCommand({ Bucket: replicaConfig.bucket, Key: objectKey }))
 				}
-				catch { /* ignore */ }
+				catch (error) {
+					if (!isAbsentStorageError(error))
+						await debugLog('p2p-chunk-delete', { locator, replica: replicaIndex, message: error?.message }).catch(() => {})
+				}
 			}
 		},
 	}

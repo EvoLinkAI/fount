@@ -5,6 +5,7 @@
  * 【数据结构】载荷 { chunkHash, dataB64? }；swarmApis Map 键 username\0groupId；pendingFetches 等待密文字节。
  * 【关联】files/chunkReplicationAck.mjs、chunkRefcount.mjs、groupFiles.mjs、room.mjs、governance/reputation.mjs；scripts/p2p/storage_plugins.mjs。
  */
+import { debugLog } from '../../../../../../../scripts/debug_log.mjs'
 import { b64ToU8, u8ToB64 } from '../../../../../../../scripts/p2p/bytes_codec.mjs'
 import {
 	assignChunksToPeers,
@@ -14,6 +15,8 @@ import {
 	planChunkFetches,
 } from '../../../../../../../scripts/p2p/chunk_fetch_scheduler.mjs'
 import { FEDERATION_CHUNK_MAX_BYTES } from '../../../../../../../scripts/p2p/constants.mjs'
+import { handleIncomingChunkGet, resolvePendingChunkFetch } from '../../../../../../../scripts/p2p/files/chunk_fetch.mjs'
+import { getChunk, hasChunk } from '../../../../../../../scripts/p2p/files/chunk_store.mjs'
 import { HEX_ID_64, LOCAL_CHUNK_FILE_RE } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { isFederationActionAllowedUnderLoad } from '../../../../../../../scripts/p2p/rtc_connection_budget.mjs'
 import { createLocalStoragePlugin } from '../../../../../../../scripts/p2p/storage_plugins.mjs'
@@ -23,11 +26,6 @@ import { bumpChunkStorageReputation } from '../governance/reputation.mjs'
 import { shellChatRoot } from '../lib/paths.mjs'
 import { isPlainObject } from '../lib/wireIngress.mjs'
 
-/**
- * 兼容旧命名的最大分块字节数常量（同 `FEDERATION_CHUNK_MAX_BYTES`）。
- * @type {number}
- */
-export const FED_CHUNK_MAX_BYTES = FEDERATION_CHUNK_MAX_BYTES
 const FETCH_TIMEOUT_MS = 14_000
 const DEFAULT_FETCH_CONCURRENCY = 6
 const CHUNK_HASH_RE = HEX_ID_64
@@ -208,7 +206,7 @@ export function createFederationSwarmStoragePlugin(baseDir, username, groupId) {
  * @returns {Promise<void>}
  */
 function replicateChunkToRoster(slot, chunkHash, data, bucketKey, opts = {}) {
-	if (data.byteLength > FED_CHUNK_MAX_BYTES) return
+	if (data.byteLength > FEDERATION_CHUNK_MAX_BYTES) return
 	if (!consumeChunkRate(bucketKey, data.byteLength)) return
 	const payload = { chunkHash, dataB64: u8ToB64(data) }
 	const roster = slot.getRoster()
@@ -220,7 +218,11 @@ function replicateChunkToRoster(slot, chunkHash, data, bucketKey, opts = {}) {
 	 */
 	const dispatch = peerId => {
 		try { slot.sendToPeer(peerId, 'fed_chunk_put', payload) }
-		catch { /* ignore */ }
+		catch (err) {
+			console.error('federation: fed_chunk_put send failed', err)
+			void debugLog('federation', { scope: 'fed_chunk_put', peerId, message: err?.message })
+				.catch(error => console.warn('federation: fed_chunk_put debugLog failed', error))
+		}
 	}
 	for (const { peerId } of targets)
 		if (opts.fedOut)
@@ -249,13 +251,17 @@ function fetchChunkFromPeer(slot, username, groupId, chunkHash, peerId) {
 		const payload = { chunkHash }
 		if (peerId) {
 			try { slot.sendToPeer(peerId, 'fed_chunk_get', payload) }
-			catch (e) { reject(e instanceof Error ? e : new Error(String(e))) }
+			catch (error) { reject(error instanceof Error ? error : new Error(String(error))) }
 			return
 		}
 		const roster = slot.getRoster()
-		for (const { peerId: pid } of roster)
-			try { slot.sendToPeer(pid, 'fed_chunk_get', payload) }
-			catch { /* ignore */ }
+		for (const { peerId: targetPeerId } of roster)
+			try { slot.sendToPeer(targetPeerId, 'fed_chunk_get', payload) }
+			catch (err) {
+				console.error('federation: fed_chunk_get send failed', err)
+				void debugLog('federation', { scope: 'fed_chunk_get', peerId: targetPeerId, message: err?.message })
+					.catch(error => console.warn('federation: fed_chunk_get debugLog failed', error))
+			}
 	})
 }
 
@@ -389,17 +395,20 @@ export function attachFedChunkHandlers(fedRoom) {
 			const b64 = String(data.dataB64 || '')
 			if (!b64) return
 			const bytes = b64ToU8(b64)
-			if (bytes.byteLength > FED_CHUNK_MAX_BYTES) return
+			if (bytes.byteLength > FEDERATION_CHUNK_MAX_BYTES) return
 			if (!consumeChunkRate(chunkBucketKey, bytes.byteLength)) return
 			const { storageLocator } = await local.putChunk(groupId, hash, bytes)
-			await bumpChunkLocalRef(username, groupId, storageLocator).catch(() => { })
-			if (remoteNode) void bumpChunkStorageReputation(username, groupId, remoteNode).catch(() => { })
+			await bumpChunkLocalRef(username, groupId, storageLocator)
+			if (remoteNode)
+				await bumpChunkStorageReputation(username, groupId, remoteNode)
 			try {
 				sendChunkAck({ chunkHash: hash }, peerId)
 				sendChunkData({ chunkHash: hash, dataB64: u8ToB64(bytes) }, peerId)
 			}
-			catch { /* ignore */ }
-		})().catch(() => { })
+			catch (error) {
+				console.warn('federation: fed_chunk_put response failed', error)
+			}
+		})().catch(error => console.warn('federation: fed_chunk_put handler failed', error))
 	})
 
 	getChunkGet((data, peerId) => {
@@ -410,21 +419,40 @@ export function attachFedChunkHandlers(fedRoom) {
 			if (remoteNode && isBlockedPeer(remoteNode)) return
 			const hash = String(data.chunkHash || '').trim().toLowerCase()
 			if (!CHUNK_HASH_RE.test(hash)) return
-			const loc = `local:${groupId}/chunks/${hash}.bin`
-			let bytes
-			try {
-				bytes = await local.getChunk(loc)
-			}
-			catch {
+			const requestId = String(data.requestId || '')
+			if (requestId) {
+				await handleIncomingChunkGet(username, data, (resp, pid) => {
+					try {
+						sendChunkData(resp, pid)
+					}
+					catch (error) {
+						console.warn('federation: fed_chunk_get response failed', error)
+					}
+				}, peerId)
 				return
 			}
+			const loc = `local:${groupId}/chunks/${hash}.bin`
+			let bytes
+			if (await hasChunk(username, hash))
+				bytes = await getChunk(username, hash)
+			else 
+				try {
+					bytes = await local.getChunk(loc)
+				}
+				catch {
+					return
+				}
+			
 			if (!bytes?.byteLength) return
-			if (remoteNode) void bumpChunkStorageReputation(username, groupId, remoteNode).catch(() => { })
+			if (remoteNode)
+				await bumpChunkStorageReputation(username, groupId, remoteNode)
 			try {
 				sendChunkData({ chunkHash: hash, dataB64: u8ToB64(bytes) }, peerId)
 			}
-			catch { /* ignore */ }
-		})().catch(() => { })
+			catch (error) {
+				console.warn('federation: fed_chunk_get send data failed', error)
+			}
+		})().catch(error => console.warn('federation: fed_chunk_get handler failed', error))
 	})
 
 	getChunkData((data, peerId) => {
@@ -441,8 +469,8 @@ export function attachFedChunkHandlers(fedRoom) {
 		try {
 			pending.resolve(b64ToU8(b64))
 		}
-		catch (e) {
-			pending.reject(e instanceof Error ? e : new Error(String(e)))
+		catch (error) {
+			pending.reject(error instanceof Error ? error : new Error(String(error)))
 		}
 		void peerId
 	})
@@ -464,4 +492,42 @@ export function attachFedChunkHandlers(fedRoom) {
 	slot.replicateChunk = api.replicate
 	slot.fetchChunk = api.fetch
 	return slot
+}
+
+/**
+ * TrustGraph 全局 chunk miss：sync 分区处理带 requestId 的 fed_chunk_get/data。
+ * @param {string} username 用户
+ * @param {object} room Trystero room
+ * @param {{ enqueue: (prio: number, fn: () => void) => void }} fedOut 出站队列
+ * @param {object} [rtcLimits] RTC 限额
+ * @param {string} [roomKey] 房间键
+ * @returns {void}
+ */
+export function attachTrustGraphChunkHandlers(username, room, fedOut, rtcLimits = {}, roomKey = '') {
+	const [sendChunkData, getChunkData] = room.makeAction('fed_chunk_data')
+	const [, getChunkGet] = room.makeAction('fed_chunk_get')
+
+	getChunkGet((data, peerId) => {
+		if (!isFederationActionAllowedUnderLoad(roomKey, 'fed_chunk_get', rtcLimits)) return
+		void (async () => {
+			if (!isPlainObject(data)) return
+			const requestId = String(data.requestId || '')
+			if (!requestId) return
+			await handleIncomingChunkGet(username, data, (resp, pid) => {
+				fedOut.enqueue(6, () => {
+					try {
+						sendChunkData(resp, pid)
+					}
+					catch (error) {
+						console.warn('federation: trust-graph chunk response failed', error)
+					}
+				})
+			}, peerId)
+		})().catch(error => console.warn('federation: trust-graph chunk handler failed', error))
+	})
+
+	getChunkData(data => {
+		if (!isPlainObject(data) || !data.requestId) return
+		resolvePendingChunkFetch(data)
+	})
 }

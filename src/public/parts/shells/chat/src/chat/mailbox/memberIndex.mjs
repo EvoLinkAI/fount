@@ -42,7 +42,7 @@ export async function loadKnownMemberIndex(username) {
 			const pk = String(row?.pubKeyHash || key).trim().toLowerCase()
 			if (isHex64(pk)) pubKeys.add(pk)
 			const home = String(row?.homeNodeHash || '').trim().toLowerCase()
-			if (/^[\da-f]{64}$/u.test(home)) nodeHashes.add(home)
+			if (isHex64(home)) nodeHashes.add(home)
 		}
 	}
 

@@ -5,20 +5,12 @@
  * 【数据结构】见函数入参与返回值 JSDoc。
  * 【关联】../src/lib/pubKeyHex
  */
+import { sha256Hex } from '../../../../../pages/scripts/digest.mjs'
 import { isHex64 } from '../src/lib/pubKeyHex.mjs'
 
 /**
  * 浏览器端活跃成员 Merkle 根（与 `scripts/p2p/dag/index.mjs` `merkleRoot` 一致，§7.2）。
  */
-
-/**
- * @param {string | Uint8Array} data UTF-8 文本或原始字节
- * @returns {Promise<Uint8Array>} SHA-256 摘要
- */
-async function sha256(data) {
-	const bytes = data instanceof Uint8Array ? data : new TextEncoder().encode(data)
-	return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
-}
 
 /**
  * @param {Uint8Array} left 左子摘要
@@ -29,7 +21,11 @@ async function sha256Pair(left, right) {
 	const buf = new Uint8Array(left.length + right.length)
 	buf.set(left, 0)
 	buf.set(right, left.length)
-	return sha256(buf)
+	const hex = await sha256Hex(buf)
+	const out = new Uint8Array(32)
+	for (let i = 0; i < 32; i++)
+		out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+	return out
 }
 
 /**
@@ -47,9 +43,15 @@ function digestHex(digest) {
 export async function computeMembersMerkleRoot(ids) {
 	const sorted = [...new Set(ids.filter(isHex64))].sort()
 	if (!sorted.length)
-		return digestHex(await sha256(''))
+		return sha256Hex(new Uint8Array())
 	/** @type {Uint8Array[]} */
-	let level = await Promise.all(sorted.map(sha256))
+	let level = await Promise.all(sorted.map(async id => {
+		const hex = await sha256Hex(new TextEncoder().encode(id))
+		const out = new Uint8Array(32)
+		for (let i = 0; i < 32; i++)
+			out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+		return out
+	}))
 	while (level.length > 1) {
 		/** @type {Uint8Array[]} */
 		const next = []

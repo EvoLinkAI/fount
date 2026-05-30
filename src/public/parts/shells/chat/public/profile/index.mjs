@@ -92,7 +92,7 @@ async function init() {
 	})
 
 	try {
-		const resp = await fetch('/api/parts/shells:chat/viewer', { credentials: 'include' })
+		const resp = await fetch('/api/p2p/viewer', { credentials: 'include' })
 		if (!resp.ok) throw new Error(`viewer ${resp.status}`)
 		const data = await resp.json()
 		if (!data.viewerEntityHash) {
@@ -114,7 +114,8 @@ async function init() {
 		if (!currentEntityHash) return
 		void openHubProfileEdit(currentEntityHash, {
 			/**
-			 *
+			 * 资料保存后重新加载当前用户资料页。
+			 * @returns {Promise<void>}
 			 */
 			onSaved: async () => {
 				await loadProfile(currentEntityHash)

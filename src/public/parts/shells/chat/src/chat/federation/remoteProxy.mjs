@@ -13,7 +13,7 @@
 /** @typedef {import('../../../../../../decl/prompt_struct.ts').prompt_struct_t} prompt_struct_t */
 /** @typedef {import('../../../../../../decl/prompt_struct.ts').single_part_prompt_t} single_part_prompt_t */
 
-import { normalizeJsonBoundaryValue } from '../lib/jsonBoundary.mjs'
+import { encodeWireJson } from '../lib/wireJson.mjs'
 
 /** 标记 `createRemoteCharProxy` 生成的对象，供 `isRemoteProxy` 识别。 */
 export const REMOTE_PROXY_SYMBOL = Symbol.for('fount.remoteCharProxy')
@@ -29,13 +29,12 @@ const UUID_V4_RE = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{
  * @returns {string | undefined} UUID v4 小写；无法解析时为 undefined
  */
 export function resolveTargetNodeIdFromSourceHost(sourceHost) {
-	const trimmed = String(sourceHost || '').trim()
+	const trimmed = sourceHost?.trim()
 	if (!trimmed) return undefined
 	if (UUID_V4_RE.test(trimmed)) return trimmed.toLowerCase()
 	const nodePref = /^node:([\da-f-]{36})$/iu.exec(trimmed)
 	if (nodePref?.[1] && UUID_V4_RE.test(nodePref[1])) return nodePref[1].toLowerCase()
-	const embedded = trimmed.match(/[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}/iu)
-	return embedded?.[0] && UUID_V4_RE.test(embedded[0]) ? embedded[0].toLowerCase() : undefined
+	return undefined
 }
 
 /**
@@ -57,9 +56,8 @@ export function withDirectedGroupRpcTarget(rpcPayload, sourceHost) {
 export function shouldAcceptDirectedGroupRpc(wireMessage, localClientNodeId) {
 	const targetNodeId = wireMessage?.[GROUP_RPC_TARGET_NODE_ID_KEY]
 	if (!targetNodeId) return true
-	if (!UUID_V4_RE.test(String(targetNodeId).trim())) return false
-	if (!localClientNodeId) return false
-	return targetNodeId === localClientNodeId
+	const normalizedTargetNodeId = String(targetNodeId).trim().toLowerCase()
+	return UUID_V4_RE.test(normalizedTargetNodeId) && normalizedTargetNodeId === localClientNodeId
 }
 
 /**
@@ -67,7 +65,7 @@ export function shouldAcceptDirectedGroupRpc(wireMessage, localClientNodeId) {
  * @returns {boolean} 合法 UUID v4 时为 true
  */
 export function isValidGroupRpcClientNodeId(clientNodeId) {
-	return UUID_V4_RE.test(String(clientNodeId || '').trim())
+	return UUID_V4_RE.test(String(clientNodeId).trim().toLowerCase())
 }
 
 /**
@@ -75,20 +73,18 @@ export function isValidGroupRpcClientNodeId(clientNodeId) {
  * @param {string} username 群主用户名
  * @param {string} groupId 群组 id
  * @param {object} rpcPayload `rpc_call` 形状的对象
- * @returns {Promise<{ mode: 'broadcast' | 'p2p', payload: object }>} 发送模式与 WS 负载
+ * @returns {Promise<{ mode: 'broadcast' | 'direct', payload: object }>} 发送模式与 WS 负载
  */
 export async function sendRpcToNode(sourceHost, username, groupId, rpcPayload) {
-	const payload = normalizeJsonBoundaryValue(
+	const payload = encodeWireJson(
 		withDirectedGroupRpcTarget({ ...rpcPayload }, sourceHost),
 		'rpc.args:sendRpcToNode',
 	)
 	const { ensureFederationRoom } = await import('./index.mjs')
 	const slot = await ensureFederationRoom(username, groupId)
 	if (!slot?.room) return { mode: 'broadcast', payload }
-
 	const targetNodeId = resolveTargetNodeIdFromSourceHost(sourceHost)
 	if (!targetNodeId) return { mode: 'broadcast', payload }
-
 	const peerId = slot.getPeerIdByNodeId(targetNodeId)
 	if (!peerId) return { mode: 'broadcast', payload }
 
@@ -118,9 +114,9 @@ export function createRemoteCharProxy(memberId, sourceHost, interfaces = {}, rpc
 	 */
 	async function invokeRemote(method, args) {
 		if (!rpcCall) throw remoteUnavailableError(method)
-		const jsonArgs = normalizeJsonBoundaryValue(args, `rpc.args:${method}`)
-		const raw = await rpcCall(method, jsonArgs)
-		return normalizeJsonBoundaryValue(raw ?? null, `rpc.result:${method}`)
+		const jsonArgs = encodeWireJson(args, `rpc.args:${method}`)
+		const rpcResult = await rpcCall(method, jsonArgs)
+		return encodeWireJson(rpcResult ?? null, `rpc.result:${method}`)
 	}
 
 	/**
@@ -142,11 +138,11 @@ export function createRemoteCharProxy(memberId, sourceHost, interfaces = {}, rpc
 				out[key] = (...callArgs) => invokeRemote(methodName, callArgs)
 				continue
 			}
-			if (value && typeof value === 'object' && !Array.isArray(value)) {
+			if (value?.constructor === Object) {
 				out[key] = materializeInterfaceShape(value, methodPath)
 				continue
 			}
-			out[key] = normalizeJsonBoundaryValue(value, `interface.value:${methodPath.join('.')}`)
+			out[key] = value
 		}
 		return out
 	}
@@ -243,16 +239,16 @@ export function createRemoteCharProxy(memberId, sourceHost, interfaces = {}, rpc
 			MessageDelete: deletePayload => invokeRemote('MessageDelete', [deletePayload]),
 		}
 
-	if (useInfo && interfaces.info && typeof interfaces.info === 'object')
+	if (useInfo && interfaces.info?.constructor === Object)
 		iface.info = materializeInterfaceShape(interfaces.info, ['info'])
-	if (useConfig && interfaces.config && typeof interfaces.config === 'object')
+	if (useConfig && interfaces.config?.constructor === Object)
 		iface.config = materializeInterfaceShape(interfaces.config, ['config'])
-	if (useChat && interfaces.chat && typeof interfaces.chat === 'object')
+	if (useChat && interfaces.chat?.constructor === Object)
 		iface.chat = materializeInterfaceShape(interfaces.chat, ['chat'])
 
 	/** @type {CharAPI_t} */
 	const proxy = {
-		info: normalizeJsonBoundaryValue({}, 'remoteProxy.info'),
+		info: {},
 		interfaces: iface,
 	}
 
@@ -275,7 +271,7 @@ export function createRemoteCharProxy(memberId, sourceHost, interfaces = {}, rpc
  * @returns {boolean} 为远端桩时为 true
  */
 export function isRemoteProxy(charObj) {
-	return charObj != null && !Array.isArray(charObj) && REMOTE_PROXY_SYMBOL in charObj
+	return Boolean(charObj && REMOTE_PROXY_SYMBOL in Object(charObj))
 }
 
 /**

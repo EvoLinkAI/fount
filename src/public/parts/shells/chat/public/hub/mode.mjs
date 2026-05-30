@@ -8,9 +8,6 @@
 import { mountTemplate } from '../../../../scripts/template.mjs'
 
 import { setPinsBookmarksWrapVisible, updateStatusBanners } from './banners.mjs'
-import {
-	clearPrivateGroupState,
-} from './privateGroup.mjs'
 import { hubStore } from './core/state.mjs'
 import { updateFriendsHash } from './core/urlHash.mjs'
 import { loadFriendsList, renderFriendsColumn } from './friendsList.mjs'
@@ -21,6 +18,9 @@ import {
 } from './groupNav.mjs'
 import { closeGroupWebSocket } from './groupStream.mjs'
 import { cancelScheduledChannelRefresh, disableComposer, refreshHubHeaderButtons } from './messages/messages.mjs'
+import {
+	clearPrivateGroupState,
+} from './privateGroup.mjs'
 
 /**
  * 高亮左侧「群组 / 好友」模式切换按钮。

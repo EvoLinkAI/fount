@@ -25,7 +25,9 @@ import { consumeGroupInviteTicket, mintGroupInviteTicket } from '../../chat/lib/
 import { getLocalNodeHash } from '../../chat/lib/replica.mjs'
 import { formatJoinRunUri, wrapProtocolHttpsUrl } from '../../chat/lib/runUri.mjs'
 import { setPowChallenge } from '../../chat/stream/groupWsHub.mjs'
-import { governanceChannelId, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
+import { governanceChannelId } from '../access.mjs'
+
+import { requireGroupMember, resolveGroupMember } from './middleware.mjs'
 
 const MEMBERS_PAGE_SIZE = 500
 
@@ -54,13 +56,9 @@ async function buildInviteClipboardText(username, groupId, code, mqttRoomSecret,
  * @returns {void}
  */
 export function registerMembershipRoutes(router, authenticate) {
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/members\/page\/(\d+)$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/members\/page\/(\d+)$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { groupId, state } = req.groupContext
 		const pageIndex = Math.max(0, Number(req.params[1]) || 0)
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
 
 		const activeMembers = Object.entries(state.members || {}).filter(([, member]) => member?.status === 'active')
 		const pageCount = Math.max(1, Math.ceil(activeMembers.length / MEMBERS_PAGE_SIZE))
@@ -97,13 +95,10 @@ export function registerMembershipRoutes(router, authenticate) {
 	})
 
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/invite-ticket$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state, member } = membership
 		const permissionsChannelId = governanceChannelId(state)
 		const perms = calculateMemberPermissions(
 			member,
@@ -162,7 +157,7 @@ export function registerMembershipRoutes(router, authenticate) {
 			if (!accepted)
 				return res.status(400).json({ error: 'invalid or expired inviteCode' })
 		}
-		const content = { inviteCode, powSolution: pow, homeNodeHash: getLocalNodeHash() }
+		const content = { inviteCode, powSolution: pow, homeNodeHash: getLocalNodeHash(username) }
 		if (introducerPubKeyHash) {
 			const normalizedIntroducer = normalizePubKeyHex(introducerPubKeyHash)
 			if (PUB_KEY_HEX_64.test(normalizedIntroducer)) content.introducerPubKeyHash = normalizedIntroducer
@@ -185,17 +180,17 @@ export function registerMembershipRoutes(router, authenticate) {
 			const slot = await ensureFederationRoom(username, groupId)
 			if (slot) await requestJoinSnapshotFromPeers(username, groupId, slot)
 		}).catch(console.error)
-		res.status(200).json({ groupId,
+		res.status(200).json({
+			groupId,
 			defaultChannelId: stateAfterJoin.groupSettings?.defaultChannelId ?? null,
 		})
 	})
 
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/leave$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state } = membership
 		await appendSignedLocalEvent(username, groupId, {
 			type: 'member_leave',
 			timestamp: Date.now(),

@@ -18,6 +18,7 @@ import { syncTrustedAuthorsFromShell } from '../src/trustedAuthors.mjs'
 
 import { getChatGestures } from './chatGestures.mjs'
 import { mountAvatarCover } from './core/avatarCover.mjs'
+import { wireHubBannerBindings } from './core/bindings.mjs'
 import { avatarColor, avatarInitial, escapeHtml } from './core/domUtils.mjs'
 import { hubStore } from './core/state.mjs'
 import { parseHash, updateFriendsHash } from './core/urlHash.mjs'
@@ -85,7 +86,7 @@ async function loadMe() {
 	let data
 	try {
 		const qs = localeQueryString(hubStore.currentGroupId || undefined)
-		const resp = await fetch(`/api/parts/shells:chat/viewer${qs ? `?${qs}` : ''}`, { credentials: 'include' })
+		const resp = await fetch(`/api/p2p/viewer${qs ? `?${qs}` : ''}`, { credentials: 'include' })
 		if (!resp.ok) return
 		data = await resp.json()
 	} catch {
@@ -156,6 +157,7 @@ export async function init() {
 	await initTranslations('chat')
 	setupMisc()
 	setupHubNotifications()
+	wireHubBannerBindings()
 
 	/**
 	 * 刷新停止生成按钮的可见状态。
@@ -230,6 +232,7 @@ export async function init() {
 
 	const urlParams = new URLSearchParams(window.location.search)
 	const charParam = urlParams.get('char')
+	const contactParam = urlParams.get('contact')
 	const hashRaw = window.location.hash.slice(1)
 	let { groupId, channelId } = parseHash()
 
@@ -252,11 +255,22 @@ export async function init() {
 		}
 	}
 
-	if (charParam && !hashRaw.startsWith('group:')) {
+	if (contactParam && !hashRaw.startsWith('group:')) {
+		const { applyHubContactQuery } = await import('./hubContact.mjs')
+		const handled = await applyHubContactQuery(contactParam)
+		if (handled) {
+			const clean = new URL(window.location.href)
+			clean.searchParams.delete('contact')
+			window.history.replaceState(null, '', `${clean.pathname}${clean.search}${clean.hash}`)
+		}
+		else
+			await navigateFromHash()
+	}
+	else if (charParam && !hashRaw.startsWith('group:')) {
 		await setMode('friends')
 		const { enterFriendChat } = await import('./friendChat.mjs')
 		const { buildCharFriendBinding } = await import('../src/friendBinding.mjs')
-		const nodeHash = hubStore.nodeHash
+		const { nodeHash } = hubStore
 		if (nodeHash)
 			await enterFriendChat({ binding: await buildCharFriendBinding(nodeHash, charParam) })
 		else

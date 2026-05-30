@@ -161,7 +161,7 @@ async function buildChatLogEntryFromDagMessage(
 	groupId = null,
 	sourceChannelId = null,
 ) {
-	const content = line.content
+	const { content } = line
 	const entry = new chatLogEntry_t()
 	entry.id = content.chatLogEntryId || crypto.randomUUID()
 	if (line.eventId)

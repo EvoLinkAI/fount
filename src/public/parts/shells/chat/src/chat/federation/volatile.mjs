@@ -121,7 +121,7 @@ export async function handleIncomingFedVolatile(username, groupId, data, peerId,
 
 	if (payload.type === 'reputation_slash_alert') {
 		const { applyVolatileSlashAlert } = await import('../governance/reputation.mjs')
-		await applyVolatileSlashAlert(username, groupId, payload).catch(() => {})
+		await applyVolatileSlashAlert(username, groupId, payload)
 		return
 	}
 

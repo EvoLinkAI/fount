@@ -5,11 +5,11 @@
  * 【数据结构】pubKeyHex64、nonceBase64Url、introSignatureHex；persist 选项。
  * 【关联】lib/dmLinkSignature.mjs、groupApi、runUri.mjs、signer.mjs。
  */
-import { formatDmRunUri } from './lib/runUri.mjs'
 
 import { putFederationSettings } from './api/groupApi.mjs'
 import { dmLinkSignableBytes } from './lib/dmLinkSignature.mjs'
 import { normalizePubKeyHex, PUB_KEY_HEX_64 } from './lib/pubKeyHex.mjs'
+import { formatDmRunUri } from './lib/runUri.mjs'
 import { sign } from './lib/signer.mjs'
 
 

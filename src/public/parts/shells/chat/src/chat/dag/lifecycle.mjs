@@ -13,7 +13,7 @@ import { DEFAULT_STREAM_GENERATING_IDLE_MS } from '../../../../../../../scripts/
 import { sortedPrevEventIds } from '../../../../../../../scripts/p2p/dag/index.mjs'
 import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/governance_branch.mjs'
 import { createDefaultRoles } from '../../../../../../../scripts/p2p/permissions.mjs'
-import { syncEntityProfileFromPersona } from '../../profile/profile.mjs'
+import { syncEntityProfileFromPersona } from '../../profile/syncFromPersona.mjs'
 import { DEFAULT_HLC_MAX_SKEW_MS } from '../events/hlcPolicy.mjs'
 import { isGroupFederationActive } from '../federation/groupFederation.mjs'
 import { DEFAULT_MQTT_APP_ID, mintMqttRoomSecret } from '../federation/mqttCredentials.mjs'
@@ -143,7 +143,7 @@ export async function createGroup(username, body) {
 		timestamp: Date.now(),
 		content: {
 			roles: ['founder'],
-			homeNodeHash: getLocalNodeHash(),
+			homeNodeHash: getLocalNodeHash(username),
 		},
 	}, memberJoinSecretKey || genesisSecretKey)
 

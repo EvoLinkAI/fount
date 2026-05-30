@@ -1,8 +1,8 @@
 <div class="hub-stream-wrap">
-	<div class="hub-stream-title"${useChannelName ? '' : ' data-i18n="chat.hub.streamDefaultName"'}>${channelName}</div>
+	<div class="hub-stream-title" ${useChannelName ? '' : ' data-i18n="chat.hub.streamDefaultName"' }>${channelName}</div>
 	<div class="hub-stream-toolbar hub-streaming-av-controls">
 		<select class="hub-streaming-av-preset-sel" id="hub-streaming-av-preset">
-			${presets.map(p => `<option value="${p.key}" data-i18n="${p.i18nKey}"${p.selected ? ' selected' : ''}></option>`).join('')}
+			${presets.map(p => `<option value="${p.key}" data-i18n="${p.i18nKey}" ${p.selected ? ' selected' : '' }></option>`).join('')}
 		</select>
 		<span class="hub-streaming-av-peer-label" id="hub-streaming-av-peer-label"></span>
 	</div>

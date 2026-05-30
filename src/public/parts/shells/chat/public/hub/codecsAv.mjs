@@ -20,7 +20,8 @@ import { escapeHtml } from './core/domUtils.mjs'
  */
 
 /**
- *
+ * WebCodecs AV 采集/编码预设（分辨率、码率、帧率）。
+ * @type {Record<string, { codec: string, w: number, h: number, bps: number, fps: number }>}
  */
 export const CODECS_PRESETS = {
 	thumb: { codec: 'vp8', w: 160, h: 120, bps: 64_000, fps: 5 },
@@ -313,9 +314,10 @@ export async function joinCodecsAvRoom(opts) {
 	})
 
 	/**
-	 *
+	 * 停止本地采集与编码循环（由 startCodecsCapture 赋值）。
+	 * @type {() => void}
 	 */
-	let stopCapture = () => {}
+	let stopCapture = () => { }
 	let mediaStream = null
 	let videoEnabled = true
 	let audioMuted = false
@@ -450,7 +452,7 @@ async function startCodecsCapture(opts) {
 async function startVideoEncoder(opts) {
 	const { preset, stream, ws, selfId, t0, videoSeqRef, isVideoSending } = opts
 	const [track] = stream.getVideoTracks()
-	if (!track) return () => {}
+	if (!track) return () => { }
 
 	const encoder = new VideoEncoder({
 		/**
@@ -492,7 +494,7 @@ async function startVideoEncoder(opts) {
 	}
 
 	/** @returns {void} */
-	let stopReader = () => {}
+	let stopReader = () => { }
 
 	if ('MediaStreamTrackProcessor' in window) {
 		const reader = new MediaStreamTrackProcessor({ track }).readable.getReader()
@@ -535,7 +537,7 @@ async function startVideoEncoder(opts) {
 async function startAudioEncoder(opts) {
 	const { stream, ws, selfId, t0, audioSeqRef, isAudioSending } = opts
 	const track = stream.getAudioTracks()[0]
-	if (!track) return () => {}
+	if (!track) return () => { }
 
 	const encoder = new AudioEncoder({
 		/**
@@ -562,7 +564,7 @@ async function startAudioEncoder(opts) {
 	})
 
 	/** @returns {void} */
-	let stopReader = () => {}
+	let stopReader = () => { }
 
 	if ('MediaStreamTrackProcessor' in window) {
 		const reader = new MediaStreamTrackProcessor({ track }).readable.getReader()
@@ -577,7 +579,8 @@ async function startAudioEncoder(opts) {
 			reader.releaseLock()
 		})()
 		/**
-		 *
+		 * 停止音频 reader 循环。
+		 * @returns {void}
 		 */
 		stopReader = () => { running = false }
 	}

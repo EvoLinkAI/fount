@@ -9,8 +9,8 @@
 export function arrayBufferToBase64(buffer) {
 	let binary = ''
 	const bytes = new Uint8Array(buffer)
-	for (let i = 0; i < bytes.byteLength; i++)
-		binary += String.fromCharCode(bytes[i])
+	for (let index = 0; index < bytes.byteLength; index++)
+		binary += String.fromCharCode(bytes[index])
 	return btoa(binary)
 }
 
@@ -19,9 +19,9 @@ export function arrayBufferToBase64(buffer) {
  * @returns {string} 标准 Base64 文本
  */
 export function u8ToB64(u8) {
-	let s = ''
-	for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i])
-	return btoa(s)
+	let binary = ''
+	for (let index = 0; index < u8.length; index++) binary += String.fromCharCode(u8[index])
+	return btoa(binary)
 }
 
 /**
@@ -41,11 +41,11 @@ export function b64ToU8(b64) {
  * @returns {Uint8Array} 解析得到的字节数组
  */
 export function hexToNBytes(hex, nBytes) {
-	const t = String(hex).replace(/^0x/iu, '').trim()
-	if (t.length !== nBytes * 2 || !/^[\da-f]+$/iu.test(t))
+	const normalizedHex = String(hex).replace(/^0x/iu, '').trim()
+	if (normalizedHex.length !== nBytes * 2 || !/^[\da-f]+$/iu.test(normalizedHex))
 		throw new RangeError('invalid hex length or characters')
 	const out = new Uint8Array(nBytes)
-	for (let i = 0; i < nBytes; i++)
-		out[i] = parseInt(t.slice(i * 2, i * 2 + 2), 16)
+	for (let index = 0; index < nBytes; index++)
+		out[index] = parseInt(normalizedHex.slice(index * 2, index * 2 + 2), 16)
 	return out
 }

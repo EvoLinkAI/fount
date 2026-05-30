@@ -20,7 +20,7 @@ import { hubStore } from './core/state.mjs'
 import { friendBindingForGroup } from './friendBindings.mjs'
 
 /**
- *
+ * 角色信息卡渲染与详情查询（转发 charCard 模块）。
  */
 export { getCharDetails, renderCharInfoCard, renderCharInfoCardActive } from './charCard.mjs'
 
@@ -91,7 +91,7 @@ export async function restartPrivateGroup(charname, previousGroupId) {
 	}
 	if (hubStore.privateGroup.groupId === previousGroupId)
 		clearPrivateGroupState()
-	const nodeHash = hubStore.nodeHash
+	const { nodeHash } = hubStore
 	if (!nodeHash) {
 		showToastI18n('error', 'chat.hub.noUsername')
 		return
@@ -111,7 +111,7 @@ export async function restartPrivateGroup(charname, previousGroupId) {
  */
 export async function enterPrivateGroup(charname, opts = {}) {
 	if (!charname) return
-	const nodeHash = hubStore.nodeHash
+	const { nodeHash } = hubStore
 	if (!nodeHash) {
 		showToastI18n('error', 'chat.hub.noUsername')
 		return

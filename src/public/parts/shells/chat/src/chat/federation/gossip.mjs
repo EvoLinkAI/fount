@@ -12,12 +12,17 @@ import {
 	takeOutgoingWantIdsSlot,
 } from '../../../../../../../scripts/p2p/want_ids.mjs'
 import { pickFederationTargetPeerIds } from '../governance/peerPool.mjs'
-import { verifyRemoteCheckpoint } from '../lib/checkpointVerifier.mjs'
 import { eventsPath } from '../lib/paths.mjs'
-import { extractInboundSignedEvent, isPlainObject } from '../lib/wireIngress.mjs'
+import { extractInboundSignedEvent } from '../lib/wireIngress.mjs'
 
 import { loadLocalFederationArchive, wireArchiveSummary } from './archiveHandshake.mjs'
 import { loadFederationGroupSettings, requireDagDeps } from './deps.mjs'
+import { parsePullResponseEnvelope } from './fedPullWire.mjs'
+import { signPullAttestation } from './pullAttestation.mjs'
+import {
+	applyPullInner,
+	unwrapPullEnvelopeForLocalMember,
+} from './pullEnvelope.mjs'
 import { pendingGossipRequests } from './registry.mjs'
 
 const gossipRequestDedupe = new Map()
@@ -133,12 +138,12 @@ export function notifyGossipWaiters(username, groupId, receivedIds) {
 		if (!idsPart) continue
 		const wanted = new Set(idsPart.split(','))
 		let hit = false
-		for (const eventId of receivedIds) 
+		for (const eventId of receivedIds)
 			if (wanted.has(eventId)) {
 				hit = true
 				break
 			}
-		
+
 		if (!hit) continue
 		for (const { resolve, timer } of [...waiters]) {
 			clearTimeout(timer)
@@ -156,37 +161,22 @@ export function notifyGossipWaiters(username, groupId, receivedIds) {
  * @returns {Promise<void>}
  */
 export async function handleGossipResponse(username, groupId, data) {
-	const { nodeId, appendValidatedRemoteEvent } = requireDagDeps()
-	if (!isPlainObject(data)) return
-	if (data.requesterId !== nodeId) return
+	const { nodeId } = requireDagDeps()
+	const envelope = parsePullResponseEnvelope(data)
+	if (!envelope || envelope.requesterNodeId !== nodeId) return
 
-	const rawList = data.events
-	const {channelHistories} = data
-	if (!Array.isArray(rawList) && !isPlainObject(channelHistories)) return
-
-	const remoteCheckpoint = data.checkpoint
-	if (isPlainObject(remoteCheckpoint)) {
-		const checkpointResult = await verifyRemoteCheckpoint(remoteCheckpoint, undefined)
-			.catch(() => ({ valid: false, reason: 'exception' }))
-		if (!checkpointResult.valid) {
-			console.warn(`federation: remote checkpoint invalid (${checkpointResult.reason}), rejecting gossip batch`)
-			return
-		}
-	}
+	const inner = await unwrapPullEnvelopeForLocalMember(username, groupId, envelope)
+	if (!inner) return
 
 	const receivedIds = new Set()
-	if (Array.isArray(rawList))
-		for (const rawEvent of rawList) {
+	if (Array.isArray(inner.events))
+		for (const rawEvent of inner.events) {
 			const signedEvent = extractInboundSignedEvent(rawEvent, groupId)
-			if (!signedEvent) continue
-			receivedIds.add(signedEvent.id)
-			await appendValidatedRemoteEvent(username, groupId, signedEvent, { logFailures: false })
+			if (signedEvent?.id) receivedIds.add(signedEvent.id)
 		}
 
-	if (isPlainObject(channelHistories)) {
-		const { mergeChannelHistories } = await import('../dag/queries.mjs')
-		await mergeChannelHistories(username, groupId, channelHistories)
-	}
+	const { eventsApplied } = await applyPullInner(username, groupId, inner)
+	void eventsApplied
 	notifyGossipWaiters(username, groupId, receivedIds)
 }
 
@@ -230,9 +220,8 @@ export async function requestMissingEventsGossip(username, groupId, query = {}) 
 		const waitPromise = waitForGossipProgress(username, groupId, stillMissing)
 		const { ensureFederationRoom } = await import('./room.mjs')
 		const slot = await ensureFederationRoom(username, groupId)
-		if (!slot?.sendGossipRequest) 
+		if (!slot?.sendGossipRequest)
 			forceResolveGossipWait(username, groupId, stillMissing)
-		
 		else {
 			const groupSettings = await loadFederationGroupSettings(username, groupId)
 			if (!takeOutgoingWantIdsSlot(username, groupId, wantIdsLimitsFromSettings(groupSettings))) {
@@ -245,16 +234,19 @@ export async function requestMissingEventsGossip(username, groupId, query = {}) 
 				const targets = await pickFederationTargetPeerIds(
 					username,
 					groupId,
-					slot.getRoster?.() || [],
+					slot.getRoster(),
 					groupSettings,
 					nodeId,
 				)
 				try {
+					const batchedWantIds = batchWantIds(stillMissing, wantIdsBudget)
+					const attestation = await signPullAttestation(username, groupId, { wantIds: batchedWantIds })
 					const payload = {
-						wantIds: batchWantIds(stillMissing, wantIdsBudget),
+						wantIds: batchedWantIds,
 						ttl: gossipTtl,
 						requesterId: nodeId,
 						archiveSummary: wireArchiveSummary(localArchive.summary),
+						attestation,
 					}
 					if (targets.length)
 						for (const peerId of targets)
@@ -269,7 +261,7 @@ export async function requestMissingEventsGossip(username, groupId, query = {}) 
 				await waitPromise.catch(console.error)
 			}
 		}
-		;({ filled, stillMissing } = await readFilled())
+		; ({ filled, stillMissing } = await readFilled())
 	}
 
 	return {

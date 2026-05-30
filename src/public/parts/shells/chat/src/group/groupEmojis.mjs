@@ -6,13 +6,28 @@
  * 【关联】被 group/routes/groupEmojis.mjs、chat 消息 emoji 用法记录调用；依赖 chat/lib/paths、json_loader。
  */
 import { Buffer } from 'node:buffer'
-import fs from 'node:fs'
+import fs from 'node:fs/promises'
 import path from 'node:path'
 
 import { loadJsonFile, saveJsonFile } from '../../../../../../scripts/json_loader.mjs'
+import { prefixedRandomId } from '../../../../../../scripts/p2p/id.mjs'
 import { groupDir } from '../chat/lib/paths.mjs'
 
 const MAX_EMOJI_BYTES = 512 * 1024
+
+/**
+ * @param {string} filePath 文件路径
+ * @returns {Promise<boolean>} 文件存在则为 true
+ */
+async function fileExists(filePath) {
+	try {
+		await fs.access(filePath)
+		return true
+	}
+	catch {
+		return false
+	}
+}
 
 /**
  * @param {string} username 用户
@@ -48,7 +63,7 @@ function binariesDir(username, groupId) {
  */
 export async function loadGroupEmojiManifest(username, groupId) {
 	const p = manifestPath(username, groupId)
-	if (!fs.existsSync(p)) return []
+	if (!await fileExists(p)) return []
 	const raw = await loadJsonFile(p)
 	return Array.isArray(raw?.entries) ? raw.entries : []
 }
@@ -61,9 +76,9 @@ export async function loadGroupEmojiManifest(username, groupId) {
  */
 async function saveGroupEmojiManifest(username, groupId, entries) {
 	const root = groupEmojisRoot(username, groupId)
-	if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true })
-	if (!fs.existsSync(binariesDir(username, groupId)))
-		fs.mkdirSync(binariesDir(username, groupId), { recursive: true })
+	if (!await fileExists(root)) await fs.mkdir(root, { recursive: true })
+	if (!await fileExists(binariesDir(username, groupId)))
+		await fs.mkdir(binariesDir(username, groupId), { recursive: true })
 	await saveJsonFile(manifestPath(username, groupId), { entries })
 }
 
@@ -96,7 +111,7 @@ export async function resolveGroupEmojiBinaryPath(username, groupId, emojiId) {
 	const entry = await getGroupEmojiEntry(username, groupId, emojiId)
 	if (!entry) return null
 	const filePath = path.join(binariesDir(username, groupId), binaryFilename(entry))
-	return fs.existsSync(filePath) ? filePath : null
+	return await fileExists(filePath) ? filePath : null
 }
 
 /**
@@ -109,9 +124,9 @@ export async function readGroupEmojiBinary(username, groupId, emojiId) {
 	const entry = await getGroupEmojiEntry(username, groupId, emojiId)
 	if (!entry) return null
 	const filePath = path.join(binariesDir(username, groupId), binaryFilename(entry))
-	if (!fs.existsSync(filePath)) return null
+	if (!await fileExists(filePath)) return null
 	return {
-		buffer: fs.readFileSync(filePath),
+		buffer: await fs.readFile(filePath),
 		mimeType: entry.mimeType || 'image/png',
 		entry,
 	}
@@ -138,7 +153,7 @@ export function bufferToDataUrl(buffer, mimeType) {
 export async function uploadGroupEmoji(username, groupId, buffer, originalname, mimeType, name) {
 	if (buffer.byteLength > MAX_EMOJI_BYTES) throw new Error('emoji file too large')
 	const ext = path.extname(originalname || '').toLowerCase() || (mimeType.includes('gif') ? '.gif' : '.png')
-	const emojiId = `emoji_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+	const emojiId = prefixedRandomId('emoji_')
 	const entry = {
 		emojiId,
 		name: String(name || originalname || emojiId).slice(0, 64),
@@ -150,8 +165,8 @@ export async function uploadGroupEmoji(username, groupId, buffer, originalname, 
 	}
 	const root = groupEmojisRoot(username, groupId)
 	const binDir = binariesDir(username, groupId)
-	if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true })
-	fs.writeFileSync(path.join(binDir, binaryFilename(entry)), buffer)
+	if (!await fileExists(binDir)) await fs.mkdir(binDir, { recursive: true })
+	await fs.writeFile(path.join(binDir, binaryFilename(entry)), buffer)
 	const entries = await loadGroupEmojiManifest(username, groupId)
 	entries.push(entry)
 	await saveGroupEmojiManifest(username, groupId, entries)
@@ -171,7 +186,7 @@ export async function deleteGroupEmoji(username, groupId, emojiId) {
 	const next = entries.filter(e => e?.emojiId !== emojiId)
 	await saveGroupEmojiManifest(username, groupId, next)
 	const filePath = path.join(binariesDir(username, groupId), binaryFilename(entry))
-	if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+	if (await fileExists(filePath)) await fs.unlink(filePath)
 	return true
 }
 
@@ -204,8 +219,8 @@ export async function persistGroupEmojiFromDataUrl(username, groupId, emojiId, d
 	if (!existing) entries.push(entry)
 	else Object.assign(entry, { mimeType: match[1] || mimeType })
 	const binDir = binariesDir(username, groupId)
-	if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true })
-	fs.writeFileSync(path.join(binDir, binaryFilename(entry)), buffer)
+	if (!await fileExists(binDir)) await fs.mkdir(binDir, { recursive: true })
+	await fs.writeFile(path.join(binDir, binaryFilename(entry)), buffer)
 	await saveGroupEmojiManifest(username, groupId, entries)
 	return entry
 }

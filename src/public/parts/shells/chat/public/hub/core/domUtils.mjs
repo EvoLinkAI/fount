@@ -31,7 +31,7 @@ export function activeCharPartNames() {
  * @returns {Promise<void>}
  */
 export async function warmCharEntityHashCache(charNames = activeCharPartNames()) {
-	const nodeHash = hubStore.nodeHash
+	const { nodeHash } = hubStore
 	if (!nodeHash) return
 	for (const raw of charNames) {
 		const name = String(raw || '').trim()

@@ -13,17 +13,17 @@ export {
 } from './groupWsRpc.mjs'
 
 /**
- *
+ * 群 WebSocket 连接速率限制与 PoW 挑战校验。
  */
 export { checkWsRateLimit, setPowChallenge, verifyPowSolution } from './groupWsRateLimit.mjs'
 
 /**
- *
+ * 群事件 WebSocket 广播与连接注册。
  */
 export { broadcastEvent, countGroupSockets, registerSocket } from './groupWsBroadcast.mjs'
 
 /**
- *
+ * 流式消息分片缓冲的写入、结束与读取。
  */
 export {
 	bufferStreamChunk,

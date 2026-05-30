@@ -75,7 +75,7 @@ export async function showMessageContextMenu(event, row) {
 	const eventId = String(message.eventId || row.getAttribute('data-message-id') || '')
 	const plainText = getMessageText(message) || row.querySelector('.hub-message-content')?.textContent?.trim() || ''
 	const showTextActions = !!plainText.trim() && message.type === 'message'
-	const {currentChannelId} = hubStore
+	const { currentChannelId } = hubStore
 	const showThreadRow = !!actions.groupId && !!actions.channelId && !!eventId
 		&& !!hubStore.currentState?.channelCaps?.[currentChannelId]?.canCreateThreads
 	const showEdit = !!row.querySelector('.hub-message-action[data-action="edit"]')
@@ -96,7 +96,8 @@ export async function showMessageContextMenu(event, row) {
 	openMenuEl = menu
 
 	/**
-	 *
+	 * 关闭消息右键菜单并移除文档级监听。
+	 * @returns {void}
 	 */
 	const closeOnce = () => {
 		dismissMessageContextMenu()

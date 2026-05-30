@@ -21,9 +21,9 @@ import { pendingRelayPath } from '../lib/paths.mjs'
  */
 export async function enqueuePendingRelay(username, groupId, signPayload) {
 	if (!signPayload?.id) return
-	const p = pendingRelayPath(username, groupId)
-	await mkdir(dirname(p), { recursive: true })
-	await appendJsonlSynced(p, sanitizeFederatedEvent(signPayload))
+	const pendingRelayFilePath = pendingRelayPath(username, groupId)
+	await mkdir(dirname(pendingRelayFilePath), { recursive: true })
+	await appendJsonlSynced(pendingRelayFilePath, sanitizeFederatedEvent(signPayload))
 }
 
 /**
@@ -33,26 +33,28 @@ export async function enqueuePendingRelay(username, groupId, signPayload) {
  * @returns {Promise<number>} 成功刷出条数
  */
 export async function flushPendingRelay(username, groupId, publish) {
-	const p = pendingRelayPath(username, groupId)
-	const rows = await readJsonl(p)
-	if (!rows.length) return 0
+	const pendingRelayFilePath = pendingRelayPath(username, groupId)
+	const pendingEvents = await readJsonl(pendingRelayFilePath)
+	if (!pendingEvents.length) return 0
 	const { writeFile, unlink } = await import('node:fs/promises')
-	await writeFile(p, '', 'utf8')
-	let n = 0
-	for (const ev of rows)
+	await writeFile(pendingRelayFilePath, '', 'utf8')
+	let flushedCount = 0
+	for (const pendingEvent of pendingEvents)
 		try {
-			await publish(ev)
-			n++
+			await publish(pendingEvent)
+			flushedCount++
 		}
-		catch (e) {
-			console.error('federation: pending relay flush failed', e)
-			await appendJsonlSynced(p, ev)
+		catch (publishError) {
+			console.error('federation: pending relay flush failed', publishError)
+			await appendJsonlSynced(pendingRelayFilePath, pendingEvent)
 		}
 
 	try {
-		const left = await readJsonl(p)
-		if (!left.length) await unlink(p).catch(() => { })
+		const unflushedEvents = await readJsonl(pendingRelayFilePath)
+		if (!unflushedEvents.length) await unlink(pendingRelayFilePath)
 	}
-	catch { /* ignore */ }
-	return n
+	catch (error) {
+		console.warn('federation: pending relay cleanup failed', error)
+	}
+	return flushedCount
 }

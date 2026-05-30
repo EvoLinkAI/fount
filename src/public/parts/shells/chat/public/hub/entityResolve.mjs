@@ -15,7 +15,7 @@ import { hubStore } from './core/state.mjs'
  * @returns {string | null} 本地 agent entityHash
  */
 export async function charAgentEntityHash(charname) {
-	const nodeHash = hubStore.nodeHash
+	const { nodeHash } = hubStore
 	const name = String(charname || '').trim()
 	if (!nodeHash || !name) return null
 	return (await buildCharFriendBinding(nodeHash, name)).entityHash

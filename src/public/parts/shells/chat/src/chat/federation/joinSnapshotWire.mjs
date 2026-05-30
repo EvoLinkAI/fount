@@ -1,25 +1,25 @@
 /**
- * 入群快照 Trystero 载荷解析（无 DAG 依赖）。
+ * 入群快照 / 补拉 Trystero 载荷解析（Breaking：必含 attestation / envelope）。
  */
 import { isPlainObject } from '../lib/wireIngress.mjs'
 
+import { parsePullAttestation, parsePullResponseEnvelope } from './fedPullWire.mjs'
+
 /**
- * 将未知输入安全地读取为去空白字符串。
- * @param {unknown} value 输入值
- * @returns {string} 去空白后的字符串（非字符串返回空串）
+ * @param {unknown} value 输入
+ * @returns {string} 去空白字符串
  */
 function readTrimmedString(value) {
 	return typeof value === 'string' ? value.trim() : ''
 }
 
 /**
- * 将未知输入读取为可选的小写字符串。
- * @param {unknown} value 输入值
- * @returns {string | undefined} 小写字符串；空串/非字符串返回 undefined
+ * @param {unknown} value 输入
+ * @returns {string | undefined} 小写字符串
  */
 function readOptionalLowerString(value) {
-	const s = readTrimmedString(value)
-	return s ? s.toLowerCase() : undefined
+	const trimmedString = readTrimmedString(value)
+	return trimmedString ? trimmedString.toLowerCase() : undefined
 }
 
 /**
@@ -29,33 +29,25 @@ function readOptionalLowerString(value) {
 export function parseJoinSnapshotRequest(data) {
 	if (!isPlainObject(data)) return null
 	const requestId = readTrimmedString(data.requestId)
-	const requesterId = readTrimmedString(data.requesterId)
+	const requesterNodeId = readTrimmedString(data.requesterNodeId)
 	const groupId = readTrimmedString(data.groupId)
-	if (!requestId || !requesterId || !groupId) return null
+	const attestation = parsePullAttestation(data.attestation)
+	if (!requestId || !requesterNodeId || !groupId || !attestation) return null
+	if (attestation.groupId !== groupId || attestation.requestId !== requestId) return null
 	return {
 		requestId,
-		requesterId,
+		requesterNodeId,
+		requesterPubKeyHash: attestation.requesterPubKeyHash,
 		groupId,
 		tipsHash: readOptionalLowerString(data.tipsHash),
+		attestation,
 	}
 }
 
 /**
  * @param {unknown} data 载荷
- * @returns {object | null} 解析后的响应或 null
+ * @returns {object | null} 解析后的 envelope 或 null
  */
 export function parseJoinSnapshotResponse(data) {
-	if (!isPlainObject(data)) return null
-	const requestId = readTrimmedString(data.requestId)
-	const requesterId = readTrimmedString(data.requesterId)
-	const responderNodeId = readTrimmedString(data.responderNodeId)
-	if (!requestId || !requesterId || !responderNodeId) return null
-	if (!isPlainObject(data.checkpoint) && !isPlainObject(data.channelHistories)) return null
-	return {
-		requestId,
-		requesterId,
-		responderNodeId,
-		checkpoint: data.checkpoint,
-		channelHistories: data.channelHistories,
-	}
+	return parsePullResponseEnvelope(data)
 }

@@ -153,7 +153,6 @@ export async function modifyTimeLine(groupId, channelId, delta) {
 					payload: { index: chatMetadata.chatLog.length - 1, entry: await newEntry.toData(chatMetadata.username) },
 				})
 			}
-
 		else {
 			const { charname } = timeSlice
 			const request = await getChatRequest(groupId, charname, getChannelForCharStream(chatMetadata, newEntry))

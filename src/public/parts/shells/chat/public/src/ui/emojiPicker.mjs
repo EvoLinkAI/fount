@@ -8,7 +8,8 @@
 import { onClickOutside } from './clickOutside.mjs'
 
 /**
- *
+ * 快捷反应常用 Unicode emoji 列表。
+ * @type {string[]}
  */
 export const COMMON_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '😡', '🎉', '🔥', '👀', '✅', '❌', '🤔', '👏', '🙏', '💯']
 
@@ -27,7 +28,8 @@ function emojiPickerSkin() {
 }
 
 /**
- *
+ * 懒加载 `emoji-picker-element` 自定义元素模块。
+ * @returns {Promise<void>}
  */
 async function ensurePickerModule() {
 	if (!pickerModuleLoaded) {
@@ -58,7 +60,8 @@ export async function showEmojiPicker(anchorEvent, onPick) {
 	let outsideCleanup = null
 
 	/**
-	 *
+	 * 解除点击外部关闭监听。
+	 * @returns {void}
 	 */
 	const detachClose = () => {
 		outsideCleanup?.()

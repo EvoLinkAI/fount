@@ -7,7 +7,7 @@
  */
 import { sortedPrevEventIds } from '../../../../../../../scripts/p2p/dag/index.mjs'
 import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/governance_branch.mjs'
-import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { assertHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { resolveActiveMemberKey } from '../../group/access.mjs'
 import {
 	hasMaterializedAclSnapshot,
@@ -28,12 +28,12 @@ import { PUB_KEY_HASH_HEX } from './validator.mjs'
  * @param {unknown} ref content_ref 对象
  */
 function validateContentRefPayload(ref) {
-	const contentHash = ref?.contentHash?.trim()
+	assertHex64(ref?.contentHash, 'content_ref.contentHash')
 	const algorithm = ref?.alg?.trim()
 	const byteLength = Number(ref?.byteLength)
 	const storageLocator = ref?.storageLocator?.trim()
-	if (!isHex64(contentHash) || !algorithm || !Number.isFinite(byteLength) || byteLength < 0 || !storageLocator)
-		throw new Error('content_ref requires contentHash (64 hex), alg, byteLength, storageLocator')
+	if (!algorithm || !Number.isFinite(byteLength) || byteLength < 0 || !storageLocator)
+		throw new Error('content_ref requires alg, byteLength, storageLocator')
 }
 
 const MESSAGE_MUTATION_TYPES = new Set(['message_edit', 'message_delete', 'message_feedback'])
@@ -85,8 +85,7 @@ export async function validateIngestAuthz(replicaUsername, groupId, event, opts 
 		validateContentRefPayload(event.content.content_ref)
 
 	if (MESSAGE_MUTATION_TYPES.has(event.type)) {
-		const targetId = String(event.content?.targetId || '').trim().toLowerCase()
-		if (!targetId) throw new Error('targetId required')
+		const targetId = assertHex64(event.content?.targetId, 'targetId')
 		const senderHash = resolveSenderPubKeyHash(state, event.sender, replicaUsername)
 		if (!senderHash) throw new Error(`${event.type} requires pubKeyHash sender`)
 		assertEventPermission(state, event, senderHash)

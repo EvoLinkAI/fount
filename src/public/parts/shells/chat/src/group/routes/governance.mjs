@@ -34,6 +34,8 @@ import {
 	resolveMemberKey,
 } from '../access.mjs'
 
+import { requireGroupMember, resolveGroupMember } from './middleware.mjs'
+
 /**
  * 注册权限/治理/成员管理相关 HTTP 路由。
  * @param {import('npm:websocket-express').Router} router Express 路由
@@ -63,17 +65,13 @@ export function registerGovernanceRoutes(router, authenticate) {
 			channelId,
 			state.channelPermissions || {},
 		)
-		res.status(200).json(flat)	})
+		res.status(200).json(flat)
+	})
 
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/permissions$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/permissions$/, authenticate, requireGroupMember(), async (req, res) => {
 		const groupId = req.params[0]
 		const channelId = req.params[1]
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const { state, member } = req.groupContext
 		if (!state.channels[channelId])
 			return res.status(404).json({ error: 'Channel not found' })
 
@@ -86,19 +84,14 @@ export function registerGovernanceRoutes(router, authenticate) {
 		res.status(200).json({ permissions })
 	})
 
-	router.put(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/permissions$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
+	router.put(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/permissions$/, authenticate, requireGroupMember(), async (req, res) => {
 		const groupId = req.params[0]
 		const channelId = req.params[1]
 		const { roleId, allow, deny } = req.body
 		if (!roleId)
 			return res.status(400).json({ error: 'roleId is required' })
 
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const { username, state, member } = req.groupContext
 		if (!state.channels[channelId])
 			return res.status(404).json({ error: 'Channel not found' })
 		if (!state.roles[roleId])
@@ -116,16 +109,12 @@ export function registerGovernanceRoutes(router, authenticate) {
 		res.status(200).json({})
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/roles$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/roles$/, authenticate, requireGroupMember(), async (req, res) => {
 		const groupId = req.params[0]
-		const { name, color } = req.body
-
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const {
+			body: { name, color },
+			groupContext: { username, state, member }
+		} = req
 
 		const canManageRoles = hasPermission(member, PERMISSIONS.MANAGE_ROLES, state.roles, governanceChannelId(state), state.channelPermissions)
 		if (!canManageRoles)
@@ -153,16 +142,13 @@ export function registerGovernanceRoutes(router, authenticate) {
 	})
 
 	router.put(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/roles\/([^/]+)$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
 		const roleId = decodeURIComponent(req.params[1])
 		const { name, color, position, isHoisted } = req.body || {}
 
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state, member } = membership
 
 		const canManageRoles = hasPermission(member, PERMISSIONS.MANAGE_ROLES, state.roles, governanceChannelId(state), state.channelPermissions)
 		if (!canManageRoles)
@@ -190,15 +176,12 @@ export function registerGovernanceRoutes(router, authenticate) {
 	})
 
 	router.delete(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/roles\/([^/]+)$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
 		const roleId = decodeURIComponent(req.params[1])
 
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state, member } = membership
 
 		const canManageRoles = hasPermission(member, PERMISSIONS.MANAGE_ROLES, state.roles, governanceChannelId(state), state.channelPermissions)
 		if (!canManageRoles)
@@ -219,16 +202,13 @@ export function registerGovernanceRoutes(router, authenticate) {
 	})
 
 	router.put(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/roles\/([^/]+)\/permissions$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
 		const roleId = decodeURIComponent(req.params[1])
 		const { permission, enabled, permissions: bulkPermissions } = req.body
 
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state, member } = membership
 		const canManageRoles = hasPermission(member, PERMISSIONS.MANAGE_ROLES, state.roles, governanceChannelId(state), state.channelPermissions)
 		if (!canManageRoles)
 			return res.status(403).json({ error: 'No permission to manage roles' })
@@ -254,16 +234,13 @@ export function registerGovernanceRoutes(router, authenticate) {
 	})
 
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/members\/([^/]+)\/(kick|ban|unban)$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
 		const targetMemberKey = decodeURIComponent(req.params[1])
 		const action = req.params[2]
 
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state, member, memberKey } = membership
 
 		const govCh = governanceChannelId(state)
 		if (action === 'unban') {
@@ -354,15 +331,8 @@ export function registerGovernanceRoutes(router, authenticate) {
 		res.status(200).json({})
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/key-rotate$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/key-rotate$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, state, member, groupId } = req.groupContext
 
 		const activeCount = Object.values(state.members || {}).filter(m => m?.status === 'active').length
 		const governanceChannel = governanceChannelId(state)
@@ -391,7 +361,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 		})
 		const newH = deriveNewH(hEntry.h, event.id, nonce)
 		await appendH(username, groupId, newGen, newH)
-		res.status(200).json({ event })
+		res.status(200).json({ event, generation: newGen, maxGenerations: 64 })
 	})
 
 	/**
@@ -401,13 +371,11 @@ export function registerGovernanceRoutes(router, authenticate) {
 	 * 已登录管理员提交时，服务端用本机 `local_signer_seed` 自动追加联署；亦可附带其他管理员的签名。
 	 */
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/owner-succession$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
 
-		const { state } = await getState(username, groupId)
-		const callerKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!callerKey)
-			return res.status(403).json({ error: 'Not a member' })
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state, member: callerMember, memberKey: callerKey } = membership
 
 		const { proposedOwnerPubKeyHash, ballotId, adminSignatures, thresholdRatio: thresholdRaw } = req.body || {}
 
@@ -433,9 +401,8 @@ export function registerGovernanceRoutes(router, authenticate) {
 				.map(hex => pubKeyHash(Buffer.from(hex, 'hex'))),
 		)
 
-		const callerMember = state.members[callerKey]
 		const callerAdminHash = String(callerMember?.pubKeyHash || callerKey).trim().toLowerCase()
-		if (adminHashes.has(callerAdminHash) && !seenAdminHashes.has(callerAdminHash)) 
+		if (adminHashes.has(callerAdminHash) && !seenAdminHashes.has(callerAdminHash))
 			try {
 				const local = await signOwnerSuccessionAsLocalAdmin(username, groupId, ballot)
 				mergedSignatures.push(local)
@@ -443,10 +410,11 @@ export function registerGovernanceRoutes(router, authenticate) {
 			}
 			catch (signError) {
 				if (!mergedSignatures.length)
-					return res.status(403).json({ error: `Could not sign as admin: ${signError.message}`,
+					return res.status(403).json({
+						error: `Could not sign as admin: ${signError.message}`,
 					})
 			}
-		
+
 
 		if (!mergedSignatures.length)
 			return res.status(403).json({ error: 'No admin signatures (caller is not admin or local signer unavailable)' })
@@ -461,7 +429,8 @@ export function registerGovernanceRoutes(router, authenticate) {
 			thresholdRatio,
 		)
 		if (!passed)
-			return res.status(403).json({ error: `succession ballot did not reach threshold (${thresholdRatio * 100}% of ${adminHashes.size} admin(s))`,
+			return res.status(403).json({
+				error: `succession ballot did not reach threshold (${thresholdRatio * 100}% of ${adminHashes.size} admin(s))`,
 			})
 
 		// 找出所有带 MANAGE_ADMINS 权限的角色

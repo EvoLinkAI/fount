@@ -4,7 +4,6 @@
 /* global Deno */
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 
-import { takeIncomingMailboxPutSlot } from '../../../../../scripts/p2p/mailbox_rate.mjs'
 import {
 	MAX_BUCKET_ENTRIES,
 	mailboxBucketKey,
@@ -12,6 +11,7 @@ import {
 	pruneMailboxBuckets,
 	pruneMailboxGlobalFair,
 } from '../../../../../scripts/p2p/mailbox_prune.mjs'
+import { takeIncomingMailboxPutSlot } from '../../../../../scripts/p2p/mailbox_rate.mjs'
 
 const RECIPIENT_A = 'a'.repeat(64)
 const RECIPIENT_B = 'b'.repeat(64)

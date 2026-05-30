@@ -211,7 +211,7 @@ export async function renderStreamingChannel(container, channel, opts = {}) {
 			escapeHtml,
 		})
 		container.querySelector('.hub-stream-refresh-button')?.addEventListener('click', () => {
-			if (typeof opts.onRefreshAuth === 'function') void opts.onRefreshAuth()
+			void opts.onRefreshAuth?.()
 		})
 		return
 	}

@@ -5,10 +5,10 @@
  * 【数据结构】当前 groupId、stateJson、各 Tab DOM 引用。
  * 【关联】auditLogPanel.mjs、groupApi、groupViewerPermissions；Hub 设置路由。
  */
+import { openDialogFromTemplate } from '../../../../scripts/dialog.mjs'
 import { confirmI18n, initTranslations, promptI18n } from '../../../../scripts/i18n.mjs'
 import {
 	mountTemplate,
-	renderTemplateNoScriptActivation,
 	usingTemplates,
 } from '../../../../scripts/template.mjs'
 import { showToastI18n } from '../../../../scripts/toast.mjs'
@@ -216,7 +216,7 @@ ${del}
 		entriesEmpty: !entries.length,
 	})
 	const upload = document.getElementById('group-emoji-upload')
-	if (upload) 
+	if (upload)
 		upload.addEventListener('change', async () => {
 			const file = upload.files?.[0]
 			if (!file) return
@@ -237,7 +237,7 @@ ${del}
 			emojisPanelReady = false
 			await ensureGroupEmojisPanel()
 		})
-	
+
 	container.querySelectorAll('[data-delete-emoji]').forEach(deleteEmojiButton => {
 		deleteEmojiButton.addEventListener('click', async () => {
 			const emojiId = deleteEmojiButton.getAttribute('data-delete-emoji')
@@ -331,8 +331,15 @@ async function renderGroupSettings() {
 	document.getElementById('group-settings-key-rotate-button')?.addEventListener('click', async () => {
 		if (!currentGroupId || !confirmI18n('chat.group.settingsPage.keyRotateConfirm')) return
 		try {
-			await rotateGroupKey(currentGroupId)
+			const result = await rotateGroupKey(currentGroupId)
 			showToastI18n('success', 'chat.group.settingsPage.keyRotateOk')
+			const generation = Number(result?.generation)
+			const maxGenerations = Number(result?.maxGenerations) || 64
+			if (Number.isFinite(generation) && generation >= maxGenerations - 4)
+				showToastI18n('warning', 'chat.group.settingsPage.gshGenerationNearLimit', {
+					generation: String(generation),
+					maxGenerations: String(maxGenerations),
+				})
 			await loadGroupSettings(currentGroupId)
 		}
 		catch (error) {
@@ -617,51 +624,49 @@ async function showOwnerSuccessionModal() {
 	if (!currentGroupId) return
 	usingTemplates('/parts/shells:chat/src/templates')
 	const viewerPubKeyHash = String(currentStateJson?.viewerMemberPubKeyHash || '').trim().toLowerCase()
-	const modal = document.createElement('dialog')
-	modal.className = 'modal'
-	modal.appendChild(await renderTemplateNoScriptActivation('group/modals/owner_succession', {
+	await openDialogFromTemplate('group/modals/owner_succession', {
 		viewerPubKeyHash: escapeHtml(viewerPubKeyHash),
-	}))
-	document.body.appendChild(modal)
-	modal.showModal()
-	const input = modal.querySelector('[data-owner-pubkey-input]')
-	const submitButton = modal.querySelector('[data-owner-succ-submit]')
-	/**
-	 *
-	 */
-	const closeModal = () => {
-		modal.close()
-		modal.remove()
-	}
-	modal.querySelector('[data-owner-succ-self]')?.addEventListener('click', () => {
-		if (input instanceof HTMLInputElement && viewerPubKeyHash)
-			input.value = viewerPubKeyHash
-	})
-	modal.querySelector('[data-owner-succ-cancel]')?.addEventListener('click', closeModal)
-	modal.querySelector('[data-owner-succ-submit]')?.addEventListener('click', async () => {
-		const proposedOwnerPubKeyHash = input instanceof HTMLInputElement ? input.value.trim().toLowerCase() : ''
-		if (!proposedOwnerPubKeyHash) {
-			showToastI18n('warning', 'chat.group.ownerSuccessionNeedHash')
-			return
-		}
-		if (submitButton instanceof HTMLButtonElement) submitButton.disabled = true
-		try {
-			await submitOwnerSuccession(currentGroupId, {
-				proposedOwnerPubKeyHash,
-				ballotId: crypto.randomUUID(),
+	}, {
+		activateScripts: false,
+		/**
+		 * @param {HTMLDialogElement} dialog 对话框
+		 * @returns {void}
+		 */
+		onReady: dialog => {
+			const input = dialog.querySelector('[data-owner-pubkey-input]')
+			const submitButton = dialog.querySelector('[data-owner-succ-submit]')
+			/** @returns {void} */
+			const closeModal = () => dialog.close()
+			dialog.querySelector('[data-owner-succ-self]')?.addEventListener('click', () => {
+				if (input instanceof HTMLInputElement && viewerPubKeyHash)
+					input.value = viewerPubKeyHash
 			})
-			showToastI18n('success', 'chat.group.settingsPage.ownerSuccessionOk')
-			closeModal()
-			await loadGroupSettings(currentGroupId)
-		}
-		catch (error) {
-			showToastI18n('error', 'chat.group.settingsPage.ownerSuccessionFailed', { error: error.message })
-		}
-		finally {
-			if (submitButton instanceof HTMLButtonElement) submitButton.disabled = false
-		}
+			dialog.querySelector('[data-owner-succ-cancel]')?.addEventListener('click', closeModal)
+			dialog.querySelector('[data-owner-succ-submit]')?.addEventListener('click', async () => {
+				const proposedOwnerPubKeyHash = input instanceof HTMLInputElement ? input.value.trim().toLowerCase() : ''
+				if (!proposedOwnerPubKeyHash) {
+					showToastI18n('warning', 'chat.group.ownerSuccessionNeedHash')
+					return
+				}
+				if (submitButton instanceof HTMLButtonElement) submitButton.disabled = true
+				try {
+					await submitOwnerSuccession(currentGroupId, {
+						proposedOwnerPubKeyHash,
+						ballotId: crypto.randomUUID(),
+					})
+					showToastI18n('success', 'chat.group.settingsPage.ownerSuccessionOk')
+					closeModal()
+					await loadGroupSettings(currentGroupId)
+				}
+				catch (error) {
+					showToastI18n('error', 'chat.group.settingsPage.ownerSuccessionFailed', { error: error.message })
+				}
+				finally {
+					if (submitButton instanceof HTMLButtonElement) submitButton.disabled = false
+				}
+			})
+		},
 	})
-	modal.addEventListener('close', () => modal.remove())
 }
 
 
@@ -706,6 +711,14 @@ async function saveGroupSettings() {
 			compactTriggerEventDepth: Number.parseInt(document.getElementById('compact-trigger-event-depth')?.value, 10) || 100_000,
 			messageRateLimitPerMin: Math.max(1, Math.min(120,
 				Number.parseInt(document.getElementById('message-rate-limit-per-min')?.value, 10) || 10)),
+			autoReplyTokenBucketEnabled: !!document.getElementById('auto-reply-token-bucket-enabled')?.checked,
+			autoReplyTokenBurst: Math.max(1, Math.min(12,
+				Number.parseInt(document.getElementById('auto-reply-token-burst')?.value, 10) || 2)),
+			autoReplyTokenRefillPerMessage: Math.max(0.1, Math.min(5,
+				Number.parseFloat(document.getElementById('auto-reply-token-refill')?.value) || 0.5)),
+			fileCeMode: String(document.getElementById('file-ce-mode')?.value || 'convergent') === 'random'
+				? 'random'
+				: 'convergent',
 			iceServers: collectIceServersFromDom(),
 			discoveryPublic: !!document.getElementById('discovery-public')?.checked,
 			discoveryTitle: document.getElementById('discovery-title')?.value?.trim() || null,
@@ -816,9 +829,9 @@ function showCreateRoleModal() {
  */
 async function kickMember(username) {
 	const viewerKey = String(currentState?.viewerMemberPubKeyHash || '').toLowerCase()
-	if (viewerKey && username.toLowerCase() === viewerKey) 
+	if (viewerKey && username.toLowerCase() === viewerKey)
 		if (!confirmI18n('chat.group.settingsPage.kickSelfNodeWarning', { name: username })) return
-	
+
 	if (!confirmI18n('chat.group.settingsPage.kickConfirm', { name: username })) return
 	const resp = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(currentGroupId)}/members/${encodeURIComponent(username)}/kick`, {
 		method: 'POST',

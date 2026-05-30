@@ -9,11 +9,11 @@ import { confirmI18n } from '../../../../scripts/i18n.mjs'
 import { mountTemplate } from '../../../../scripts/template.mjs'
 import { showToastI18n } from '../../../../scripts/toast.mjs'
 
-import { getCharDetails, restartPrivateGroup } from './privateGroup.mjs'
 import { avatarColor, avatarInitial, escapeHtml } from './core/domUtils.mjs'
 import { hubStore } from './core/state.mjs'
 import { resolveFriendBinding } from './friendBindings.mjs'
 import { enterFriendChat } from './friendChat.mjs'
+import { getCharDetails, restartPrivateGroup } from './privateGroup.mjs'
 import { loadGroups } from './serverBar.mjs'
 
 /**
@@ -66,7 +66,7 @@ async function friendRowTemplateData(friend, details) {
 	const rawDesc = String(friend.session.lastMessageContent || '').trim()
 	const subtitle = rawDesc.length > 52 ? `${rawDesc.slice(0, 52)}…` : rawDesc
 	const active = hubStore.privateGroup.groupId === friend.groupId
-	if (!friend.charname) 
+	if (!friend.charname)
 		return {
 			kind: 'dm',
 			name: friend.groupId,
@@ -77,7 +77,7 @@ async function friendRowTemplateData(friend, details) {
 			avatarBg: avatarColor(friend.displayName),
 			avatarInner: escapeHtml(avatarInitial(friend.displayName)),
 		}
-	
+
 	const info = details?.info || {}
 	const avatarUrl = info.avatar || details?.avatar || ''
 	const displayName = info.name || friend.displayName
@@ -172,7 +172,7 @@ export async function renderFriendsColumn(friends) {
 		escapeHtml,
 	})
 	container.querySelectorAll('.hub-char-list-item').forEach((el) => {
-		const groupId = el.dataset.groupId
+		const { groupId } = el.dataset
 		const row = friends.find(f => f.groupId === groupId)
 		if (!row) return
 		el.addEventListener('click', () => void enterFriendChat({ groupId: row.groupId, binding: row.binding }))

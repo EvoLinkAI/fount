@@ -20,7 +20,7 @@ import { readJsonl } from '../dag/storage.mjs'
 import { messagesPath } from '../lib/paths.mjs'
 
 /**
- *
+ * 频道 message 行 eventId 的 64 位 hex 校验正则。
  */
 export const CHANNEL_MESSAGE_EVENT_ID_RE = EVENT_ID_HEX
 
@@ -45,7 +45,7 @@ export async function findChannelMessageRow(username, groupId, channelId, eventI
 	if (!CHANNEL_MESSAGE_EVENT_ID_RE.test(eventIdNorm)) return null
 	const { state } = await getState(username, groupId)
 	const indexed = state.messageSenderIndex?.[eventIdNorm]
-	if (indexed && String(indexed.channelId) === String(channelId)) 
+	if (indexed && String(indexed.channelId) === String(channelId))
 		return {
 			eventId: eventIdNorm,
 			type: 'message',
@@ -53,7 +53,7 @@ export async function findChannelMessageRow(username, groupId, channelId, eventI
 			charId: indexed.charId || null,
 			content: { charOwner: indexed.charOwner || null },
 		}
-	
+
 	const lines = await readJsonl(messagesPath(username, groupId, channelId))
 	return lines.find(row =>
 		row.type === 'message' && String(row.eventId).toLowerCase() === eventIdNorm,

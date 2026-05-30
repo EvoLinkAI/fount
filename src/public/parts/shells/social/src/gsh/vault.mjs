@@ -1,0 +1,137 @@
+import { Buffer } from 'node:buffer'
+import { randomUUID, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
+
+import { deriveSocialPostKey, encryptHForMember, generateH } from '../../../../../../scripts/p2p/gsh.mjs'
+import { vaultGroupId } from '../../../../../../scripts/p2p/social_namespace.mjs'
+import { vaultStatePath } from '../paths.mjs'
+
+/**
+ * 读取或初始化 GSH vault 状态（H 与 generation）。
+ * @param {string} username 用户
+ * @param {string} entityHash owner
+ * @returns {Promise<{ H: string, generation: number }>} GSH vault 状态
+ */
+export async function loadVaultGsh(username, entityHash) {
+	try {
+		const storedState = JSON.parse(await readFile(vaultStatePath(username, entityHash), 'utf8'))
+		if (storedState?.H) return { H: String(storedState.H), generation: Number(storedState.generation) || 0 }
+	}
+	catch { /* init below */ }
+	const vaultSecret = generateH()
+	const state = { H: vaultSecret, generation: 0 }
+	await saveVaultGsh(username, entityHash, state)
+	return state
+}
+
+/**
+ * 持久化 GSH vault 状态。
+ * @param {string} username 用户
+ * @param {string} entityHash owner
+ * @param {{ H: string, generation: number }} state vault 状态
+ * @returns {Promise<void>}
+ */
+export async function saveVaultGsh(username, entityHash, state) {
+	await mkdir(`${vaultStatePath(username, entityHash).replace(/[/\\][^/\\]+$/, '')}`, { recursive: true })
+	await writeFile(vaultStatePath(username, entityHash), JSON.stringify(state, null, '\t'), 'utf8')
+}
+
+/**
+ * 使用 AES-GCM 加密 UTF-8 明文。
+ * @param {string} plaintext UTF-8 明文
+ * @param {Buffer} key AES key
+ * @returns {{ iv: string, ciphertext: string, authTag: string }} AES-GCM 密文信封
+ */
+function encryptAesGcm(plaintext, key) {
+	const iv = randomBytes(12)
+	const cipher = createCipheriv('aes-256-gcm', key, iv)
+	const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+	return {
+		iv: iv.toString('base64'),
+		ciphertext: ciphertext.toString('base64'),
+		authTag: cipher.getAuthTag().toString('base64'),
+	}
+}
+
+/**
+ * 使用 AES-GCM 解密密文信封。
+ * @param {object} envelope 密文信封
+ * @param {Buffer} key AES key
+ * @returns {string} 明文
+ */
+function decryptAesGcm(envelope, key) {
+	const iv = Buffer.from(envelope.iv, 'base64')
+	const decipher = createDecipheriv('aes-256-gcm', key, iv)
+	decipher.setAuthTag(Buffer.from(envelope.authTag, 'base64'))
+	return Buffer.concat([
+		decipher.update(Buffer.from(envelope.ciphertext, 'base64')),
+		decipher.final(),
+	]).toString('utf8')
+}
+
+/**
+ * 对 followers 可见帖加密 content（GSH 方案）。
+ * @param {string} username 用户
+ * @param {string} entityHash owner
+ * @param {string} postKeyId 帖子密钥 id（client 生成 UUID，独立于 event.id）
+ * @param {object} content 明文 content
+ * @param {string} visibility public|followers
+ * @returns {Promise<object>} 加密后的 content 或原文
+ */
+export async function maybeEncryptPostContent(username, entityHash, postKeyId, content, visibility) {
+	if (visibility !== 'followers') return content
+	const { H } = await loadVaultGsh(username, entityHash)
+	const key = deriveSocialPostKey(H, postKeyId)
+	const payload = JSON.stringify(content)
+	const encrypted = encryptAesGcm(payload, key)
+	return {
+		scheme: 'gsh-social',
+		postKeyId,
+		generation: 0,
+		...encrypted,
+	}
+}
+
+/**
+ * 解密 GSH 加密帖 content；失败返回 null。
+ * @param {string} username 用户
+ * @param {string} entityHash owner
+ * @param {object} content 事件 content
+ * @returns {object | null} 解密后 content；无法解密返回 null
+ */
+export async function maybeDecryptPostContent(username, entityHash, content) {
+	if (!content || content.scheme !== 'gsh-social') return content
+	try {
+		const { H } = await loadVaultGsh(username, entityHash)
+		const key = deriveSocialPostKey(H, String(content.postKeyId || ''))
+		const plaintext = decryptAesGcm(content, key)
+		return JSON.parse(plaintext)
+	}
+	catch {
+		return null
+	}
+}
+
+/**
+ * 构建 follow_approve 事件的 GSH 载荷片段。
+ * @param {string} username owner 用户
+ * @param {string} entityHash owner
+ * @param {string} followerPubKeyHex 关注者公钥
+ * @returns {Promise<object>} follow_approve 载荷片段
+ */
+export async function buildFollowApprovePayload(username, entityHash, followerPubKeyHex) {
+	const { H } = await loadVaultGsh(username, entityHash)
+	return {
+		targetPubKeyHex: followerPubKeyHex,
+		encrypted_H: encryptHForMember(H, followerPubKeyHex),
+		vaultGroupId: vaultGroupId(entityHash),
+	}
+}
+
+/**
+ * 生成新的 vault 文件 UUID。
+ * @returns {string} 新 fileId
+ */
+export function newVaultFileId() {
+	return randomUUID()
+}

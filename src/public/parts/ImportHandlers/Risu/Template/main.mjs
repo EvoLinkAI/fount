@@ -345,8 +345,9 @@ const charAPI_definition = {
 			 * @returns {Promise<boolean>} 是否在本轮随机中主动发言
 			 */
 			onMessage: async ({ onlineCount }) => {
-				const talkativeness = Object(chardata.extensions?.talkativeness) instanceof Number
-					? Math.max(0.05, Number(chardata.extensions.talkativeness) * 2)
+				const rawTalkativeness = Number(chardata.extensions?.talkativeness)
+				const talkativeness = Number.isFinite(rawTalkativeness)
+					? Math.max(0.05, rawTalkativeness * 2)
 					: 1
 				return Math.random() < (1 / onlineCount) * talkativeness * 2
 			},

@@ -20,7 +20,8 @@ export function createBufferedSyncPreviewUpdater(asyncPreviewUpdater) {
 	let pending = Promise.resolve()
 
 	/**
-	 *
+	 * 串行 drain 队列：在 Promise 链上调用异步预览更新器处理合并后的 `lastReply`。
+	 * @returns {void}
 	 */
 	function drain() {
 		if (drainScheduled) return

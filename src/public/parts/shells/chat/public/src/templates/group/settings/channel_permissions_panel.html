@@ -8,12 +8,11 @@
 				<div class="text-xs font-semibold opacity-60 mb-2" data-i18n="chat.group.settingsPage.channelPermsSelectChannel"></div>
 				<ul class="menu menu-sm bg-base-300 rounded-box p-1 max-h-64 overflow-y-auto">
 					${channels.map(ch => `
-						<li>
-							<button type="button" class="${ch.id === selectedChannelId ? 'active' : ''}"
-								data-action="select-channel" data-channel-id="${escapeHtml(ch.id)}">
-								${escapeHtml(ch.name)}
-							</button>
-						</li>
+					<li>
+						<button type="button" class="${ch.id === selectedChannelId ? 'active' : ''}" data-action="select-channel" data-channel-id="${escapeHtml(ch.id)}">
+							${escapeHtml(ch.name)}
+						</button>
+					</li>
 					`).join('')}
 				</ul>
 			</div>
@@ -22,47 +21,37 @@
 					<select id="channel-perms-add-role" class="select select-bordered select-sm">
 						<option value="">—</option>
 						${addableRoles.map(r => `
-							<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>
+						<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>
 						`).join('')}
 					</select>
-					<button type="button" class="btn btn-sm btn-outline" data-action="add-role-override"
-						data-i18n="chat.group.settingsPage.channelPermsAddRole"></button>
+					<button type="button" class="btn btn-sm btn-outline" data-action="add-role-override" data-i18n="chat.group.settingsPage.channelPermsAddRole"></button>
 				</div>
 				<div class="space-y-4">
 					${rolePanels.length ? rolePanels.map(panel => `
-						<div class="collapse collapse-arrow bg-base-300" data-role-panel="${escapeHtml(panel.roleId)}">
-							<input type="checkbox" checked />
-							<div class="collapse-title font-medium flex items-center justify-between gap-2 pr-12">
-								<span class="flex items-center gap-2">
-									<span class="w-3 h-3 rounded-full" style="background-color: ${escapeHtml(panel.color)}"></span>
-									${escapeHtml(panel.name)}
-								</span>
-								<button type="button" class="btn btn-ghost btn-xs text-error z-10"
-									data-action="remove-role-override" data-role-id="${escapeHtml(panel.roleId)}"
-									data-i18n="chat.group.settingsPage.channelPermsRemoveRole"></button>
-							</div>
-							<div class="collapse-content">
-								<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-									${panel.permRows.map(row => `
-										<div class="flex items-center justify-between gap-2 py-1">
-											<span class="text-sm" data-i18n="chat.group.settingsPage.perm${row.perm}"></span>
-											<div class="join join-horizontal" role="group"
-												data-role-id="${escapeHtml(panel.roleId)}" data-perm="${row.perm}">
-												<button type="button" class="btn btn-xs join-item ${row.state === 'neutral' ? 'btn-active' : 'btn-ghost'}"
-													data-action="channel-perm-state" data-state="neutral"
-													data-i18n="chat.group.settingsPage.channelPermsStateNeutral"></button>
-												<button type="button" class="btn btn-xs join-item ${row.state === 'allow' ? 'btn-success btn-active' : 'btn-ghost'}"
-													data-action="channel-perm-state" data-state="allow"
-													data-i18n="chat.group.settingsPage.channelPermsStateAllow"></button>
-												<button type="button" class="btn btn-xs join-item ${row.state === 'deny' ? 'btn-error btn-active' : 'btn-ghost'}"
-													data-action="channel-perm-state" data-state="deny"
-													data-i18n="chat.group.settingsPage.channelPermsStateDeny"></button>
-											</div>
-										</div>
-									`).join('')}
+					<div class="collapse collapse-arrow bg-base-300" data-role-panel="${escapeHtml(panel.roleId)}">
+						<input type="checkbox" checked />
+						<div class="collapse-title font-medium flex items-center justify-between gap-2 pr-12">
+							<span class="flex items-center gap-2">
+								<span class="w-3 h-3 rounded-full" style="background-color: ${escapeHtml(panel.color)}"></span>
+								${escapeHtml(panel.name)}
+							</span>
+							<button type="button" class="btn btn-ghost btn-xs text-error z-10" data-action="remove-role-override" data-role-id="${escapeHtml(panel.roleId)}" data-i18n="chat.group.settingsPage.channelPermsRemoveRole"></button>
+						</div>
+						<div class="collapse-content">
+							<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+								${panel.permRows.map(row => `
+								<div class="flex items-center justify-between gap-2 py-1">
+									<span class="text-sm" data-i18n="chat.group.settingsPage.perm${row.perm}"></span>
+									<div class="join join-horizontal" role="group" data-role-id="${escapeHtml(panel.roleId)}" data-perm="${row.perm}">
+										<button type="button" class="btn btn-xs join-item ${row.state === 'neutral' ? 'btn-active' : 'btn-ghost'}" data-action="channel-perm-state" data-state="neutral" data-i18n="chat.group.settingsPage.channelPermsStateNeutral"></button>
+										<button type="button" class="btn btn-xs join-item ${row.state === 'allow' ? 'btn-success btn-active' : 'btn-ghost'}" data-action="channel-perm-state" data-state="allow" data-i18n="chat.group.settingsPage.channelPermsStateAllow"></button>
+										<button type="button" class="btn btn-xs join-item ${row.state === 'deny' ? 'btn-error btn-active' : 'btn-ghost'}" data-action="channel-perm-state" data-state="deny" data-i18n="chat.group.settingsPage.channelPermsStateDeny"></button>
+									</div>
 								</div>
+								`).join('')}
 							</div>
 						</div>
+					</div>
 					`).join('') : '<p class="text-sm opacity-60 py-4">—</p>'}
 				</div>
 			</div>

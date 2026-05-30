@@ -10,7 +10,7 @@ import {
 	renderTemplateAsHtmlString,
 } from '../../../../../scripts/template.mjs'
 import { preprocessChatMarkdown, resolveEmojiUrlBestEffort } from '../../src/chatMarkdown.mjs'
-import { getChatMarkdownConvertor } from '../../src/chatMarkdownConvertor.mjs'
+import { processChatMarkdown } from '../../src/chatMarkdownConvertor.mjs'
 import { firstCustomEmojiRef } from '../../src/customEmojis.mjs'
 import { fetchGroupFileAsBlobUrl } from '../../src/groupFileBlob.mjs'
 import {
@@ -359,7 +359,7 @@ async function renderVoteBlock(message, allMessages) {
  * @returns {Promise<string>} HTML
  */
 export async function renderMessageReactionsHtml(message, allMessages, reactionEvents, viewerMemberId, opts = {}) {
-	const {eventId} = message
+	const { eventId } = message
 	if (!eventId || message.type !== 'message') return ''
 	const reactions = tallyReactions([...allMessages, ...reactionEvents], eventId, viewerMemberId)
 	if (!reactions.size && !opts.canAddReactions) return ''
@@ -450,7 +450,8 @@ export async function renderChannelMessageBlock(message, prevSender, prevTime, a
 	const { displayName: displayAuthor, profileKey: avatarKey } = authorPresentationKeys(authorKey)
 	const streamingAttr = generating ? ' data-streaming="1"' : ''
 	const pendingAttr = message.pending ? ' data-pending="1"' : ''
-	const rowAttrs = `data-message-id="${escapeHtml(String(message.eventId))}" data-author-key="${escapeHtml(authorKey)}" data-message-type="${escapeHtml(message.type || 'message')}"${message.isRemote ? ' data-is-remote="1"' : ''}${authorAttr}${charAttr}${streamingAttr}${pendingAttr}`
+	const failedAttr = message.sendFailed ? ' data-send-failed="1"' : ''
+	const rowAttrs = `data-message-id="${escapeHtml(String(message.eventId))}" data-author-key="${escapeHtml(authorKey)}" data-message-type="${escapeHtml(message.type || 'message')}"${message.isRemote ? ' data-is-remote="1"' : ''}${authorAttr}${charAttr}${streamingAttr}${pendingAttr}${failedAttr}`
 
 	const timeAttrs = formatTimeAttrs(time)
 	const typingLabelHtml = generating
@@ -493,9 +494,8 @@ export async function renderChannelMessageBlock(message, prevSender, prevTime, a
 
 	let bodyHtml
 	let bubbleAttrs = ''
-	if (generating) 
+	if (generating)
 		bodyHtml = await renderTemplateAsHtmlString('hub/messages/streaming_body', {})
-	
 	else {
 		const plainText = getMessageText(message)
 		const decryptHtml = await renderDecryptBodyHtml(message)
@@ -518,7 +518,10 @@ export async function renderChannelMessageBlock(message, prevSender, prevTime, a
 			|| (useVote
 				? await renderVoteBlock(message, allMessages)
 				: await renderMessageContent(plainText))
-		bodyHtml = `${refHtml}${truncBanner}${bodyCore}${filesHtml}`
+		const failedBanner = message.sendFailed
+			? await renderTemplateAsHtmlString('hub/messages/send_failed_banner', { eventId: escapeHtml(String(message.eventId)) })
+			: ''
+		bodyHtml = `${refHtml}${truncBanner}${bodyCore}${filesHtml}${failedBanner}`
 
 		if (usePlainMd)
 			bubbleAttrs = ` data-md-raw="${escapeHtml(plainText)}" data-md-author="${escapeHtml(String(message.authorPubKeyHash || message.sender || ''))}"`
@@ -544,7 +547,7 @@ export async function renderChannelMessageBlock(message, prevSender, prevTime, a
 
 	return {
 		html: await renderMessageRowShell({
-			rowClass: `hub-message ${isFirst ? 'first-in-group' : ''}${message.pending ? ' hub-message-pending' : ''}`.trim(),
+			rowClass: `hub-message ${isFirst ? 'first-in-group' : ''}${message.pending ? ' hub-message-pending' : ''}${message.sendFailed ? ' hub-message-send-failed' : ''}`.trim(),
 			align,
 			bubbleClass,
 			rowAttrs,
@@ -652,7 +655,8 @@ function wireBubbleOffscreenGuards(bubble, trusted, messageId, container) {
 		attachOffscreenEmbedGuard(bubble),
 		attachUntrustedMarkdownOffscreenGuard(bubble, {
 			/**
-			 *
+			 * 用户确认后重新 hydrate 该条 Markdown。
+			 * @returns {void}
 			 */
 			onReveal: () => {
 				bubble.dataset.mdRevealed = '1'
@@ -690,8 +694,10 @@ async function hydrateOneMarkdown(container, messageId, row, bubble) {
 		const markdownWithEmojis = await preprocessChatMarkdown(raw, {
 			resolveEmojiUrl: resolveEmojiUrlBestEffort,
 		})
-		const markdownConvertor = await getChatMarkdownConvertor(trusted)
-		const html = String(await markdownConvertor.process({ value: markdownWithEmojis, data: { cache: {} } }))
+		const html = await processChatMarkdown(
+			{ value: markdownWithEmojis, data: { cache: {} } },
+			trusted,
+		)
 		bubble.replaceChildren(await createDocumentFragmentFromHtmlStringNoScriptActivation(html))
 		delete bubble.dataset.mdRaw
 		bubble.dataset.mdHydrated = '1'

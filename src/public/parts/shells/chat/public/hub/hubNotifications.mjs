@@ -1,6 +1,8 @@
 /**
  * Hub 浏览器通知：页面在后台时对新频道/DAG 消息弹出 Notification。
  */
+import { fetchMailboxSummary } from '../src/api/mailboxApi.mjs'
+
 import { getMessageText } from './messages/messageRender.mjs'
 
 /** @type {number} */
@@ -19,9 +21,7 @@ export function getMailboxPendingCount() {
  */
 export async function refreshMailboxPendingCount() {
 	try {
-		const resp = await fetch('/api/parts/shells:chat/mailbox/summary', { credentials: 'include' })
-		if (!resp.ok) return mailboxPendingCount
-		const data = await resp.json()
+		const data = await fetchMailboxSummary()
 		mailboxPendingCount = Number(data.pending) || 0
 	}
 	catch {
@@ -75,7 +75,8 @@ export function maybeNotifyHubMessage(opts = {}) {
 			icon: '/favicon.ico',
 		})
 		/**
-		 *
+		 * 点击通知时聚焦窗口并关闭该条通知。
+		 * @returns {void}
 		 */
 		notification.onclick = () => {
 			window.focus()

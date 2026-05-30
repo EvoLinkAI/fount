@@ -88,11 +88,10 @@ export function chunkFetchProgress(table) {
 	let pending = 0
 	let inflight = 0
 	let failed = 0
-	for (const row of table.values()) {
+	for (const row of table.values())
 		if (row.state === 'done') done++
 		else if (row.state === 'inflight') inflight++
 		else if (row.state === 'failed') failed++
 		else pending++
-	}
 	return { done, pending, inflight, failed, total: table.size }
 }

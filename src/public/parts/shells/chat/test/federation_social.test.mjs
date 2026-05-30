@@ -1,6 +1,7 @@
 /**
  * 联邦发现 / MQTT bootstrap 单元测试（Deno）。
  */
+/* global Deno */
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 
 import { parseFedBootstrapRequest } from '../src/chat/federation/bootstrap/wire.mjs'

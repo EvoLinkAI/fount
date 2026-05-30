@@ -6,7 +6,6 @@
  * 【关联】`../federation/deps.mjs`、`materialize.mjs`、`remoteIngest.mjs`、`storage.mjs`、`syncScope.mjs`。
  */
 import { initFederationDagDeps } from '../federation/deps.mjs'
-import { startFederationQuarantineReplayLoop } from '../federation/quarantineReplay.mjs'
 
 import { getStateForFederation } from './materialize.mjs'
 import {
@@ -23,5 +22,3 @@ initFederationDagDeps({
 	ingestRemoteEvent,
 	getStateForFederation,
 })
-
-startFederationQuarantineReplayLoop()

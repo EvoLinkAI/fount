@@ -4,7 +4,7 @@
 
 /**
  * @param {{ limit?: number }} [opts] 分页
- * @returns {Promise<{ entries: object[] }>}
+ * @returns {Promise<{ entries: object[] }>} 发现索引条目
  */
 export async function fetchDiscoveryIndex(opts = {}) {
 	const params = new URLSearchParams()

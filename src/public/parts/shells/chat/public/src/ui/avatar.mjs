@@ -38,7 +38,8 @@ export function createAvatarElement(name, avatarUrl) {
 	img.alt = displayName
 	img.className = `${frameClass} object-cover`
 	/**
-	 *
+	 * 头像 URL 加载失败时回退为首字母占位。
+	 * @returns {void}
 	 */
 	img.onerror = () => {
 		img.replaceWith(buildInitialsEl())

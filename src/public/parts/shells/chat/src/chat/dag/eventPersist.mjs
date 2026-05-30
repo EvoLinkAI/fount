@@ -6,7 +6,6 @@
  * 【关联】`materialize.mjs`、`events/meta.mjs`、`../stream/groupWsHub.mjs`、`../session/autoReply.mjs`。
  */
 import { sortedPrevEventIds } from '../../../../../../../scripts/p2p/dag/index.mjs'
-import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { getEventReceivedAt } from '../events/meta.mjs'
 import { releaseFileChunksAfterDelete } from '../files/deleteGc.mjs'
 import {
@@ -71,19 +70,18 @@ async function applyReputationHooks(username, groupId, signPayload) {
 		if (target) await applyReputationResetToScores(username, groupId, target)
 	}
 	if (signPayload.type === 'member_join') {
-		const sender = signPayload.sender?.trim().toLowerCase() || ''
-		if (!isHex64(sender)) return
+		const sender = signPayload.sender.trim().toLowerCase()
 		const { state } = await getState(username, groupId)
 		const joinContent = signPayload.content || {}
 		let introducer = joinContent.introducerPubKeyHash?.trim().toLowerCase() || ''
 		let repEdge = 1
-		for (const edge of [...state.inviteEdges || []].reverse()) 
+		for (const edge of [...state.inviteEdges || []].reverse())
 			if (edge.to?.trim().toLowerCase() === sender) {
 				introducer = edge.from?.trim().toLowerCase() || ''
 				if (Number.isFinite(edge.reputationEdge)) repEdge = edge.reputationEdge
 				break
 			}
-		
+
 		const fromMember = state.members?.[sender]
 		const edgeFromJoin = Number.isFinite(fromMember?.repEdgeFromIntroducer)
 			? fromMember.repEdgeFromIntroducer
@@ -101,7 +99,7 @@ async function applyReputationHooks(username, groupId, signPayload) {
  * @returns {Promise<void>}
  */
 export async function broadcastAndPersist(username, groupId, signPayload, persistOpts = {}) {
-	if (signPayload.type === 'file_delete' && signPayload.content?.fileId) 
+	if (signPayload.type === 'file_delete' && signPayload.content?.fileId)
 		try {
 			const { state } = await getState(username, groupId)
 			await releaseFileChunksAfterDelete(username, groupId, String(signPayload.content.fileId), state)
@@ -109,7 +107,7 @@ export async function broadcastAndPersist(username, groupId, signPayload, persis
 		catch (error) {
 			console.error('file_delete gc failed', error)
 		}
-	
+
 	const roomKey = groupWsRoomKeyForReplica(username, groupId)
 	broadcastEvent(roomKey, { type: 'dag_event', event: signPayload })
 	try {
@@ -172,7 +170,7 @@ export async function broadcastAndPersist(username, groupId, signPayload, persis
 		).catch(error => {
 			console.error('maybeAutoTriggerCharReply failed:', error)
 		})
-	if (signPayload.type === 'group_settings_update' && signPayload.content?.mqttRoomSecret) {
+	if (signPayload.type === 'group_settings_update' && signPayload.content?.mqttRoomSecret)
 		void import('../federation/mqttCredentials.mjs').then(async ({ onMqttCredentialsSyncedFromDag, mqttCredentialsFromGroupSettings }) => {
 			const { state } = await getState(username, groupId)
 			const creds = mqttCredentialsFromGroupSettings(state.groupSettings)
@@ -180,5 +178,5 @@ export async function broadcastAndPersist(username, groupId, signPayload, persis
 		}).catch(error => {
 			console.error('mqtt credentials sync hook failed:', error)
 		})
-	}
+
 }

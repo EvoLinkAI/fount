@@ -1,7 +1,9 @@
 /**
  * 【文件】public/src/deepLinkConsume.mjs
- * 【职责】消费 fount://run 与 ?invite= 深链：入群、建 DM、暂存待处理邀请。
+ * 【职责】消费 fount://run 与 ?invite= 深链：入群、建 DM、跳转 Social 资料、暂存待处理邀请。
  */
+
+import { formatSocialProfileHref, parseSocialRunUri } from '../../../social/public/src/lib/runUri.mjs'
 
 import { createDirectMessageByPubKeys, getFederationSettings, getGroupState, joinGroup } from './api/groupApi.mjs'
 import { isHex64 } from './lib/pubKeyHex.mjs'
@@ -26,11 +28,17 @@ export function runUriFromPageLocation() {
 }
 
 /**
- * 解析并执行 chat 深链：DM 建联或带邀请码入群。
- * @param {string} raw `fount://run/shells:chat/…` 完整 URI
- * @returns {Promise<{ kind: 'dm' | 'join', groupId: string, channelId: string } | null>} 成功时含目标群与频道；无法识别时 `null`
+ * 解析并执行 run 深链：Chat DM/join 或跳转 Social 资料页。
+ * @param {string} raw `fount://run/…` 完整 URI
+ * @returns {Promise<{ kind: 'dm' | 'join' | 'social-profile', groupId?: string, channelId?: string } | null>} 成功载荷；无法识别为 `null`
  */
 export async function applyChatRunUri(raw) {
+	const social = parseSocialRunUri(raw)
+	if (social?.subcommand === 'profile' && social.entityHash) {
+		window.location.href = formatSocialProfileHref(social.entityHash, social.postId)
+		return { kind: 'social-profile' }
+	}
+
 	const dm = parseDmRunUri(raw)
 	if (dm) {
 		const { identityPubKeyHex } = await getFederationSettings()

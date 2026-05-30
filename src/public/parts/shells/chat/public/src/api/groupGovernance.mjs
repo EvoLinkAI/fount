@@ -77,6 +77,34 @@ export async function setGovernanceBranch(groupId, tipId) {
  * @param {object} body 扣减参数（`targetPubKeyHash`、`claim`、`verified`、`proof` 等）
  * @returns {Promise<{ applied: number }>} 实际应用的事件数
  */
+/**
+ * 读取群主观信誉表。
+ * @param {string} groupId 群 ID
+ * @returns {Promise<object>} `{ reputation }`
+ */
+export async function getGroupReputation(groupId) {
+	return groupFetch(groupPath(groupId, 'reputation'))
+}
+
+/**
+ * 发布 reputation_reset 事件。
+ * @param {string} groupId 群 ID
+ * @param {string} targetPubKeyHash 目标 64 hex
+ * @returns {Promise<{ applied: number }>} 应用计数
+ */
+export async function postReputationReset(groupId, targetPubKeyHash) {
+	return groupFetch(groupPath(groupId, 'reputation', 'reset'), {
+		method: 'POST',
+		json: { targetPubKeyHash: String(targetPubKeyHash || '').trim().toLowerCase() },
+	})
+}
+
+/**
+ * 发布声誉扣减事件。
+ * @param {string} groupId 群 ID
+ * @param {object} body 扣减参数（`targetPubKeyHash`、`claim`、`verified`、`proof` 等）
+ * @returns {Promise<{ applied: number }>} 实际应用的事件数
+ */
 export async function postReputationSlash(groupId, body) {
 	const payload = {
 		targetPubKeyHash: String(body.targetPubKeyHash || '').trim().toLowerCase(),

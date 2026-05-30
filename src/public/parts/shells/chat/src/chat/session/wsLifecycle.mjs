@@ -26,7 +26,7 @@ const groupUnloadTimers = new Map()
 const GROUP_UNLOAD_TIMEOUT = ms('30m')
 
 /** @type {(groupIds: string[], username: string) => Promise<void>} */
-let deleteGroupHook = async () => {}
+let deleteGroupHook = async () => { }
 /** @type {(metadata: object | null) => boolean} */
 let isVividGroupHook = () => false
 
@@ -68,7 +68,7 @@ export function initializeGroupMetadatas() {
  */
 export function registerGroupUiSocket(replicaUsername, groupId, ws) {
 	registerGroupReplicaForUser(replicaUsername, groupId)
-	const roomKey = resolveGroupWsRoomKey(groupId, getLocalNodeHash())
+	const roomKey = resolveGroupWsRoomKey(groupId, getLocalNodeHash(replicaUsername))
 	if (groupUnloadTimers.has(groupId)) {
 		clearTimeout(groupUnloadTimers.get(groupId))
 		groupUnloadTimers.delete(groupId)

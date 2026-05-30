@@ -22,10 +22,10 @@ initializeGroupMetadatas()
 bindSessionUnloadHooks({ deleteGroup, isVividGroup })
 
 /**
- *
+ * 在本地群运行时尝试分发 Char RPC（供联邦 `char_rpc` 入站回调）。
  */
 export const tryInvokeLocalCharRpc = createCharRpcDispatcher(getActiveGroupRuntime, getChatRequest)
 /**
- *
+ * 在本地群运行时尝试分发 World RPC（供联邦 `char_rpc` 入站回调）。
  */
 export const tryInvokeLocalWorldRpc = createWorldRpcDispatcher(getChatRequest)

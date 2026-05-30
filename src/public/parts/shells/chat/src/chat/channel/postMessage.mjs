@@ -9,10 +9,13 @@ import { Buffer } from 'node:buffer'
 import { createHash, randomUUID } from 'node:crypto'
 
 import { FEDERATION_CHUNK_MAX_BYTES } from '../../../../../../../scripts/p2p/constants.mjs'
-import { addFile } from '../../files.mjs'
+import { putFileManifest } from '../../../../../../../scripts/p2p/entity/files/evfs.mjs'
+import { parseEvfsRef } from '../../../../../../../scripts/p2p/entity/files/evfs_ref.mjs'
+import { entityFileUrl } from '../../../../../../../scripts/p2p/entity/files/url.mjs'
+import { resolveOperatorEntityHash } from '../../../../../../../scripts/p2p/entity/replica.mjs'
 import { appendSignedLocalEvent } from '../dag/append.mjs'
 import { appendFileUploadEvent } from '../dag/channelOps.mjs'
-import { putEncryptedChunk } from '../files/groupFiles.mjs'
+import { putEncryptedChunk, syncGroupFileManifest } from '../files/groupFiles.mjs'
 import { getCurrentH } from '../gsh/store.mjs'
 import {
 	channelMessageAgentText,
@@ -27,7 +30,7 @@ import {
  * @param {string} groupId 群 ID
  * @param {Buffer} buffer 文件字节
  * @param {{ name?: string, mime_type?: string, mimeType?: string }} file 元数据
- * @returns {Promise<{ fileId: string, uploadMeta: object, imageAttachmentHash: string | null }>} 上传结果
+ * @returns {Promise<{ fileId: string, uploadMeta: object, inlineImageUrl: string | null }>} 上传结果
  */
 async function uploadPlainFileToGroup(username, groupId, buffer, file) {
 	const fileId = randomUUID()
@@ -81,12 +84,30 @@ async function uploadPlainFileToGroup(username, groupId, buffer, file) {
 	}
 
 	await appendFileUploadEvent(username, groupId, uploadMeta)
+	await syncGroupFileManifest(username, groupId, uploadMeta).catch(error => {
+		console.error('[evfs] syncGroupFileManifest failed', error)
+	})
 
-	let imageAttachmentHash = null
-	if (mimeType.startsWith('image/'))
-		imageAttachmentHash = await addFile(username, buffer)
+	let inlineImageUrl = null
+	if (mimeType.startsWith('image/')) {
+		const operatorEntityHash = resolveOperatorEntityHash(username)
+		if (operatorEntityHash) {
+			const attachId = randomUUID()
+			const logicalPath = `shells/chat/attachments/${attachId}`
+			await putFileManifest({
+				replicaUsername: username,
+				ownerEntityHash: operatorEntityHash,
+				logicalPath,
+				plaintext: buffer,
+				name,
+				mimeType,
+				ceMode: 'convergent',
+			})
+			inlineImageUrl = entityFileUrl(operatorEntityHash, logicalPath)
+		}
+	}
 
-	return { fileId, uploadMeta, imageAttachmentHash }
+	return { fileId, uploadMeta, inlineImageUrl }
 }
 
 /**
@@ -160,13 +181,18 @@ export async function postChannelMessage(username, groupId, channelId, payload =
 	const files = Array.isArray(payload.files) ? payload.files : []
 
 	for (const file of files) {
-		const buffer = file.buffer instanceof Buffer ? file.buffer : Buffer.from(file.buffer)
+		if (typeof file.buffer === 'string' && parseEvfsRef(file.buffer))
+			continue
+		
+		const buffer = file.buffer instanceof Buffer
+			? file.buffer
+			: Buffer.from(String(file.buffer), 'base64')
 		if (!buffer.byteLength) continue
-		const { fileId, imageAttachmentHash } = await uploadPlainFileToGroup(username, groupId, buffer, file)
+		const { fileId, inlineImageUrl } = await uploadPlainFileToGroup(username, groupId, buffer, file)
 		fileIds.push(fileId)
-		if (imageAttachmentHash) {
+		if (inlineImageUrl) {
 			const fileName = String(file.name || 'image').replace(/\|/g, '_')
-			inlineMarkers.push(`[image:${fileName}|/api/parts/shells:chat/attachments/${imageAttachmentHash}]`)
+			inlineMarkers.push(`[image:${fileName}|${inlineImageUrl}]`)
 		}
 	}
 
@@ -209,7 +235,7 @@ export async function postChannelMessage(username, groupId, channelId, payload =
 		content: channelMessageContentObject(content),
 	})
 
-	void maybeDispatchMailboxForOfflinePeer(username, groupId, event).catch(() => {})
+	void maybeDispatchMailboxForOfflinePeer(username, groupId, event).catch(() => { })
 
 	return { event, fileIds }
 }

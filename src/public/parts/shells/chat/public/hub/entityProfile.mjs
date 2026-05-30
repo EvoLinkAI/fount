@@ -132,12 +132,14 @@ export function wireProfileEditButton(root, entityHash, opts = {}) {
 	const canEdit = isLocalWritableEntityHash(entityHash)
 	editButton.hidden = !canEdit
 	/**
-	 *
+	 * 打开 Hub 资料编辑对话框。
+	 * @returns {void}
 	 */
 	editButton.onclick = () => {
 		void openHubProfileEdit(entityHash, {
 			/**
-			 *
+			 * 保存后失效缓存并调用外部刷新回调。
+			 * @returns {Promise<void>}
 			 */
 			onSaved: async () => {
 				invalidateUserProfileCache(entityHash)

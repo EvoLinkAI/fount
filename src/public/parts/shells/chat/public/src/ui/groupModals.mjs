@@ -5,9 +5,9 @@
  * 【数据结构】群摘要 { id, name }、模板 DOM。
  * 【关联】api/groupApi.mjs；Hub 入口与侧栏。
  */
+import { openDialogFromTemplate } from '../../../../scripts/dialog.mjs'
 import {
 	mountTemplate,
-	renderTemplateNoScriptActivation,
 	usingTemplates,
 } from '../../../../scripts/template.mjs'
 import { showToastI18n } from '../../../../scripts/toast.mjs'
@@ -66,38 +66,39 @@ export async function renderGroupList(container) {
 export async function showCreateGroupModal() {
 	ensureGroupUiCssLink()
 	usingTemplates('/parts/shells:chat/src/templates')
-	const modal = document.createElement('dialog')
-	modal.className = 'modal'
-	modal.appendChild(await renderTemplateNoScriptActivation('hub/modals/group_create', {}))
-	document.body.appendChild(modal)
-	modal.showModal()
-
-	modal.querySelector('[data-action="cancel"]')?.addEventListener('click', () => modal.close())
-	modal.querySelector('#create-group-form')?.addEventListener('submit', async event => {
-		event.preventDefault()
-		const formData = new FormData(event.target)
-		try {
-			const { groupId, defaultChannelId } = await createGroup(formData.get('name'), formData.get('description'))
-			const settingsResp = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/settings`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				credentials: 'include',
-				body: JSON.stringify({ joinPolicy: formData.get('joinPolicy') || 'invite-only' }),
+	await openDialogFromTemplate('hub/modals/group_create', {}, {
+		activateScripts: false,
+		/**
+		 * @param {HTMLDialogElement} dialog 对话框
+		 * @returns {Promise<void>}
+		 */
+		onReady: async dialog => {
+			dialog.querySelector('[data-action="cancel"]')?.addEventListener('click', () => dialog.close())
+			dialog.querySelector('#create-group-form')?.addEventListener('submit', async event => {
+				event.preventDefault()
+				const formData = new FormData(event.target)
+				try {
+					const { groupId, defaultChannelId } = await createGroup(formData.get('name'), formData.get('description'))
+					const settingsResp = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/settings`, {
+						method: 'PUT',
+						headers: { 'Content-Type': 'application/json' },
+						credentials: 'include',
+						body: JSON.stringify({ joinPolicy: formData.get('joinPolicy') || 'invite-only' }),
+					})
+					if (!settingsResp.ok) {
+						const err = await settingsResp.json().catch(() => ({}))
+						throw new Error(err.error || `settings HTTP ${settingsResp.status}`)
+					}
+					dialog.close()
+					const hubUrl = `/parts/shells:chat/hub/#group:${encodeURIComponent(groupId)}:${encodeURIComponent(defaultChannelId || 'default')}`
+					window.location.assign(hubUrl)
+				}
+				catch (error) {
+					showToastI18n('error', 'chat.hub.createModal.failed', { error: error.message })
+				}
 			})
-			if (!settingsResp.ok) {
-				const err = await settingsResp.json().catch(() => ({}))
-				throw new Error(err.error || `settings HTTP ${settingsResp.status}`)
-			}
-			modal.close()
-			modal.remove()
-			const hubUrl = `/parts/shells:chat/hub/#group:${encodeURIComponent(groupId)}:${encodeURIComponent(defaultChannelId || 'default')}`
-			window.location.assign(hubUrl)
-		}
-		catch (error) {
-			showToastI18n('error', 'chat.hub.createModal.failed', { error: error.message })
-		}
+		},
 	})
-	modal.addEventListener('close', () => modal.remove())
 }
 
 /**
@@ -116,31 +117,29 @@ export function openGroup(groupId) {
 export async function joinGroupById() {
 	ensureGroupUiCssLink()
 	usingTemplates('/parts/shells:chat/src/templates')
-	const modal = document.createElement('dialog')
-	modal.className = 'modal'
-	modal.appendChild(await renderTemplateNoScriptActivation('hub/modals/group_join', {}))
-	document.body.appendChild(modal)
-	modal.showModal()
+	await openDialogFromTemplate('hub/modals/group_join', {}, {
+		activateScripts: false,
+		/**
+		 * @param {HTMLDialogElement} dialog 对话框
+		 * @returns {void}
+		 */
+		onReady: dialog => {
+			dialog.querySelector('[data-action="cancel"]')?.addEventListener('click', () => dialog.close())
+			dialog.querySelector('#join-group-form')?.addEventListener('submit', event => {
+				event.preventDefault()
+				const groupId = dialog.querySelector('#group-join-id-input')?.value.trim()
+				const inviteCode = dialog.querySelector('#group-join-invite-input')?.value.trim()
+				if (!groupId) return
+				if (inviteCode)
+					sessionStorage.setItem(PENDING_INVITE_STORAGE_KEY, JSON.stringify({ groupId, inviteCode }))
 
-	modal.querySelector('[data-action="cancel"]')?.addEventListener('click', () => {
-		modal.close()
-		modal.remove()
+				dialog.close()
+				const hash = groupId.startsWith('group:') ? groupId : `group:${groupId}:default`
+				const query = inviteCode ? `?invite=${encodeURIComponent(inviteCode)}` : ''
+				window.location.href = `/parts/shells:chat/hub/${query}#${hash}`
+			})
+		},
 	})
-	modal.querySelector('#join-group-form')?.addEventListener('submit', event => {
-		event.preventDefault()
-		const groupId = modal.querySelector('#group-join-id-input')?.value.trim()
-		const inviteCode = modal.querySelector('#group-join-invite-input')?.value.trim()
-		if (!groupId) return
-		if (inviteCode)
-			sessionStorage.setItem(PENDING_INVITE_STORAGE_KEY, JSON.stringify({ groupId, inviteCode }))
-
-		modal.close()
-		modal.remove()
-		const hash = groupId.startsWith('group:') ? groupId : `group:${groupId}:default`
-		const query = inviteCode ? `?invite=${encodeURIComponent(inviteCode)}` : ''
-		window.location.href = `/parts/shells:chat/hub/${query}#${hash}`
-	})
-	modal.addEventListener('close', () => modal.remove())
 }
 
 window.showCreateGroupModal = showCreateGroupModal

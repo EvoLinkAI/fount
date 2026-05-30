@@ -78,7 +78,7 @@ function persistActiveLocaleForm() {
 	editingLocalized[activeLocaleKey] = {
 		name: editDialog?.querySelector('#hub-profile-edit-name')?.value?.trim() || '',
 		description_markdown: md,
-		description: md.replace(/[#*_`[\]]/g, '').trim(),
+		description: md.replace(/[#*[\]_`]/g, '').trim(),
 		tags: parseTagsInput(editDialog?.querySelector('#hub-profile-edit-tags')?.value),
 		links: parseLinksInput(editDialog?.querySelector('#hub-profile-edit-links')?.value),
 	}
@@ -128,7 +128,8 @@ function refreshLocaleTabs() {
 			refreshLocaleTabs()
 		},
 		/**
-		 *
+		 * 新增本地化语言 tab 并切换到该语言表单。
+		 * @returns {void}
 		 */
 		onAdd: () => {
 			void (async () => {
@@ -155,9 +156,9 @@ function initEditState(entityHash, profile) {
 	editingInfoDefaults = profile.infoDefaults || null
 	editingLocalized = { ...profile.localized || {} }
 	const keys = Object.keys(editingLocalized)
-	if (!keys.length) 
+	if (!keys.length)
 		editingLocalized[navigator.language || 'zh-CN'] = {}
-	
+
 	const navLang = String(navigator.language || '').trim()
 	activeLocaleKey = keys.find(k => k === navLang)
 		|| keys.find(k => navLang && k.split('-')[0] === navLang.split('-')[0])

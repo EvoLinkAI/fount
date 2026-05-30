@@ -5,6 +5,8 @@
  * 【数据结构】物化 state 子集、reputation 表、peers roster、snapshot/checkpoint、GSH buffer stats。
  * 【关联】被 group/endpoints.mjs 注册；依赖 chat/federation、chat/governance、profile/*、access.mjs。
  */
+import { localesFromRequest } from '../../../../../../../scripts/p2p/entity/localized.mjs'
+import { getProfile } from '../../../../../../../scripts/p2p/entity/profile.mjs'
 import { PERMISSIONS } from '../../../../../../../scripts/p2p/permissions.mjs'
 import { getUserByReq } from '../../../../../../../server/auth.mjs'
 import { appendSignedLocalEvent } from '../../chat/dag/append.mjs'
@@ -22,9 +24,9 @@ import { getGshBufferStats } from '../../chat/gsh/buffer.mjs'
 import { memberEntityHash } from '../../chat/lib/entityId.mjs'
 import { getGroupMemberEntityHash } from '../../chat/lib/replica.mjs'
 import { getMaterializedSession } from '../../chat/session/dagSession.mjs'
-import { localesFromRequest } from '../../profile/localized.mjs'
-import { getProfile } from '../../profile/profile.mjs'
 import { canGovSlash, canInChannel, governanceChannelId, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
+
+import { requireGroupMember, resolveGroupMember } from './middleware.mjs'
 
 /**
  * 注册群状态、快照、压缩与联邦 catchup 路由。
@@ -94,27 +96,22 @@ export function registerGroupSyncRoutes(router, authenticate) {
 		res.status(200).json({ applied: 1 })
 	})
 
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/reputation$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/reputation$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId } = req.groupContext
 		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
 
 		const reputation = await loadReputation(username, groupId)
 		res.status(200).json({ reputation })
 	})
 
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/peers$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/peers$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId } = req.groupContext
 		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
 
 		const roster = await listFederationPeersForGroup(username, groupId)
 		const stored = await loadPeers(username, groupId)
-		res.status(200).json({ selfNodeId: roster.selfNodeId,
+		res.status(200).json({
+			selfNodeId: roster.selfNodeId,
 			federationEnabled: roster.federationEnabled,
 			peers: roster.peers,
 			trustedPeers: stored.trustedPeers,
@@ -158,7 +155,7 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			const pubKeyHash = memberRow.pubKeyHash || memberKey
 			const entityHash = memberEntityHash(memberRow)
 			let displayName = ''
-			if (entityHash) 
+			if (entityHash)
 				try {
 					const profile = await getProfile(entityHash, username, { groupId, locales: profileLocales })
 					displayName = String(profile.name || '').trim()
@@ -166,7 +163,7 @@ export function registerGroupSyncRoutes(router, authenticate) {
 				catch {
 					// 远端或未托管资料时忽略
 				}
-			
+
 			return {
 				pubKeyHash,
 				nodeHash: memberRow.homeNodeHash,
@@ -210,7 +207,7 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			consensusBranchTip: state.consensusBranchTip ?? state.authzBranchTip ?? null,
 			localViewBranchTip: state.localViewBranchTip ?? null,
 			governanceFork: !!state.governanceFork,
-			dagTips: Array.isArray(state.dagTips) ? state.dagTips : [],
+			dagTips: state.dagTips,
 			gshBuffer: getGshBufferStats(username, groupId),
 			quarantineCount: quarantineRows.length,
 			fileFolders: state.fileFolders || {},
@@ -231,45 +228,30 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			serializableState.channelCaps = channelCaps
 		}
 		if (active && canInChannel(state, member, PERMISSIONS.MANAGE_ROLES, null)) {
-			serializableState.reputationLedger = Array.isArray(state.reputationLedger)
-				? state.reputationLedger.slice(-50)
-				: []
-			serializableState.inviteEdges = Array.isArray(state.inviteEdges)
-				? state.inviteEdges.slice(0, 200)
-				: []
+			serializableState.reputationLedger = state.reputationLedger.slice(-50)
+			serializableState.inviteEdges = state.inviteEdges.slice(0, 200)
 		}
 		res.status(200).json({ state: serializableState })
 	})
 
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/snapshot$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state, checkpoint } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/snapshot$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId } = req.groupContext
+		const { checkpoint } = await getState(username, groupId)
 		res.status(200).json({ snapshot: checkpoint })
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/compact$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/compact$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, state, member, groupId } = req.groupContext
 		if (!canInChannel(state, member, PERMISSIONS.ADMIN, governanceChannelId(state)))
 			return res.status(403).json({ error: 'ADMIN required' })
 		res.status(200).json(await compactGroup(username, groupId))
 	})
 
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/federation\/rotate-room-secret$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey) return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state, member } = membership
 		const channelId = governanceChannelId(state)
 		if (!canInChannel(state, member, PERMISSIONS.ADMIN, channelId)
 			&& !canInChannel(state, member, PERMISSIONS.MANAGE_ADMINS, channelId))
@@ -289,12 +271,10 @@ export function registerGroupSyncRoutes(router, authenticate) {
 	})
 
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/federation\/tuning$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey) return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state, member } = membership
 		const channelId = governanceChannelId(state)
 		if (!canInChannel(state, member, PERMISSIONS.ADMIN, channelId)
 			&& !canInChannel(state, member, PERMISSIONS.MANAGE_ADMINS, channelId))
@@ -321,11 +301,11 @@ export function registerGroupSyncRoutes(router, authenticate) {
 	})
 
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/federation\/catchup$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username } = membership
 		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
 		res.status(200).json(await catchUpGroupFromPeers(username, groupId, {
 			waitMs: req.body.waitMs,
 			extraWantIds: Array.isArray(req.body.extraWantIds) ? req.body.extraWantIds : undefined,
@@ -333,11 +313,11 @@ export function registerGroupSyncRoutes(router, authenticate) {
 	})
 
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/federation\/join-snapshot$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username } = membership
 		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
 		if (!isGroupFederationActive(state.groupSettings))
 			return res.status(200).json({ ok: true, skipped: true, reason: 'federation_inactive' })
 		const slot = await ensureFederationRoom(username, groupId)
@@ -347,11 +327,11 @@ export function registerGroupSyncRoutes(router, authenticate) {
 	})
 
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/federation\/rebind$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username } = membership
 		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
 		const channelId = String(req.body?.channelId || '').trim() || null
 		if (!isGroupFederationActive(state.groupSettings))
 			return res.status(200).json({ ok: true, skipped: true, reason: 'federation_inactive', channelId })

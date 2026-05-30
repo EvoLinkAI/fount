@@ -56,7 +56,8 @@ export function setEndpoints(router, apiBase = DEFAULT_STICKER_API) {
 
 	router.post(`${apiBase}/packs`, authenticate, async (req, res) => {
 		const { replicaUsername, operatorEntityHash } = await getReplicaFromReq(req)
-		res.status(201).json({ pack: await createStickerPack(replicaUsername, operatorEntityHash, req.body),
+		res.status(201).json({
+			pack: await createStickerPack(replicaUsername, operatorEntityHash, req.body),
 		})
 	})
 
@@ -111,7 +112,7 @@ export function setEndpoints(router, apiBase = DEFAULT_STICKER_API) {
 		const file = pickUploadedFile(req, 'sticker')
 		if (!file)
 			return res.status(400).json({ error: 'No file uploaded' })
-		if (!isAllowedImageUpload(file))
+		if (!await isAllowedImageUpload(file))
 			return res.status(400).json({ error: 'Only image files are allowed' })
 		if (file.buffer.length > 2 * 1024 * 1024)
 			return res.status(400).json({ error: 'File too large (max 2MB)' })
@@ -173,7 +174,8 @@ export function setEndpoints(router, apiBase = DEFAULT_STICKER_API) {
 		if (!dataUrl.startsWith('data:image/'))
 			return res.status(400).json({ error: 'dataUrl must be a data:image/* URL' })
 		const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : ''
-		res.status(201).json({ sticker: await importStickerFromDataUrl(replicaUsername, operatorEntityHash, dataUrl, name || undefined),
+		res.status(201).json({
+			sticker: await importStickerFromDataUrl(replicaUsername, operatorEntityHash, dataUrl, name || undefined),
 		})
 	})
 

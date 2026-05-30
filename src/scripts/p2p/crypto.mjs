@@ -127,6 +127,27 @@ function hashPubKeyBytes(publicKey) {
 }
 
 /**
+ * 任意输入的 SHA-256 十六进制（小写、无 0x 前缀）。
+ *
+ * @param {Uint8Array|Buffer|string} data 字节或 UTF-8 文本
+ * @returns {string} 64 字符 hex
+ */
+export function sha256Hex(data) {
+	const input = typeof data === 'string' ? Buffer.from(data, 'utf8') : Buffer.from(data)
+	return createHash('sha256').update(input).digest('hex')
+}
+
+/**
+ * UTF-8 文本 SHA-256 十六进制（小写、无 0x 前缀）。
+ *
+ * @param {string} text 文本
+ * @returns {string} 64 字符 hex
+ */
+export function sha256TextHex(text) {
+	return sha256Hex(String(text ?? ''))
+}
+
+/**
  * Buffer / Uint8Array → 小写 hex 字符串
  *
  * @param {Uint8Array|Buffer} buf 二进制缓冲

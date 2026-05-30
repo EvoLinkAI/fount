@@ -78,7 +78,8 @@ export async function showChannelContextMenu(event, channelId) {
 	openMenuEl = menu
 
 	/**
-	 *
+	 * 关闭频道右键菜单并移除文档级监听。
+	 * @returns {void}
 	 */
 	const closeOnce = () => {
 		dismissChannelContextMenu()

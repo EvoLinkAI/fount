@@ -46,6 +46,24 @@ export async function postFederationTuning(groupId, patch = {}) {
 }
 
 /**
+ * 轮换群 MQTT 房间口令（需 ADMIN / MANAGE_ADMINS）。
+ * @param {string} groupId 群 ID
+ * @returns {Promise<{ mqttRoomSecret: string }>} 新口令
+ */
+export async function rotateFederationRoomSecret(groupId) {
+	return groupFetch(groupPath(groupId, 'federation', 'rotate-room-secret'), { method: 'POST', json: {} })
+}
+
+/**
+ * 向联邦邻居请求入群快照并本地应用（GSH + 频道历史）。
+ * @param {string} groupId 群 ID
+ * @returns {Promise<{ applied: boolean, channels: number, skipped?: boolean }>} 应用统计
+ */
+export async function repairJoinSnapshot(groupId) {
+	return groupFetch(groupPath(groupId, 'federation', 'join-snapshot'), { method: 'POST', json: {} })
+}
+
+/**
  * 增量拉取群事件。
  * @param {string} groupId 群 ID
  * @param {{ since?: string, channelId?: string, limit?: number }} [opts] 分页与过滤

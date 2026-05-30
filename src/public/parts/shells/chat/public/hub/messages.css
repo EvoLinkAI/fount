@@ -119,7 +119,7 @@
 	opacity: 0.55;
 }
 
-.hub-streaming-body:not(:empty) ~ .hub-streaming-skeleton {
+.hub-streaming-body:not(:empty)~.hub-streaming-skeleton {
 	display: none;
 }
 

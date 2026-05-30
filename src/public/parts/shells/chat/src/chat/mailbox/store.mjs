@@ -23,7 +23,7 @@ import {
 import { mailboxStorePath } from '../lib/paths.mjs'
 
 /**
- *
+ * 邮箱桶配额与键工具常量（自 `p2p/mailbox_prune` 再导出）。
  */
 export { MAX_BUCKET_BYTES, MAX_BUCKET_ENTRIES, mailboxBucketKey, mailboxRecordBytes }
 const MAX_ENTRIES = MAX_MAILBOX_ENTRIES

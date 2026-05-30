@@ -5,11 +5,12 @@
  * 【数据结构】selectedFiles(File[])、attachmentPreviewContainer DOM。
  * 【关联】files.mjs、ui/modal.mjs、dragAndDrop.mjs；Hub composer。
  */
+import { parseEvfsRef } from '../../../../../../../scripts/p2p/entity/files/evfs_ref.mjs'
 import { svgInliner } from '../../../scripts/svgInliner.mjs'
 import { renderTemplate } from '../../../scripts/template.mjs'
 import { escapeHtml } from '../hub/core/domUtils.mjs'
 
-import { getFile } from './files.mjs'
+import { entityFileUrl, fetchEvfsFile } from './evfs.mjs'
 import { arrayBufferToBase64 } from './lib/federationUpload.mjs'
 import { processTimeStampForId } from './lib/timestampId.mjs'
 import { openModal } from './ui/modal.mjs'
@@ -96,9 +97,10 @@ export async function renderAttachmentPreview(file, index, selectedFiles) {
 
 	const isPreviewable = PREVIEWABLE_MIME_TYPES.some(type => file.mime_type.startsWith(type))
 
-	if (file.buffer.startsWith('file:') && isPreviewable) {
+	const evfsRef = typeof file.buffer === 'string' ? parseEvfsRef(file.buffer) : null
+	if (evfsRef && isPreviewable) {
 		file = { ...file }
-		file.buffer = arrayBufferToBase64(await getFile(file.buffer))
+		file.buffer = arrayBufferToBase64(await fetchEvfsFile(evfsRef.entityHash, evfsRef.logicalPath))
 	}
 
 	const previewContainer = attachmentElement.querySelector('.preview-container')
@@ -163,8 +165,11 @@ export async function renderAttachmentPreview(file, index, selectedFiles) {
  */
 export function downloadFile(file) {
 	const link = document.createElement('a')
-	if (file.buffer.startsWith('file:'))
-		link.href = `/api/parts/shells:chat/attachments/${encodeURIComponent(file.buffer.slice(5))}`
+	if (file.url) link.href = file.url
+	else if (typeof file.buffer === 'string') {
+		const parsed = parseEvfsRef(file.buffer)
+		if (parsed) link.href = entityFileUrl(parsed.entityHash, parsed.logicalPath)
+	}
 	else
 		link.href = `data:${file.mime_type};base64,${file.buffer}`
 

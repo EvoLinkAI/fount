@@ -66,12 +66,12 @@ export function flushGshBufferAfterRotation(username, groupId, newGeneration) {
 	const m = pendingByGroup.get(k)
 	if (!m || !m.size) return 0
 	let cleared = 0
-	for (const [gen, n] of [...m.entries()]) 
+	for (const [gen, n] of [...m.entries()])
 		if (gen <= newGeneration) {
 			cleared += n
 			m.delete(gen)
 		}
-	
+
 	if (!m.size) pendingByGroup.delete(k)
 	return cleared
 }

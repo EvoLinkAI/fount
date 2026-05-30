@@ -25,7 +25,7 @@ import { Buffer } from 'node:buffer'
  */
 
 /**
- *
+ * AV 中继二进制帧头长度（字节）。
  */
 export const AV_RELAY_HEADER_SIZE = 26
 

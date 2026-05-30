@@ -29,7 +29,7 @@ async function init() {
 	await initTranslations('stickers')
 
 	try {
-		const resp = await fetch('/api/parts/shells:chat/viewer', { credentials: 'include' })
+		const resp = await fetch('/api/p2p/viewer', { credentials: 'include' })
 		if (resp.ok) {
 			const data = await resp.json()
 			currentEntityHash = data.viewerEntityHash || null
@@ -272,7 +272,7 @@ async function renderPackDetail(pack) {
 
 	if (pack.stickers.length === 0)
 		await mountTemplate(stickersContainer, 'stickers/empty_detail', {})
-	 else {
+	else {
 		stickersContainer.replaceChildren()
 		for (const sticker of pack.stickers) {
 			const favorited = userCollection?.favoriteStickers?.includes(sticker.id)

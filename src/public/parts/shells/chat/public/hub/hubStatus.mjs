@@ -47,7 +47,7 @@ export async function applyMyStatusUI(status, customStatus = '') {
  */
 export async function sendHeartbeat(entityHash) {
 	if (!entityHash) return
-	await fetch(`/api/parts/shells:chat/entities/${encodeURIComponent(entityHash)}/heartbeat`, {
+	await fetch(`/api/p2p/entities/${encodeURIComponent(entityHash)}/heartbeat`, {
 		method: 'POST',
 		credentials: 'include',
 	})
@@ -61,7 +61,7 @@ export async function sendHeartbeat(entityHash) {
 export async function setMyStatus(status, options = {}) {
 	const entityHash = hubStore.viewerEntityHash
 	if (!entityHash) return
-	const resp = await fetch(`/api/parts/shells:chat/entities/${encodeURIComponent(entityHash)}/status`, {
+	const resp = await fetch(`/api/p2p/entities/${encodeURIComponent(entityHash)}/status`, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		credentials: 'include',
@@ -134,11 +134,10 @@ export function startHeartbeat(entityHash) {
  */
 export function startIdleWatcher() {
 	document.addEventListener('visibilitychange', () => {
-		if (document.hidden) 
+		if (document.hidden)
 			idleTimer = setTimeout(() => {
 				void setMyStatus('idle', { silent: true })
 			}, 5 * 60 * 1000)
-		
 		else {
 			if (idleTimer) clearTimeout(idleTimer)
 			idleTimer = null
@@ -199,7 +198,8 @@ export async function showStatusMenu(anchorEl) {
 	openStatusMenuEl = menu
 
 	/**
-	 *
+	 * 关闭在线状态菜单并移除文档级点击监听。
+	 * @returns {void}
 	 */
 	const closeOnce = () => {
 		dismissStatusMenu()

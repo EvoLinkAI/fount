@@ -11,22 +11,24 @@
 /** @typedef {import('../../../../../../../decl/pluginAPI.ts').PluginAPI_t} PluginAPI_t */
 
 import { Buffer } from 'node:buffer'
+import crypto from 'node:crypto'
 
-import { getAllDefaultParts, getAnyDefaultPart, loadPart } from '../../../../../../../server/parts_loader.mjs'
-import { addFile, getFile } from '../../files.mjs'
+import { putFileManifest } from '../../../../../../../scripts/p2p/entity/files/evfs.mjs'
+import { formatEvfsRef, parseEvfsRef } from '../../../../../../../scripts/p2p/entity/files/evfs_ref.mjs'
+import { resolveOperatorEntityHash } from '../../../../../../../scripts/p2p/entity/replica.mjs'
 
 /**
- * 部件路径缺失或模块未找到时忽略；其余错误继续抛出。
- * @param {unknown} error 捕获值
+ * @param {Buffer | string} buffer 文件内容或 evfs 引用
+ * @returns {string} JSON 可序列化的 buffer 字段
  */
-function ignoreMissingPartLoadError(error) {
-	if (error?.code === 'ENOENT' || error?.code === 'ERR_MODULE_NOT_FOUND' || error?.code === 'MODULE_NOT_FOUND')
-		return
-	const cause = error?.cause
-	if (cause && (cause.code === 'ENOENT' || cause.code === 'ERR_MODULE_NOT_FOUND' || cause.code === 'MODULE_NOT_FOUND'))
-		return
-	throw error
+function serializeFileBuffer(buffer) {
+	if (typeof buffer === 'string') return buffer
+	if (Buffer.isBuffer(buffer)) return buffer.toString('base64')
+	return String(buffer)
 }
+
+import { createNewChatMetadata } from './factory.mjs'
+import { hydrateTimeSlice } from './hydrate.mjs'
 
 /**
  * 代表聊天中特定时间点的"时间切片"，包含了该时刻的所有上下文状态。
@@ -60,12 +62,14 @@ export class timeSlice_t {
 	 * @returns {timeSlice_t} 新的时间切片实例
 	 */
 	copy() {
-		return Object.assign(new timeSlice_t(), this, {
+		const next = Object.assign(new timeSlice_t(), this, {
 			charname: undefined,
 			playername: undefined,
 			greeting_type: undefined,
-			chars_memories: structuredClone(this.chars_memories)
 		})
+		next.chars_speaking_frequency = structuredClone(this.chars_speaking_frequency)
+		next.chars_memories = structuredClone(this.chars_memories)
+		return next
 	}
 
 	/**
@@ -105,19 +109,7 @@ export class timeSlice_t {
 	 * @returns {Promise<timeSlice_t>} 还原后的实例
 	 */
 	static async fromJSON(json, username) {
-		return Object.assign(new timeSlice_t(), {
-			...json,
-			chars: Object.fromEntries(await Promise.all(
-				(json.chars || []).map(async charname => [charname, await loadPart(username, 'chars/' + charname).catch(e => { ignoreMissingPartLoadError(e) })])
-			)),
-			plugins: Object.fromEntries(await Promise.all(
-				(json.plugins || []).map(async plugin => [plugin, await loadPart(username, 'plugins/' + plugin).catch(e => { ignoreMissingPartLoadError(e) })])
-			)),
-			world_id: json.world,
-			world: json.world ? await loadPart(username, 'worlds/' + json.world).catch(e => { ignoreMissingPartLoadError(e) }) : undefined,
-			player_id: json.player,
-			player: json.player ? await loadPart(username, 'personas/' + json.player).catch(e => { ignoreMissingPartLoadError(e) }) : undefined,
-		})
+		return Object.assign(new timeSlice_t(), await hydrateTimeSlice(json, username))
 	}
 }
 
@@ -158,7 +150,7 @@ export class chatLogEntry_t {
 			timeSlice: this.timeSlice.toJSON(),
 			files: this.files.map(file => ({
 				...file,
-				buffer: file.buffer.toString('base64')
+				buffer: serializeFileBuffer(file.buffer),
 			}))
 		}
 	}
@@ -169,13 +161,34 @@ export class chatLogEntry_t {
 	 * @returns {Promise<object>} 数据对象
 	 */
 	async toData(username) {
+		const operatorEntityHash = resolveOperatorEntityHash(username)
 		return {
 			...this,
 			timeSlice: await this.timeSlice.toData(),
-			files: await Promise.all(this.files.map(async file => ({
-				...file,
-				buffer: 'file:' + await addFile(username, file.buffer)
-			})))
+			files: await Promise.all(this.files.map(async file => {
+				if (typeof file.buffer === 'string' && parseEvfsRef(file.buffer))
+					return { ...file, buffer: file.buffer }
+				if (!operatorEntityHash)
+					throw new Error('identity required to persist chat attachments')
+				const plain = Buffer.isBuffer(file.buffer)
+					? file.buffer
+					: Buffer.from(String(file.buffer), 'base64')
+				const attachId = crypto.randomUUID()
+				const logicalPath = `shells/chat/attachments/${attachId}`
+				await putFileManifest({
+					replicaUsername: username,
+					ownerEntityHash: operatorEntityHash,
+					logicalPath,
+					plaintext: plain,
+					name: file.name,
+					mimeType: file.mime_type || 'application/octet-stream',
+					ceMode: 'convergent',
+				})
+				return {
+					...file,
+					buffer: formatEvfsRef(operatorEntityHash, logicalPath),
+				}
+			})),
 		}
 	}
 
@@ -189,10 +202,15 @@ export class chatLogEntry_t {
 		const instance = Object.assign(new chatLogEntry_t(), {
 			...json,
 			timeSlice: await timeSlice_t.fromJSON(json.timeSlice, username),
-			files: await Promise.all((json.files || []).map(async file => ({
-				...file,
-				buffer: file.buffer.startsWith('file:') ? getFile(username, file.buffer.slice(5)) : Buffer.from(file.buffer, 'base64')
-			})))
+			files: (json.files || []).map(file => {
+				const buffer = file?.buffer
+				if (typeof buffer === 'string' && parseEvfsRef(buffer))
+					return { ...file, buffer }
+				return {
+					...file,
+					buffer: Buffer.from(buffer, 'base64'),
+				}
+			}),
 		})
 		if (!instance.id)
 			instance.id = crypto.randomUUID()
@@ -229,25 +247,8 @@ export class chatMetadata_t {
 	 * @param {string} username 聊天所有者
 	 * @returns {Promise<chatMetadata_t>} 新元数据实例
 	 */
-	static async StartNewAs(username) {
-		const metadata = new chatMetadata_t(username)
-
-		metadata.LastTimeSlice.player_id = getAnyDefaultPart(username, 'personas')
-		if (metadata.LastTimeSlice.player_id)
-			metadata.LastTimeSlice.player = await loadPart(username, 'personas/' + metadata.LastTimeSlice.player_id)
-
-		metadata.LastTimeSlice.world_id = getAnyDefaultPart(username, 'worlds')
-		if (metadata.LastTimeSlice.world_id)
-			metadata.LastTimeSlice.world = await loadPart(username, 'worlds/' + metadata.LastTimeSlice.world_id)
-
-		metadata.LastTimeSlice.plugins = Object.fromEntries(await Promise.all(
-			getAllDefaultParts(username, 'plugins').map(async plugin => [
-				plugin,
-				await loadPart(username, 'plugins/' + plugin)
-			])
-		))
-
-		return metadata
+	static StartNewAs(username) {
+		return createNewChatMetadata(username)
 	}
 
 	/**

@@ -15,7 +15,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-import { generateH } from '../../../../../../../scripts/p2p/gsh.mjs'
+import { debugLog } from '../../../../../../../scripts/debug_log.mjs'
+import { generateH, clearGshKdfCache } from '../../../../../../../scripts/p2p/gsh.mjs'
 import { gshPath } from '../lib/paths.mjs'
 
 /** 最多保留多少代历史 H（用于解密积压的旧消息） */
@@ -50,7 +51,11 @@ export async function loadGsh(username, groupId) {
 		const text = await readFile(gshPath(username, groupId), 'utf8')
 		return normalizeGshFile(JSON.parse(text))
 	}
-	catch { return normalizeGshFile(null) }
+	catch (error) {
+		if (error?.code !== 'ENOENT')
+			await debugLog('gsh-load-fail', { username, groupId, message: error?.message }).catch(() => { })
+		return normalizeGshFile(null)
+	}
 }
 
 /**
@@ -124,6 +129,7 @@ export async function appendH(username, groupId, generation, hHex) {
 	if (data.generations.some(g => g.gen === generation)) return
 	data.generations.push({ gen: generation, h: hHex })
 	data.generations.sort((a, b) => a.gen - b.gen)
+	clearGshKdfCache()
 	await saveGsh(username, groupId, data)
 }
 
@@ -136,10 +142,10 @@ export async function appendH(username, groupId, generation, hHex) {
  */
 export async function applyGshRotationFromEvent(username, groupId, event) {
 	if (event.type !== 'member_kick' && event.type !== 'key_rotate') return
-	const c = event?.content || {}
+	const c = event.content
 	const gen = c.key_generation
-	const nonce = typeof c.new_H_nonce === 'string' ? c.new_H_nonce.trim() : ''
-	if (typeof gen !== 'number' || !Number.isFinite(gen) || gen < 0 || !nonce) return
+	const nonce = c.new_H_nonce.trim()
+	if (!Number.isFinite(gen) || gen < 0 || !nonce) return
 
 	const hEntry = await getCurrentH(username, groupId)
 	if (!hEntry) return

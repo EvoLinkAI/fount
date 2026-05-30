@@ -3,14 +3,15 @@
 	${deadlineHtml}
 	<div class="hub-vote-options">${
 		voteOptions.length
-			? voteOptions.map(opt => `
-				<button type="button" class="hub-vote-option" data-ballot-id="${ballotId}" data-choice="${opt.choice}">
-					<span class="hub-vote-option-label">${opt.label}</span>
-					<span class="hub-vote-option-meta" data-i18n="chat.hub.voteCount" data-count="${opt.count}" data-pct="${opt.percent}"></span>
-					<span class="hub-vote-option-bar" style="width:${opt.percent}%"></span>
-				</button>
-			`).join('')
-			: '<span class="hub-vote-empty" data-i18n="chat.hub.voteNoOptions"></span>'
-	}</div>
+		? voteOptions.map(opt => `
+		<button type="button" class="hub-vote-option" data-ballot-id="${ballotId}" data-choice="${opt.choice}">
+			<span class="hub-vote-option-label">${opt.label}</span>
+			<span class="hub-vote-option-meta" data-i18n="chat.hub.voteCount" data-count="${opt.count}" data-pct="${opt.percent}"></span>
+			<span class="hub-vote-option-bar" style="width:${opt.percent}%"></span>
+		</button>
+		`).join('')
+		: '<span class="hub-vote-empty" data-i18n="chat.hub.voteNoOptions"></span>'
+		}
+	</div>
 	<div class="hub-vote-total" data-i18n="chat.hub.voteTotal" data-total="${total}"></div>
 </div>

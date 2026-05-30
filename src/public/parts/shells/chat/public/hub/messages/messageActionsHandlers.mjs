@@ -49,7 +49,7 @@ const ACTION_BTN_SELECTOR = '.hub-message-action[data-action]'
  */
 async function handleChannelMessageClick(button, row, channelMessage, actions) {
 	const { groupId, channelId, reload } = actions
-	const action = button.dataset.action
+	const { action } = button.dataset
 	if (!action) return false
 
 	if (action === 'feedback-submit' || action === 'feedback-cancel') {
@@ -261,6 +261,19 @@ export function bindChannelMessageActions(container) {
 	container.addEventListener('click', async (clickEvent) => {
 		const actions = getChannelMessageActionsContext()
 		if (!actions) return
+		const retryBtn = /** @type {HTMLElement} */ clickEvent.target.closest('[data-retry-send]')
+		if (retryBtn?.dataset.retrySend) {
+			clickEvent.stopPropagation()
+			const tempId = retryBtn.dataset.retrySend
+			try {
+				const { retryFailedPendingMessage } = await import('./messages.mjs')
+				await retryFailedPendingMessage(tempId)
+			}
+			catch (error) {
+				showToastI18n('error', 'chat.hub.sendFailed', { error: error?.message || String(error) })
+			}
+			return
+		}
 		const button = /** @type {HTMLElement} */ clickEvent.target.closest(ACTION_BTN_SELECTOR)
 		if (!button) return
 		clickEvent.stopPropagation()

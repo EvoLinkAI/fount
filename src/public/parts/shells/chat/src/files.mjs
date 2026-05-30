@@ -7,13 +7,13 @@
  */
 import { Buffer } from 'node:buffer'
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import { setInterval } from 'node:timers'
 
 import blake2b from 'npm:@bitgo/blake2b-wasm'
 import { on_shutdown } from 'npm:on-shutdown'
 
 import { ms } from '../../../../../scripts/ms.mjs'
-import { nicerWriteFileSync } from '../../../../../scripts/nicerWriteFile.mjs'
 import { getAllUserNames, getUserDictionary } from '../../../../../server/auth.mjs'
 
 import { collectReferencedAttachmentHashes } from './chat/files/attachmentRefs.mjs'
@@ -51,8 +51,8 @@ function getUserDir(username) { return getUserDictionary(username) + '/shells/ch
 export async function addFile(username, buffer) {
 	const hash = await getHash(buffer)
 	const userDir = getUserDir(username)
-	if (!fs.existsSync(userDir)) fs.mkdirSync(userDir, { recursive: true })
-	nicerWriteFileSync(userDir + hash, buffer)
+	await fsp.mkdir(userDir, { recursive: true })
+	await fsp.writeFile(userDir + hash, buffer)
 	return hash
 }
 
@@ -73,13 +73,18 @@ export function getFile(username, hash) {
  */
 export async function gcOrphanAttachments(username) {
 	const userDir = getUserDir(username)
-	if (!fs.existsSync(userDir)) return
+	try {
+		await fsp.access(userDir)
+	}
+	catch {
+		return
+	}
 
 	const referenced = await collectReferencedAttachmentHashes(username)
-	for (const filename of fs.readdirSync(userDir)) 
+	for (const filename of await fsp.readdir(userDir))
 		if (!referenced.has(filename))
-			fs.unlinkSync(userDir + filename)
-	
+			await fsp.unlink(userDir + filename)
+
 }
 
 /**
@@ -91,7 +96,7 @@ async function cleanFiles() {
 }
 
 /**
- *
+ * 每 24 小时扫描并清理各用户目录下无引用的聊天附件定时器。
  */
-export const cleanFilesInterval = setInterval(cleanFiles, ms('1h')).unref()
+export const cleanFilesInterval = setInterval(cleanFiles, ms('24h')).unref()
 on_shutdown(cleanFiles)

@@ -6,12 +6,10 @@
  * 【关联】被 group/endpoints.mjs 注册；依赖 group/groupEmojis.mjs、chat/federation/room、upload/fromRequest。
  */
 import { PERMISSIONS } from '../../../../../../../scripts/p2p/permissions.mjs'
-import { getUserByReq } from '../../../../../../../server/auth.mjs'
 import { betterSendFile } from '../../../../../../../server/web_server/resources.mjs'
-import { getState } from '../../chat/dag/materialize.mjs'
 import { ensureFederationRoom } from '../../chat/federation/room.mjs'
 import { isAllowedImageUpload, pickUploadedFile } from '../../upload/fromRequest.mjs'
-import { canInChannel, governanceChannelId, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
+import { governanceChannelId } from '../access.mjs'
 import {
 	bufferToDataUrl,
 	deleteGroupEmoji,
@@ -22,6 +20,8 @@ import {
 	uploadGroupEmoji,
 } from '../groupEmojis.mjs'
 
+import { ensureCanInChannel, requireGroupMember } from './middleware.mjs'
+
 /**
  * 注册群自定义表情 REST 路由。
  * @param {import('npm:websocket-express').Router} router Express 路由
@@ -29,29 +29,18 @@ import {
  * @returns {void}
  */
 export function registerGroupEmojiRoutes(router, authenticate) {
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/emojis$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/emojis$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId } = req.groupContext
 		const entries = await loadGroupEmojiManifest(username, groupId)
 		res.status(200).json({ entries })
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/emojis$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/emojis$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId, state, member } = req.groupContext
 		const channelId = governanceChannelId(state)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
-		if (!canInChannel(state, member, PERMISSIONS.MANAGE_MESSAGES, channelId))
-			return res.status(403).json({ error: 'MANAGE_MESSAGES required' })
+		if (!ensureCanInChannel(res, state, member, PERMISSIONS.MANAGE_MESSAGES, channelId, 'MANAGE_MESSAGES required')) return
 		const file = pickUploadedFile(req, 'emoji')
-		if (!file || !isAllowedImageUpload(file))
+		if (!file || !await isAllowedImageUpload(file))
 			return res.status(400).json({ error: 'invalid emoji image' })
 		const entry = await uploadGroupEmoji(
 			username,
@@ -63,34 +52,23 @@ export function registerGroupEmojiRoutes(router, authenticate) {
 		)
 		const slot = await ensureFederationRoom(username, groupId)
 		if (slot?.replicateGroupEmoji)
-			void slot.replicateGroupEmoji(entry.emojiId).catch(() => {})
+			void slot.replicateGroupEmoji(entry.emojiId).catch(() => { })
 		res.status(201).json({ entry })
 	})
 
-	router.delete(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/emojis\/([^/]+)$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
+	router.delete(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/emojis\/([^/]+)$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId, state, member } = req.groupContext
 		const emojiId = req.params[1]
-		const { state } = await getState(username, groupId)
 		const channelId = governanceChannelId(state)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
-		if (!canInChannel(state, member, PERMISSIONS.MANAGE_MESSAGES, channelId))
-			return res.status(403).json({ error: 'MANAGE_MESSAGES required' })
+		if (!ensureCanInChannel(res, state, member, PERMISSIONS.MANAGE_MESSAGES, channelId, 'MANAGE_MESSAGES required')) return
 		const ok = await deleteGroupEmoji(username, groupId, emojiId)
 		if (!ok) return res.status(404).json({ error: 'emoji not found' })
 		res.status(200).json({})
 	})
 
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/emojis\/([^/]+)\/data$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/emojis\/([^/]+)\/data$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId } = req.groupContext
 		const emojiId = req.params[1]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
 
 		let local = await readGroupEmojiBinary(username, groupId, emojiId)
 		if (!local) {
@@ -105,7 +83,7 @@ export function registerGroupEmojiRoutes(router, authenticate) {
 					emojiId,
 					fetched.dataUrl,
 					fetched.mimeType,
-				).catch(() => {})
+				).catch(() => { })
 				local = await readGroupEmojiBinary(username, groupId, emojiId)
 			}
 		}
@@ -113,11 +91,12 @@ export function registerGroupEmojiRoutes(router, authenticate) {
 		if (!local) return res.status(404).json({ error: 'emoji not found' })
 
 		const wantJson = req.query?.json === '1' || String(req.headers.accept || '').includes('application/json')
-		if (wantJson) 
-			return res.status(200).json({ dataUrl: bufferToDataUrl(local.buffer, local.mimeType),
+		if (wantJson)
+			return res.status(200).json({
+				dataUrl: bufferToDataUrl(local.buffer, local.mimeType),
 				mimeType: local.mimeType,
 			})
-		
+
 
 		const filePath = await resolveGroupEmojiBinaryPath(username, groupId, emojiId)
 		if (!filePath) return res.status(404).json({ error: 'emoji file missing' })

@@ -4,6 +4,8 @@
 
 const DEFAULT_WINDOW_MS = 60_000
 const DEFAULT_MAX_PUTS = 20
+const MAX_KEYS = 8000
+const EXPIRE_SWEEP_BATCH = 64
 
 /** @type {Map<string, { count: number, resetAt: number }>} */
 const inboundByKey = new Map()
@@ -29,6 +31,39 @@ export function mailboxRateKey(username, fromNodeHash) {
 }
 
 /**
+ * @param {number} now 当前时间戳
+ * @returns {void}
+ */
+function sweepExpiredEntries(now) {
+	let scanned = 0
+	for (const [rateKey, rateEntry] of inboundByKey) {
+		if (now > rateEntry.resetAt) inboundByKey.delete(rateKey)
+		if (++scanned >= EXPIRE_SWEEP_BATCH) break
+	}
+}
+
+/**
+ * @param {string} key 限速键
+ * @returns {void}
+ */
+function touchLruKey(key) {
+	const entry = inboundByKey.get(key)
+	if (!entry) return
+	inboundByKey.delete(key)
+	inboundByKey.set(key, entry)
+}
+
+/**
+ * @param {string} key 新插入键
+ * @returns {void}
+ */
+function evictLruIfNeeded(key) {
+	if (inboundByKey.has(key) || inboundByKey.size < MAX_KEYS) return
+	const oldest = inboundByKey.keys().next().value
+	if (oldest != null) inboundByKey.delete(oldest)
+}
+
+/**
  * @param {string} username 用户
  * @param {string} fromNodeHash 来源节点
  * @param {object} [limits] 可选限额
@@ -38,14 +73,16 @@ export function takeIncomingMailboxPutSlot(username, fromNodeHash, limits) {
 	const { windowMs, maxPuts } = resolveMailboxRateLimits(limits)
 	const key = mailboxRateKey(username, fromNodeHash)
 	const now = Date.now()
+	if (inboundByKey.size >= MAX_KEYS) sweepExpiredEntries(now)
+	evictLruIfNeeded(key)
 	let entry = inboundByKey.get(key)
 	if (!entry || now > entry.resetAt) entry = { count: 0, resetAt: now + windowMs }
-	if (entry.count >= maxPuts) return false
+	if (entry.count >= maxPuts) {
+		touchLruKey(key)
+		return false
+	}
 	entry.count++
 	inboundByKey.set(key, entry)
-	if (inboundByKey.size > 8000) 
-		for (const [k, v] of inboundByKey)
-			if (now > v.resetAt) inboundByKey.delete(k)
-	
+	touchLruKey(key)
 	return true
 }

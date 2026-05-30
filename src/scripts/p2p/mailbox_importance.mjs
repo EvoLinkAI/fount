@@ -11,10 +11,10 @@ const TIER_ORDER = { quarantine: 0, normal: 1, trusted: 2 }
  * @returns {MailboxTier} 分层
  */
 export function mailboxTierFromScore(score) {
-	const s = Number(score)
-	if (!Number.isFinite(s)) return 'quarantine'
-	if (s >= 0.45) return 'trusted'
-	if (s >= 0.12) return 'normal'
+	const numericScore = Number(score)
+	if (!Number.isFinite(numericScore)) return 'quarantine'
+	if (numericScore >= 0.45) return 'trusted'
+	if (numericScore >= 0.12) return 'normal'
 	return 'quarantine'
 }
 
@@ -31,7 +31,7 @@ export function scoreMailboxImportance(opts = {}) {
 	const recipient = Number(opts.recipientScore ?? sender)
 	const known = !!opts.knownMember
 	const hop = Math.max(0, Number(opts.hop) || 0)
-	let score = (sender * 0.65 + recipient * 0.35)
+	let score = sender * 0.65 + recipient * 0.35
 	if (known) score += 0.15
 	score -= hop * 0.08
 	if (score < 0) score = 0

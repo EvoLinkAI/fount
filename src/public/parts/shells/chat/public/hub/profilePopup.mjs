@@ -131,7 +131,7 @@ export async function resolveEntityFromAnchor(anchor) {
  * @returns {Promise<void>}
  */
 async function paintProfilePopup(popup, entity) {
-	const entityHash = entity.entityHash
+	const { entityHash } = entity
 	const groupId = hubStore.currentGroupId || undefined
 	const profile = entityHash
 		? await loadEntityProfile(entityHash, { bypassCache: true, groupId })
@@ -145,22 +145,24 @@ async function paintProfilePopup(popup, entity) {
 	}
 
 	const tagEl = popup.querySelector('[data-profile-popup-entity-tag]')
-	if (tagEl) 
+	if (tagEl)
 		if (isViewerEntityHash(entityHash))
 			tagEl.dataset.i18n = 'chat.hub.profilePopup.tagLocal'
 		else if (entity.charname)
 			tagEl.dataset.i18n = 'chat.hub.profilePopup.tagChar'
 		else
 			tagEl.dataset.i18n = 'chat.hub.profilePopup.tagFed'
-	
+
 
 	const editBtn = popup.querySelector('[data-profile-popup-edit]')
 	const dmBtn = popup.querySelector('[data-profile-popup-dm]')
+	const socialBtn = popup.querySelector('[data-profile-popup-social]')
 
 	if (editBtn instanceof HTMLButtonElement && entityHash)
 		wireProfileEditButton(popup, entityHash, {
 			/**
-			 *
+			 * 资料保存后刷新弹窗与侧栏角色卡。
+			 * @returns {Promise<void>}
 			 */
 			onSaved: async () => {
 				await paintProfilePopup(popup, entity)
@@ -181,6 +183,10 @@ async function paintProfilePopup(popup, entity) {
 			? 'chat.hub.profilePopup.dmChar'
 			: 'chat.hub.profilePopup.dmFed'
 	}
+
+	if (socialBtn instanceof HTMLButtonElement)
+		socialBtn.hidden = !isEntityHash128(entityHash)
+
 }
 
 /**
@@ -215,6 +221,11 @@ export async function showProfilePopup(entity) {
 		void dispatchFriendChat(dmEntity).catch(error => {
 			showToastI18n('error', 'chat.hub.profilePopup.dmFailed', { error: error.message })
 		})
+	})
+
+	popup.querySelector('[data-profile-popup-social]')?.addEventListener('click', () => {
+		if (!isEntityHash128(entity.entityHash)) return
+		window.location.href = `/parts/shells:social/#profile;${entity.entityHash}`
 	})
 
 	await paintProfilePopup(popup, entity)

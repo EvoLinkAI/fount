@@ -183,7 +183,7 @@ function renderBookmarkPin(eventId, showBookmark, showPin, isPinned) {
  * @param {object} opts 权限上下文
  * @returns {string} HTML 片段
  */
-export function renderMessageActionsHtml(message, opts) {
+export async function renderMessageActionsHtml(message, opts) {
 	const eventId = String(message.eventId)
 	if (!eventId || message.type !== 'message') return ''
 
@@ -239,7 +239,7 @@ export function renderMessageActionsHtml(message, opts) {
 				})
 				: '',
 		].join('')
-		parts.push(renderActionsBar(inline, menu, shift, actionOpts))
+		parts.push(await renderActionsBar(inline, menu, shift, actionOpts))
 	}
 	else if (!message.isRemote && canDeleteMessage(message, opts) && !generating) {
 		const showEdit = !message.charId && !!channelMessageText(message.content)
@@ -257,7 +257,7 @@ export function renderMessageActionsHtml(message, opts) {
 			icon: hubActionDeleteIcon,
 			i18nKey: 'chat.hub.messageActionDelete',
 		})
-		parts.push(renderActionsBar(inlineHtml, '', shift, actionOpts))
+		parts.push(await renderActionsBar(inlineHtml, '', shift, actionOpts))
 	}
 	else if (!generating && !ownChar) {
 		const utilMenu = renderRemoteUtilMenu(escapedEventId)
@@ -266,7 +266,7 @@ export function renderMessageActionsHtml(message, opts) {
 			attrs: `data-event-id="${escapedEventId}"`,
 			icon: hubActionDownloadIcon,
 		})
-		parts.push(renderActionsBar('', utilMenu, shift, message.charId ? actionOpts : {}))
+		parts.push(await renderActionsBar('', utilMenu, shift, message.charId ? actionOpts : {}))
 	}
 
 	return parts.join('')

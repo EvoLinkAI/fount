@@ -2,7 +2,7 @@
  * 群 Hub WebSocket：DAG/频道事件与 VOLATILE `stream_chunk`（slices diff）流式预览。
  */
 import { showToastI18n } from '../../../../scripts/toast.mjs'
-import { getGroupState, getStreamBufferChunks } from '../src/api/groupApi.mjs'
+import { getGroupState } from '../src/api/groupApi.mjs'
 import { setActiveWebSocket } from '../src/groupWsClient.mjs'
 import { streamDisplayText } from '../src/streamDisplay.mjs'
 import { applySlices } from '../src/streamSlices.mjs'
@@ -278,17 +278,6 @@ function finishVolatileStreamPreview(streamId) {
 	dismissVolatileStreamPreview(streamId, { notifyEnd: true })
 }
 
-/** @returns {Promise<void>} */
-async function replayBufferedStreamsForDom() {
-	const root = document.getElementById('hub-messages')
-	if (!root) return
-	for (const row of root.querySelectorAll('[data-streaming][data-message-id]')) {
-		const streamId = row.getAttribute('data-message-id')
-		if (streamId)
-			await catchUpVolatileStreamFromServer(streamId)
-	}
-}
-
 /**
  * @param {string} streamId pendingStreamId
  * @param {number} sequence chunkSeq
@@ -341,14 +330,14 @@ function handleGroupHubWireMessage(wireMessage, channelId) {
 			dispatchChannelIncrementalRefresh(incomingChannelId, channelId, { immediate: true })
 			return
 		}
-		if (main && channelMessage && !content?.is_generating) 
+		if (main && channelMessage && !content?.is_generating)
 			maybeNotifyHubMessage({
 				groupName: hubStore.currentState?.groupMeta?.name || hubStore.currentGroupId,
 				channelName: hubStore.currentState?.channels?.[incomingChannelId]?.name || incomingChannelId,
 				message: channelMessage,
 				viewerPubKeyHash: hubStore.currentState?.viewerMemberPubKeyHash || null,
 			})
-		
+
 		dispatchChannelIncrementalRefresh(incomingChannelId, channelId, { immediate: true })
 		return
 	}
@@ -410,7 +399,7 @@ async function handleVolatileStreamWireMessage(wireMessage, channelId) {
 	if (wireMessage.type !== 'stream_chunk') return
 
 	const streamId = String(wireMessage.pendingStreamId || '')
-	const slices = wireMessage.slices
+	const { slices } = wireMessage
 	if (!streamId || !Array.isArray(slices) || !slices.length) return
 
 	await appendStreamSlices(
@@ -451,35 +440,19 @@ export function waitForGroupWebSocketOpen(groupId, channelId, { timeoutMs = 8000
 			resolve(opened)
 		}
 		/**
-		 *
+		 * WebSocket 连接成功回调。
+		 * @returns {void}
 		 */
 		function onOpen() { finish(true) }
 		/**
-		 *
+		 * WebSocket 连接关闭回调。
+		 * @returns {void}
 		 */
 		function onClose() { finish(false) }
 		timer = setTimeout(() => finish(socket.readyState === WebSocket.OPEN), timeoutMs)
 		socket.addEventListener('open', onOpen, { once: true })
 		socket.addEventListener('close', onClose, { once: true })
 	})
-}
-
-/**
- * @param {string} streamId pendingStreamId
- * @returns {Promise<void>}
- */
-export async function catchUpVolatileStreamFromServer(streamId) {
-	const id = String(streamId || '').trim()
-	const groupId = connectedGroupId
-	const channelId = activeChannelId
-	if (!id || !groupId || !channelId) return
-	let chunks = []
-	try {
-		chunks = await getStreamBufferChunks(groupId, channelId, id)
-	}
-	catch { /* empty */ }
-	for (const { chunkSeq, slices } of chunks)
-		await appendStreamSlices(id, chunkSeq, slices, channelId)
 }
 
 /**
@@ -512,7 +485,6 @@ export function connectGroupWebSocket(groupId, channelId) {
 				type: 'group_ws_rpc_identity',
 				clientNodeId: hubStore.nodeHash,
 			}))
-		void replayBufferedStreamsForDom()
 	})
 	socket.addEventListener('message', event => {
 		let wireMessage

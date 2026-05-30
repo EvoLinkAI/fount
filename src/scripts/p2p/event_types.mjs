@@ -63,7 +63,8 @@ function typesWithFlag(flag) {
 }
 
 /**
- *
+ * 成员生命周期相关 DAG 事件 type 集合（加入、离开、踢出、封禁、解封）。
+ * @type {Set<string>}
  */
 export const MEMBER_LIFECYCLE_EVENT_TYPES = new Set([
 	'member_join',
@@ -74,7 +75,8 @@ export const MEMBER_LIFECYCLE_EVENT_TYPES = new Set([
 ])
 
 /**
- *
+ * 角色治理相关 DAG 事件 type 集合（创建、更新、删除、分配、撤销）。
+ * @type {Set<string>}
  */
 export const ROLE_EVENT_TYPES = new Set([
 	'role_create',
@@ -85,7 +87,8 @@ export const ROLE_EVENT_TYPES = new Set([
 ])
 
 /**
- *
+ * 频道管理相关 DAG 事件 type 集合（创建、更新、删除、权限覆写）。
+ * @type {Set<string>}
  */
 export const CHANNEL_ADMIN_EVENT_TYPES = new Set([
 	'channel_create',
@@ -95,7 +98,8 @@ export const CHANNEL_ADMIN_EVENT_TYPES = new Set([
 ])
 
 /**
- *
+ * 群元数据与设置相关 DAG 事件 type 集合。
+ * @type {Set<string>}
  */
 export const GROUP_META_EVENT_TYPES = new Set([
 	'group_meta_update',
@@ -103,7 +107,8 @@ export const GROUP_META_EVENT_TYPES = new Set([
 ])
 
 /**
- *
+ * 信誉治理相关 DAG 事件 type 集合（slash、reset）。
+ * @type {Set<string>}
  */
 export const REPUTATION_EVENT_TYPES = new Set([
 	'reputation_slash',

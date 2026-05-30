@@ -9,6 +9,7 @@ import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/gov
 import { isWantIdsInBackoff, wantIdsGroupKey } from '../../../../../../../scripts/p2p/want_ids.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { pickFederationTargetPeerIds, reconcilePeerPoolFromRoster } from '../governance/peerPool.mjs'
+import { encryptSignedEventForWire } from '../gsh/content.mjs'
 import { eventsPath } from '../lib/paths.mjs'
 
 import {
@@ -43,11 +44,8 @@ import { ensureFederationPartitionRoom, ensureFederationRoom } from './room.mjs'
  * @returns {{ eventType: string, channelId: string }} 事件类型与频道
  */
 function resolveRelayPartitionHints(signPayload) {
-	const body = signPayload?.body && typeof signPayload.body === 'object' ? signPayload.body : {}
-	const eventType = String(
-		signPayload?.eventType || signPayload?.type || body?.eventType || body?.type || body?.kind || '',
-	).trim().toLowerCase()
-	const channelId = String(body?.channelId || body?.channel_id || '').trim()
+	const eventType = String(signPayload.type).trim().toLowerCase()
+	const channelId = String(signPayload.body?.channelId).trim()
 	return { eventType, channelId }
 }
 
@@ -58,7 +56,7 @@ function resolveRelayPartitionHints(signPayload) {
 export { requestJoinSnapshotFromPeers }
 
 /**
- *
+ * 联邦 VOLATILE 中继符号（自 volatile.mjs 再导出）。
  */
 export {
 	isFederableVolatilePayload,
@@ -92,7 +90,7 @@ export async function publishSignedEventToFederation(username, groupId, signPayl
 	const { nodeId } = requireDagDeps()
 	const materializedState = await loadFederationMaterializedState(username, groupId)
 	if (!materializedState) return
-	const groupSettings = materializedState.groupSettings
+	const { groupSettings } = materializedState
 	const { eventType, channelId } = resolveRelayPartitionHints(signPayload)
 	const targetPartition = partitionForOutboundEvent(eventType, channelId, groupSettings)
 	if (!canRelayFederatedEvent(materializedState, signPayload)) return
@@ -102,7 +100,9 @@ export async function publishSignedEventToFederation(username, groupId, signPayl
 	}
 	if (!canRelayFederatedEventNow(materializedState, signPayload)) return
 
-	const wireEvent = sanitizeFederatedEvent(signPayload)
+	const wireEvent = sanitizeFederatedEvent(
+		await encryptSignedEventForWire(username, groupId, signPayload),
+	)
 	const localInTarget = nodeHasPartition(groupSettings, channelId, targetPartition)
 	const outboundPartition = localInTarget
 		? targetPartition
@@ -123,14 +123,14 @@ export async function publishSignedEventToFederation(username, groupId, signPayl
 		return
 	}
 
-	for (const peerId of targets.length ? targets : [null]) 
+	for (const peerId of targets.length ? targets : [null])
 		sendPartitionBridgeFromSlot(slot, {
 			targetPartition,
 			actionName: 'dag_event',
 			payload: wireEvent,
 			peerId,
 		})
-	
+
 }
 
 /**
@@ -165,7 +165,8 @@ export async function catchUpGroupFromPeers(username, groupId, opts = {}) {
 			collected,
 			timer,
 			/**
-			 *
+			 * 提前结束 tip 交换等待并 resolve 已收集的远端 tip id 集合。
+			 * @returns {void}
 			 */
 			resolve: () => {
 				clearTimeout(timer)
@@ -205,19 +206,19 @@ export async function catchUpGroupFromPeers(username, groupId, opts = {}) {
 	let wantIdsRateLimited = isWantIdsInBackoff(wantIdsGroupKey(username, groupId))
 	if (wantIds.length) {
 		const result = await requestMissingEventsGossip(username, groupId, { wantIds, awaitGossip: true })
-		wantIdsStillMissing = result.stillMissing?.length ?? wantIds.length
+		wantIdsStillMissing = result.stillMissing.length
 		eventsFilled = wantIds.length - wantIdsStillMissing
 		if (result.rateLimited) wantIdsRateLimited = true
 	}
-	const result = {
+	const catchUpResult = {
 		tipsCollected: remoteTips.size,
 		wantIds: wantIds.length,
 		eventsFilled,
 		wantIdsStillMissing,
 		wantIdsRateLimited,
 	}
-	void maybeRequestBootstrapAfterCatchup(username, groupId, result, slot).catch(() => {})
-	return result
+	void maybeRequestBootstrapAfterCatchup(username, groupId, catchUpResult, slot)
+	return catchUpResult
 }
 
 /**
@@ -240,7 +241,7 @@ export async function listFederationPeersForGroup(username, groupId) {
 	const prefix = `${username}\0${groupId}\0`
 	for (const [key, roomSlot] of federationRooms)
 		if (key.startsWith(prefix))
-			for (const peer of roomSlot?.getRoster?.() || [])
+			for (const peer of roomSlot.getRoster())
 				if (peer?.peerId && !peersByPeerId.has(peer.peerId))
 					peersByPeerId.set(peer.peerId, peer)
 	const peers = [...peersByPeerId.values()]

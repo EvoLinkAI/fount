@@ -21,11 +21,11 @@ function key(username, groupId) {
  * @returns {void}
  */
 export function markMqttCredentialsStale(username, groupId) {
-	const k = key(username, groupId)
-	const prev = staleByKey.get(k)
-	staleByKey.set(k, {
+	const staleKey = key(username, groupId)
+	const previous = staleByKey.get(staleKey)
+	staleByKey.set(staleKey, {
 		markedAt: Date.now(),
-		failCount: (prev?.failCount || 0) + 1,
+		failCount: (previous?.failCount || 0) + 1,
 	})
 }
 

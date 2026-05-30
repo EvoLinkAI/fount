@@ -21,7 +21,7 @@ function isContentObject(content) {
  */
 export function channelContentType(content) {
 	if (!isContentObject(content)) throw new Error('content must be an object')
-	const {type} = content
+	const { type } = content
 	if (type === 'text' || type === 'sticker' || type === 'vote' || type === 'group_invite') return type
 	throw new Error(`unknown content.type: ${String(type)}`)
 }

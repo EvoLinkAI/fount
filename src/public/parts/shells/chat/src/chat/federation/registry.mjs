@@ -8,7 +8,7 @@
 import { EVENT_ID_HEX } from '../../../../../../../scripts/p2p/dag/index.mjs'
 
 /**
- *
+ * DAG 事件 ID 的 64 位小写 hex 正则（自 `p2p/dag` 再导出）。
  */
 export { EVENT_ID_HEX }
 

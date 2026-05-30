@@ -1,8 +1,7 @@
 /**
  * 【文件】public/hub/chatGestures.mjs
  * 【职责】移动端/触控聊天手势：末条角色消息左右滑动切换时间轴分支，桌面端显示箭头按钮。
- * 【原理】`createChatGestures` 在消息列表上注册 pointer/touch 监听器并显示滑动提示反馈。手势触发后调用 `reloadMessages` 或 composer 预填，不直接渲染 HTML。
- * 【数据结构】hubStore 及模块内 Map/Set 字段；见 core/state 与各函数 JSDoc。
+ * 【原理】在 `#hub-messages` 上事件委托 touch；桌面箭头仍挂末条角色消息。
  * 【关联】../../../../scripts/template、../src/api/groupApi、core/state
  */
 import { renderTemplate } from '../../../../scripts/template.mjs'
@@ -10,12 +9,13 @@ import { modifyChannelTimeline } from '../src/api/groupApi.mjs'
 
 import { hubStore } from './core/state.mjs'
 
-/** @type {WeakMap<HTMLElement, object>} */
-const chatSwipeListenersMap = new WeakMap()
 const CHAT_SWIPE_THRESHOLD = 50
 
 /** @type {ReturnType<typeof createChatGestures> | null} */
 let chatGestures = null
+
+/** @type {boolean} */
+let swipeDelegationBound = false
 
 /**
  * 创建私聊手势：时间轴箭头、末条角色消息滑动切换。
@@ -42,6 +42,16 @@ export function createChatGestures({ getGroupId, getChannelId, reloadMessages })
 	}
 
 	/**
+	 * @param {HTMLElement} container 消息列表根节点
+	 * @returns {HTMLElement|null} 末条角色消息元素
+	 */
+	function findLastCharMessage(container) {
+		const charEls = container.querySelectorAll('.hub-message[data-char-id], .hub-chat-entry[data-role="char"], .hub-char-entry[data-role="char"]')
+		const lastChar = charEls.length ? charEls[charEls.length - 1] : null
+		return lastChar instanceof HTMLElement && !lastChar.hasAttribute('data-streaming') ? lastChar : null
+	}
+
+	/**
 	 * 在末条角色消息两侧挂载桌面时间轴箭头按钮。
 	 * @param {HTMLElement} lastChar 末条角色消息 DOM
 	 * @returns {void}
@@ -53,7 +63,6 @@ export function createChatGestures({ getGroupId, getChannelId, reloadMessages })
 		if (!groupId || !channelId) return
 
 		/**
-		 * 按偏移修改频道时间轴并刷新消息。
 		 * @param {number} delta 时间轴步进（-1 或 1）
 		 * @returns {Promise<void>}
 		 */
@@ -81,62 +90,65 @@ export function createChatGestures({ getGroupId, getChannelId, reloadMessages })
 		lastChar.appendChild(right)
 	}
 
+	/** @type {WeakMap<HTMLElement, { startX: number, startY: number, dragging: boolean, handled: boolean }>} */
+	const swipeStateByEl = new WeakMap()
+
 	/**
-	 * 为末条角色消息绑定触摸滑动以切换时间轴。
 	 * @param {HTMLElement} container 消息列表根节点
 	 * @returns {void}
 	 */
-	function attachLastCharMessageSwipe(container) {
-		if (!(container instanceof HTMLElement)) return
-		for (const el of container.querySelectorAll('.hub-message[data-char-id], .hub-chat-entry[data-role="char"], .hub-char-entry[data-role="char"]')) {
-			const prev = chatSwipeListenersMap.get(el)
-			if (prev) {
-				el.removeEventListener('touchstart', prev.touchstart)
-				el.removeEventListener('touchmove', prev.touchmove)
-				el.removeEventListener('touchend', prev.touchend)
-				el.removeEventListener('touchcancel', prev.touchcancel)
-				chatSwipeListenersMap.delete(el)
-			}
-		}
-		const charEls = container.querySelectorAll('.hub-message[data-char-id], .hub-chat-entry[data-role="char"], .hub-char-entry[data-role="char"]')
-		const lastChar = charEls.length ? charEls[charEls.length - 1] : null
-		if (!(lastChar instanceof HTMLElement) || lastChar.hasAttribute('data-streaming')) return
+	function ensureSwipeDelegation(container) {
+		if (swipeDelegationBound) return
+		swipeDelegationBound = true
 
-		void attachDesktopTimelineArrows(lastChar)
-
-		let touchStartX = 0
-		let touchStartY = 0
-		let isDragging = false
-		let swipeHandled = false
-
-		/** @param {TouchEvent} event 触摸开始 */
-		const handleTouchStart = event => {
+		/** @param {TouchEvent} event 触摸事件 */
+		const onTouchStart = event => {
+			const target = event.target instanceof Element
+				? event.target.closest('.hub-message[data-char-id], .hub-chat-entry[data-role="char"], .hub-char-entry[data-role="char"]')
+				: null
+			if (!(target instanceof HTMLElement) || target.hasAttribute('data-streaming')) return
+			const lastChar = findLastCharMessage(container)
+			if (target !== lastChar) return
 			if (event.touches.length !== 1) return
-			touchStartX = event.touches[0].clientX
-			touchStartY = event.touches[0].clientY
-			isDragging = true
-			swipeHandled = false
+			swipeStateByEl.set(target, {
+				startX: event.touches[0].clientX,
+				startY: event.touches[0].clientY,
+				dragging: true,
+				handled: false,
+			})
 		}
-		/** @param {TouchEvent} event 触摸移动 */
-		const handleTouchMove = event => {
-			if (!isDragging || event.touches.length !== 1) return
-			const deltaX = event.touches[0].clientX - touchStartX
-			const deltaY = event.touches[0].clientY - touchStartY
-			if (Math.abs(deltaY) > Math.abs(deltaX)) isDragging = false
+
+		/** @param {TouchEvent} event 触摸事件 */
+		const onTouchMove = event => {
+			const target = event.target instanceof Element
+				? event.target.closest('.hub-message[data-char-id], .hub-chat-entry[data-role="char"], .hub-char-entry[data-role="char"]')
+				: null
+			if (!(target instanceof HTMLElement)) return
+			const state = swipeStateByEl.get(target)
+			if (!state?.dragging || event.touches.length !== 1) return
+			const deltaX = event.touches[0].clientX - state.startX
+			const deltaY = event.touches[0].clientY - state.startY
+			if (Math.abs(deltaY) > Math.abs(deltaX)) state.dragging = false
 		}
-		/** @param {TouchEvent} event 触摸结束 */
-		const handleTouchEnd = async event => {
-			if (!isDragging || swipeHandled || event.changedTouches.length !== 1) {
-				isDragging = false
+
+		/** @param {TouchEvent} event 触摸事件 */
+		const onTouchEnd = async event => {
+			const target = event.target instanceof Element
+				? event.target.closest('.hub-message[data-char-id], .hub-chat-entry[data-role="char"], .hub-char-entry[data-role="char"]')
+				: null
+			if (!(target instanceof HTMLElement)) return
+			const state = swipeStateByEl.get(target)
+			if (!state?.dragging || state.handled || event.changedTouches.length !== 1) {
+				if (state) state.dragging = false
 				return
 			}
-			const deltaX = event.changedTouches[0].clientX - touchStartX
-			const deltaY = event.changedTouches[0].clientY - touchStartY
-			isDragging = false
+			const deltaX = event.changedTouches[0].clientX - state.startX
+			const deltaY = event.changedTouches[0].clientY - state.startY
+			state.dragging = false
 			const groupId = getGroupId()
 			const channelId = getChannelId()
 			if (Math.abs(deltaX) > CHAT_SWIPE_THRESHOLD && Math.abs(deltaX) > Math.abs(deltaY) && groupId && channelId) {
-				swipeHandled = true
+				state.handled = true
 				try {
 					await modifyChannelTimeline(groupId, channelId, deltaX > 0 ? -1 : 1)
 					await reloadMessages()
@@ -146,39 +158,61 @@ export function createChatGestures({ getGroupId, getChannelId, reloadMessages })
 				}
 			}
 		}
-		/** @returns {void} */
-		const handleTouchCancel = () => { isDragging = false }
 
-		const listeners = { touchstart: handleTouchStart, touchmove: handleTouchMove, touchend: handleTouchEnd, touchcancel: handleTouchCancel }
-		chatSwipeListenersMap.set(lastChar, listeners)
-		lastChar.addEventListener('touchstart', handleTouchStart, { passive: true })
-		lastChar.addEventListener('touchmove', handleTouchMove, { passive: true })
-		lastChar.addEventListener('touchend', handleTouchEnd, { passive: true })
-		lastChar.addEventListener('touchcancel', handleTouchCancel, { passive: true })
+		/** @param {TouchEvent} event 触摸事件 */
+		const onTouchCancel = event => {
+			const target = event.target instanceof Element
+				? event.target.closest('.hub-message[data-char-id], .hub-chat-entry[data-role="char"], .hub-char-entry[data-role="char"]')
+				: null
+			if (target instanceof HTMLElement) {
+				const state = swipeStateByEl.get(target)
+				if (state) state.dragging = false
+			}
+		}
+
+		container.addEventListener('touchstart', onTouchStart, { passive: true })
+		container.addEventListener('touchmove', onTouchMove, { passive: true })
+		container.addEventListener('touchend', onTouchEnd, { passive: true })
+		container.addEventListener('touchcancel', onTouchCancel, { passive: true })
+	}
+
+	/**
+	 * @param {HTMLElement} container 消息列表根节点
+	 * @returns {void}
+	 */
+	function attachLastCharMessageSwipe(container) {
+		if (!(container instanceof HTMLElement)) return
+		ensureSwipeDelegation(container)
+		const lastChar = findLastCharMessage(container)
+		if (!lastChar) return
+		void attachDesktopTimelineArrows(lastChar)
 	}
 
 	return { updateHideCharNames, attachLastCharMessageSwipe }
 }
 
-/** @returns {ReturnType<typeof createChatGestures>} 二人角色对话手势实例 */
+/**
+ * @returns {ReturnType<typeof createChatGestures>} 手势单例
+ */
 export function getChatGestures() {
-	if (!chatGestures) 
+	if (!chatGestures)
 		chatGestures = createChatGestures({
 			/** @returns {string|null} 当前群 ID */
 			getGroupId: () => hubStore.currentGroupId || hubStore.privateGroup.groupId,
 			/** @returns {string|null} 当前频道 ID */
 			getChannelId: () => hubStore.currentChannelId || hubStore.privateGroup.channelId,
-			/** @returns {Promise<void>} 刷新频道消息 */
+			/** @returns {Promise<void>} 刷新消息 */
 			reloadMessages: async () => {
 				const { loadMessages } = await import('./messages/messages.mjs')
 				await loadMessages()
 			},
 		})
-	
+
 	return chatGestures
 }
 
-/** 重置手势单例（Hub 初始化时调用）。 @returns {void} */
+/** @returns {void} */
 export function resetChatGestures() {
 	chatGestures = null
+	swipeDelegationBound = false
 }

@@ -5,21 +5,23 @@
  * 【数据结构】hubStore（core/state）及本模块函数入参/返回值；详见 JSDoc。
  * 【关联】../../../../scripts/i18n、../../../../scripts/parts、../../../../scripts/template、../../../../scripts/toast、../src/api/groupApi、../src/inviteQr、chat、core/domUtils。
  */
+import { openDialogFromTemplate } from '../../../../scripts/dialog.mjs'
 import { confirmI18n } from '../../../../scripts/i18n.mjs'
 import { getPartList } from '../../../../scripts/parts.mjs'
 import {
 	renderTemplate,
 	renderTemplateAsHtmlString,
+	usingTemplates,
 } from '../../../../scripts/template.mjs'
 import { showToastI18n } from '../../../../scripts/toast.mjs'
 import { createGroupInvite, groupRequest, leaveGroup } from '../src/api/groupApi.mjs'
 import { buildInviteJoinShareUrl } from '../src/inviteQr.mjs'
 
-import { clearPrivateGroupState } from './privateGroup.mjs'
 import { escapeHtml } from './core/domUtils.mjs'
 import { hubStore } from './core/state.mjs'
 import { navigateToGroupSettings, selectGroup } from './groupNav.mjs'
 import { closeGroupWebSocket } from './groupStream.mjs'
+import { clearPrivateGroupState } from './privateGroup.mjs'
 import { renderServerBar } from './serverBar.mjs'
 
 /** @type {HTMLElement | null} */
@@ -56,7 +58,8 @@ async function mountGroupActionMenuAt(groupId, left, top) {
 	openMenuEl = menu
 
 	/**
-	 *
+	 * 关闭群右键菜单并移除文档级监听。
+	 * @returns {void}
 	 */
 	const closeOnce = () => {
 		dismissGroupActionMenu()
@@ -165,33 +168,32 @@ async function showAddCharDialog(groupId) {
 		showToastI18n('warning', 'chat.hub.groupContext.noChars')
 		return
 	}
-	const modal = document.createElement('dialog')
-	modal.className = 'modal'
-	modal.appendChild(await renderTemplate('hub/modals/add_char', {}))
-	const select = modal.querySelector('#hub-add-char-select')
-	if (select instanceof HTMLSelectElement)
-		select.innerHTML = await renderTemplateAsHtmlString('hub/modals/char_select_options', { chars, escapeHtml })
-	/**
-	 *
-	 */
-	const closeModal = () => {
-		modal.close()
-		modal.remove()
-	}
-	modal.querySelector('.hub-add-char-cancel')?.addEventListener('click', closeModal)
-	modal.querySelector('.hub-add-char-submit')?.addEventListener('click', async () => {
-		const select = modal.querySelector('#hub-add-char-select')
-		const charname = select instanceof HTMLSelectElement ? select.value.trim() : ''
-		if (!charname) return
-		try {
-			await groupRequest(groupId, 'char', 'POST', { charname })
-			showToastI18n('success', 'chat.dragAndDrop.charAdded', { partName: charname })
-			closeModal()
-		}
-		catch (err) {
-			showToastI18n('error', 'chat.hub.operationFailed', { error: err.message })
-		}
+	usingTemplates('/parts/shells:chat/src/templates')
+	await openDialogFromTemplate('hub/modals/add_char', {}, {
+		/**
+		 * @param {HTMLDialogElement} dialog 对话框
+		 * @returns {Promise<void>}
+		 */
+		onReady: async dialog => {
+			const select = dialog.querySelector('#hub-add-char-select')
+			if (select instanceof HTMLSelectElement)
+				select.innerHTML = await renderTemplateAsHtmlString('hub/modals/char_select_options', { chars, escapeHtml })
+			/** @returns {void} */
+			const closeModal = () => dialog.close()
+			dialog.querySelector('.hub-add-char-cancel')?.addEventListener('click', closeModal)
+			dialog.querySelector('.hub-add-char-submit')?.addEventListener('click', async () => {
+				const sel = dialog.querySelector('#hub-add-char-select')
+				const charname = sel instanceof HTMLSelectElement ? sel.value.trim() : ''
+				if (!charname) return
+				try {
+					await groupRequest(groupId, 'char', 'POST', { charname })
+					showToastI18n('success', 'chat.dragAndDrop.charAdded', { partName: charname })
+					closeModal()
+				}
+				catch (err) {
+					showToastI18n('error', 'chat.hub.operationFailed', { error: err.message })
+				}
+			})
+		},
 	})
-	document.body.appendChild(modal)
-	modal.showModal()
 }

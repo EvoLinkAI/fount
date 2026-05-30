@@ -25,7 +25,21 @@
 - **Restart server**: Run `fount reboot` to restart the fount server after code or config changes.
 - **curl / API testing**: Pass API key on protected routes, e.g. `curl "http://localhost:8931/api/whoami?fount-apikey=$env:FOUNT_API_KEY"` (PowerShell: `$env:FOUNT_API_KEY`; bash: `$FOUNT_API_KEY`).
 
-## 4. Specialized Guides
+## 4. Trust boundaries (P2P)
+
+- **Untrusted ingress**: Trystero、群 WebSocket 联邦帧、`remoteIngest`、`social_timeline_put` / `social_rpc` — 校验与 `canonicalize*` 仅在此边界。
+- **Trusted after disk**: `events.jsonl` 读出后仅做 `sanitizeFederatedEvent`（剥扩展键）；reducer / Hub / Social UI 不再重复 hex 规范化。
+- **User-level P2P identity/profile**: `{userDict}/settings/federation.json`（公钥/relay/batterySaver）与 `{userDict}/entities/{entityHash}/profile.json`；HTTP 见 `/api/p2p/federation`、`/api/p2p/entities/*`、`/api/p2p/viewer`（`src/server/web_server/p2p_endpoints.mjs`）。不依赖 shell Load。
+- **TrustGraph fanout**: Social/Mailbox 经 `requireTrustGraphProvider()`（Chat shell Load 时注册 `chatTrustGraph.mjs`）；无 Provider 时 explore 降级为本地-only，timeline fanout fail-fast。
+
+## 5. Entity 文件（EVFS）
+
+- **统一 URL**：`GET|PUT|HEAD /api/p2p/entities/{entityHash}/files/{*path}`。
+- **两层存储**：密文块 `{userDict}/p2p/chunks/`（CAS）；逻辑 manifest `{userDict}/entities/{entityHash}/files/{path}.manifest.json`。
+- **群文件**：`groupEntityHash` + 路径 `chat/{fileId}`；chunk miss 走群联邦或 TrustGraph `fed_chunk_get`。
+- **核心模块**：`src/scripts/p2p/files/`、`src/scripts/p2p/entity/files/`（evfs、acl、url）。
+
+## 6. Specialized Guides
 
 - [Frontend Common Functions Guide](src/public/pages/AGENTS.md)
 - [Shell Architecture Guide](src/public/parts/shells/AGENTS.md)

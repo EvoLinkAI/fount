@@ -8,15 +8,9 @@
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 
+import { prefixedRandomId } from '../../../../../../../scripts/p2p/id.mjs'
 import { PERMISSIONS } from '../../../../../../../scripts/p2p/permissions.mjs'
-import { getUserByReq } from '../../../../../../../server/auth.mjs'
-import {
-	appendChannelMessageDelete,
-	appendChannelMessageEdit,
-	appendChannelMessageFeedback,
-	CHANNEL_MESSAGE_EVENT_ID_RE,
-} from '../../chat/channel/messageMutations.mjs'
-import { postChannelMessage } from '../../chat/channel/postMessage.mjs'
+import { CHANNEL_MESSAGE_EVENT_ID_RE } from '../../chat/channel/messageMutations.mjs'
 import { appendSignedLocalEvent } from '../../chat/dag/append.mjs'
 import {
 	appendListItemUpdate,
@@ -25,84 +19,23 @@ import {
 	appendStreamingSession,
 	appendUnpinEvent,
 } from '../../chat/dag/channelOps.mjs'
-import { getState } from '../../chat/dag/materialize.mjs'
 import { requestChannelHistoryFromPeers } from '../../chat/federation/channelHistory.mjs'
 import { getCurrentH } from '../../chat/gsh/store.mjs'
 import { channelMessageText } from '../../chat/lib/channelContent.mjs'
 import { EVENT_ID_ROUTE_SEGMENT } from '../../chat/lib/hexRoute.mjs'
 import { triggerCharReply } from '../../chat/session/generation.mjs'
 import { buildStreamingEmbedUrl, mintStreamingViewToken } from '../../chat/stream/auth.mjs'
-import { resolveActiveMemberKeyForLocalUser, canInChannel } from '../access.mjs'
 import { readChannelReactionEvents, readChannelMessagesForUser } from '../queries.mjs'
+import { ChannelMessageService } from '../services/ChannelMessageService.mjs'
 
-/**
- * 解析已登录成员与物化群状态；非成员时写 403 并返回 null。
- * @param {import('npm:express').Request} req HTTP 请求
- * @param {import('npm:express').Response} res HTTP 响应
- * @param {string} groupId 群 ID
- * @returns {Promise<{ username: string, state: object, memberKey: string, member: object } | null>} 成员上下文或 null
- */
-async function resolveGroupMember(req, res, groupId) {
-	const { username } = await getUserByReq(req)
-	const { state } = await getState(username, groupId)
-	const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-	if (!memberKey) {
-		res.status(403).json({ error: 'Not a member' })
-		return null
-	}
-	return { username, state, memberKey, member: state.members[memberKey] }
-}
-
-/**
- * @param {import('npm:express').Response} res HTTP 响应
- * @param {number} status HTTP 状态码
- * @param {string} error 错误信息
- * @returns {false} 恒为 false，便于 `if (!fn()) return` 早退
- */
-function denyJson(res, status, error) {
-	res.status(status).json({ error })
-	return false
-}
-
-/**
- * @param {import('npm:express').Response} res HTTP 响应
- * @param {object} state 物化群状态
- * @param {string} channelId 频道 ID
- * @returns {boolean} 频道存在则为 true
- */
-function ensureChannel(res, state, channelId) {
-	if (state.channels[channelId]) return true
-	return denyJson(res, 404, 'Channel not found')
-}
-
-/**
- * @param {import('npm:express').Response} res HTTP 响应
- * @param {object} state 物化群状态
- * @param {object} member 成员
- * @param {string} permission 权限名
- * @param {string} channelId 频道 ID
- * @param {string} [error] 403 文案
- * @returns {boolean} 有权限则为 true
- */
-function ensureCanInChannel(res, state, member, permission, channelId, error) {
-	if (canInChannel(state, member, permission, channelId)) return true
-	return denyJson(res, 403, error || `${permission} denied`)
-}
-
-/**
- * @param {import('npm:express').Response} res HTTP 响应
- * @param {object} state 物化群状态
- * @param {object} member 成员
- * @param {string} permission 权限名
- * @param {string} channelId 频道 ID
- * @param {string} [error] 403 纯文本
- * @returns {boolean} 有权限则为 true
- */
-function ensureCanInChannelSend(res, state, member, permission, channelId, error) {
-	if (canInChannel(state, member, permission, channelId)) return true
-	res.status(403).send(error || `${permission} denied`)
-	return false
-}
+import {
+	ensureCanInChannel,
+	ensureCanInChannelSend,
+	ensureChannel,
+	requireGroupChannel,
+	requireGroupMember,
+	resolveGroupMember,
+} from './middleware.mjs'
 
 /**
  * 注册频道相关 HTTP 路由。
@@ -111,13 +44,8 @@ function ensureCanInChannelSend(res, state, member, permission, channelId, error
  * @returns {void}
  */
 export function registerChannelRoutes(router, authenticate) {
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/trigger-reply$/, authenticate, async (req, res) => {
-		const groupId = req.params[0]
-		const channelId = req.params[1]
-		const membership = await resolveGroupMember(req, res, groupId)
-		if (!membership) return
-		const { username, state } = membership
-		if (!ensureChannel(res, state, channelId)) return
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/trigger-reply$/, authenticate, requireGroupChannel(), async (req, res) => {
+		const { groupId, channelId } = req.groupContext
 
 		const { charname } = req.body || {}
 		const resolvedCharname = String(charname || '').trim() || null
@@ -126,17 +54,11 @@ export function registerChannelRoutes(router, authenticate) {
 		res.status(200).json({})
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/reactions$/, authenticate, async (req, res) => {
-		const groupId = req.params[0]
-		const channelId = req.params[1]
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/reactions$/, authenticate, requireGroupChannel(), async (req, res) => {
+		const { username, groupId, channelId } = req.groupContext
 		const { targetEventId, emoji } = req.body || {}
 		if (!targetEventId || !emoji)
 			return res.status(400).json({ error: 'targetEventId and emoji required' })
-
-		const membership = await resolveGroupMember(req, res, groupId)
-		if (!membership) return
-		const { username, state } = membership
-		if (!ensureChannel(res, state, channelId)) return
 
 		await appendReactionEvent(username, groupId, {
 			type: 'reaction_add',
@@ -147,19 +69,13 @@ export function registerChannelRoutes(router, authenticate) {
 		res.status(200).json({})
 	})
 
-	router.delete(new RegExp('^/api/parts/shells:chat/groups/([^/]+)/channels/([^/]+)/reactions/(.+)$'), authenticate, async (req, res) => {
-		const groupId = req.params[0]
-		const channelId = req.params[1]
+	router.delete(new RegExp('^/api/parts/shells:chat/groups/([^/]+)/channels/([^/]+)/reactions/(.+)$'), authenticate, requireGroupChannel(), async (req, res) => {
+		const { username, groupId, channelId, memberKey, member } = req.groupContext
 		const emoji = decodeURIComponent(req.params[2])
 		const targetPubKeyHash = String(req.query.targetPubKeyHash || '').trim() || undefined
 		const targetEventId = String(req.query.targetEventId || '').trim()
 		if (!targetEventId || !emoji)
 			return res.status(400).json({ error: 'targetEventId query and emoji path required' })
-
-		const membership = await resolveGroupMember(req, res, groupId)
-		if (!membership) return
-		const { username, state, memberKey, member } = membership
-		if (!ensureChannel(res, state, channelId)) return
 
 		const myPubKeyHash = (member?.pubKeyHash || memberKey).toLowerCase()
 		await appendReactionEvent(username, groupId, {
@@ -172,51 +88,33 @@ export function registerChannelRoutes(router, authenticate) {
 		res.status(200).json({})
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/pins$/, authenticate, async (req, res) => {
-		const groupId = req.params[0]
-		const channelId = req.params[1]
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/pins$/, authenticate, requireGroupChannel(), async (req, res) => {
+		const { username, groupId, channelId } = req.groupContext
 		const { targetEventId } = req.body || {}
 		if (!targetEventId)
 			return res.status(400).json({ error: 'targetEventId required' })
-
-		const membership = await resolveGroupMember(req, res, groupId)
-		if (!membership) return
-		const { username, state } = membership
-		if (!ensureChannel(res, state, channelId)) return
 
 		await appendPinEvent(username, groupId, channelId, targetEventId)
 		res.status(200).json({})
 	})
 
-	router.delete(new RegExp(`^/api/parts/shells:chat/groups/([^/]+)/channels/([^/]+)/pins/(${EVENT_ID_ROUTE_SEGMENT})$`, 'i'), authenticate, async (req, res) => {
-		const groupId = req.params[0]
-		const channelId = req.params[1]
+	router.delete(new RegExp(`^/api/parts/shells:chat/groups/([^/]+)/channels/([^/]+)/pins/(${EVENT_ID_ROUTE_SEGMENT})$`, 'i'), authenticate, requireGroupChannel(), async (req, res) => {
+		const { username, groupId, channelId } = req.groupContext
 		const targetEventId = String(req.params[2] || '').toLowerCase()
-
-		const membership = await resolveGroupMember(req, res, groupId)
-		if (!membership) return
-		const { username, state } = membership
-		if (!ensureChannel(res, state, channelId)) return
 
 		await appendUnpinEvent(username, groupId, channelId, targetEventId)
 		res.status(200).json({})
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/list-items$/, authenticate, async (req, res) => {
-		const groupId = req.params[0]
-		const channelId = req.params[1]
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/list-items$/, authenticate, requireGroupChannel(), async (req, res) => {
+		const { username, groupId, channelId, state } = req.groupContext
 		const { items } = req.body || {}
 		if (!Array.isArray(items))
 			return res.status(400).json({ error: 'items array required' })
 		if (items.length > 128)
 			return res.status(400).json({ error: 'Too many list items' })
 
-		const membership = await resolveGroupMember(req, res, groupId)
-		if (!membership) return
-		const { username, state } = membership
 		const channel = state.channels[channelId]
-		if (!channel)
-			return res.status(404).json({ error: 'Channel not found' })
 		if (channel.type !== 'list')
 			return res.status(400).json({ error: 'Channel is not a list channel' })
 
@@ -234,12 +132,9 @@ export function registerChannelRoutes(router, authenticate) {
 		res.status(200).json({})
 	})
 
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/streaming-view$/, authenticate, async (req, res) => {
-		const groupId = req.params[0]
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/streaming-view$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, state, member, groupId } = req.groupContext
 		const channelId = req.params[1]
-		const membership = await resolveGroupMember(req, res, groupId)
-		if (!membership) return
-		const { username, state, member } = membership
 		const channel = state.channels[channelId]
 		if (!channel)
 			return res.status(404).send('Channel not found')
@@ -265,14 +160,12 @@ export function registerChannelRoutes(router, authenticate) {
 		res.setHeader('Content-Type', 'text/html; charset=utf-8')
 		res.setHeader('X-Frame-Options', 'SAMEORIGIN')
 		res.setHeader('Cache-Control', 'no-store')
-		res.status(200).send(html)	})
+		res.status(200).send(html)
+	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/streaming-auth$/, authenticate, async (req, res) => {
-		const groupId = req.params[0]
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/streaming-auth$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, state, member, groupId } = req.groupContext
 		const channelId = req.params[1]
-		const membership = await resolveGroupMember(req, res, groupId)
-		if (!membership) return
-		const { username, state, member } = membership
 		const channel = state.channels[channelId]
 		if (!channel)
 			return res.status(404).json({ error: 'Channel not found' })
@@ -295,7 +188,8 @@ export function registerChannelRoutes(router, authenticate) {
 			username, groupId, channelId, undefined, currentH.h,
 		)
 		await appendStreamingSession(username, groupId, channelId, { sessionId, expiresAt })
-		res.status(200).json({ mode: 'sfu',
+		res.status(200).json({
+			mode: 'sfu',
 			sessionId,
 			token,
 			expiresAt,
@@ -345,7 +239,7 @@ export function registerChannelRoutes(router, authenticate) {
 		const { username, state } = membership
 		if (!ensureChannel(res, state, channelId)) return
 
-		const event = await appendChannelMessageEdit(username, groupId, channelId, eventId, text)
+		const event = await ChannelMessageService.editMessage(username, groupId, channelId, eventId, text)
 		res.status(200).json({ event })
 	})
 
@@ -361,7 +255,7 @@ export function registerChannelRoutes(router, authenticate) {
 		const { username, state } = membership
 		if (!ensureChannel(res, state, channelId)) return
 
-		const event = await appendChannelMessageDelete(username, groupId, channelId, eventId)
+		const event = await ChannelMessageService.deleteMessage(username, groupId, channelId, eventId)
 		res.status(200).json({ event })
 	})
 
@@ -380,7 +274,7 @@ export function registerChannelRoutes(router, authenticate) {
 		const { username, state } = membership
 		if (!ensureChannel(res, state, channelId)) return
 
-		const event = await appendChannelMessageFeedback(username, groupId, channelId, eventId, type, content)
+		const event = await ChannelMessageService.setFeedback(username, groupId, channelId, eventId, type, content)
 		res.status(200).json({ event })
 	})
 
@@ -479,7 +373,7 @@ export function registerChannelRoutes(router, authenticate) {
 				content.friendBinding = normalized
 			}
 		}
-		
+
 		if (!Object.keys(content).length)
 			return res.status(400).json({ error: 'no meta fields to update' })
 		await appendSignedLocalEvent(username, groupId, {
@@ -504,18 +398,16 @@ export function registerChannelRoutes(router, authenticate) {
 		res.status(200).json({})
 	})
 
-	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels$/, authenticate, async (req, res) => {
-		const groupId = req.params[0]
-		const { type, name, description, isPrivate } = req.body
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels$/, authenticate, requireGroupMember(), async (req, res) => {
+		const {
+			groupContext: { username, groupId },
+			body: { type, name, description, isPrivate }
+		} = req
 		const channelName = String(name || '').trim()
 		if (!channelName)
 			return res.status(400).json({ error: 'Channel name is required' })
 
-		const membership = await resolveGroupMember(req, res, groupId)
-		if (!membership) return
-		const { username } = membership
-
-		const channelId = `channel_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+		const channelId = prefixedRandomId('channel_')
 		await appendSignedLocalEvent(username, groupId, {
 			type: 'channel_create',
 			timestamp: Date.now(),
@@ -653,7 +545,7 @@ export function registerChannelRoutes(router, authenticate) {
 			...file,
 			buffer: Buffer.from(file.buffer, 'base64'),
 		}))
-		const { event } = await postChannelMessage(username, groupId, channelId, {
+		const { event } = await ChannelMessageService.postMessage(username, groupId, channelId, {
 			...reply
 				? { reply: { content: reply.content, isAutoTrigger: reply.isAutoTrigger } }
 				: { rawContent },

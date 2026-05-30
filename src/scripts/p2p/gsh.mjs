@@ -12,7 +12,29 @@ import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes }
 
 import { x25519 } from 'npm:@noble/curves/ed25519.js'
 
+import { createLruMap } from '../memo.mjs'
+
 // ─── KDF ──────────────────────────────────────────────────────────────────────
+
+const KDF_CACHE_MAX = 512
+
+const kdfCache = createLruMap(KDF_CACHE_MAX)
+
+/** 清空 KDF 派生缓存（H 轮换后调用）。 */
+export function clearGshKdfCache() {
+	kdfCache.clear()
+}
+
+/**
+ * @param {string | Buffer | Uint8Array} H 群秘密
+ * @param {string} label 用途标签
+ * @param {string} id 上下文 id
+ * @returns {string} 缓存键
+ */
+function kdfCacheKey(H, label, id) {
+	const hHex = typeof H === 'string' ? H : Buffer.from(H).toString('hex')
+	return `${hHex}:${label}:${id}`
+}
 
 /**
  * HMAC-SHA256(key=H, data=label + "\x00" + id) → 32 字节 AES-256 密钥
@@ -22,11 +44,19 @@ import { x25519 } from 'npm:@noble/curves/ed25519.js'
  * @returns {Buffer} 32 字节派生密钥
  */
 function kdf(H, label, id) {
-	return createHmac('sha256', H)
+	const cacheKey = kdfCacheKey(H, label, id)
+	const cached = kdfCache.get(cacheKey)
+	if (cached) {
+		kdfCache.touch(cacheKey, cached)
+		return Buffer.from(cached)
+	}
+	const derived = createHmac('sha256', H)
 		.update(label)
 		.update('\x00')
 		.update(id)
 		.digest()
+	kdfCache.touch(cacheKey, Buffer.from(derived))
+	return derived
 }
 
 /**
@@ -74,6 +104,16 @@ export function deriveFileKey(H, fileId) {
 }
 
 /**
+ * 推导 social 帖子加密密钥：`KDF(H, "post", postId)`（social shell §6）
+ * @param {string | Buffer} H vault 秘密
+ * @param {string} postId 帖子 ID
+ * @returns {Buffer} 32 字节 AES-256 密钥
+ */
+export function deriveSocialPostKey(H, postId) {
+	return kdf(toHBuf(H), 'post', String(postId))
+}
+
+/**
  * 推导流媒体观看令牌 HMAC 密钥：`KDF(H, "streaming", groupId)`（与群密钥同步轮换）。
  * @param {string | Buffer} H 群秘密
  * @param {string} groupId 群 ID
@@ -88,14 +128,14 @@ export function deriveStreamingAuthKey(H, groupId) {
 /**
  * 踢人/主动轮换后推导新 H：`H_new = SHA256(H_old || eventId || nonce)`（§11.2）
  *
- * @param {string} H_old_hex 旧 H（十六进制）
+ * @param {string} oldHHex 旧 H（十六进制）
  * @param {string} eventId 踢人/轮换事件 ID（签名后的 SHA256 hex）
  * @param {string} nonce `new_H_nonce` 字段（字符串）
  * @returns {string} 新 H（十六进制）
  */
-export function deriveNewH(H_old_hex, eventId, nonce) {
+export function deriveNewH(oldHHex, eventId, nonce) {
 	return createHash('sha256')
-		.update(Buffer.from(H_old_hex, 'hex'))
+		.update(Buffer.from(oldHHex, 'hex'))
 		.update(String(eventId))
 		.update(String(nonce))
 		.digest('hex')
@@ -227,7 +267,7 @@ export function decryptH(encryptedH, myEdPrivKeySeed) {
  * ECIES 封装任意 UTF-8 载荷（联邦 MQTT bootstrap 等）。
  * @param {string} utf8Text 明文
  * @param {string} memberEdPubKeyHex 成员 Ed25519 公钥 hex
- * @returns {{ ephemPub: string, iv: string, ciphertext: string, authTag: string }}
+ * @returns {{ ephemPub: string, iv: string, ciphertext: string, authTag: string }} ECIES 加密结果
  */
 export function encryptUtf8ForMember(utf8Text, memberEdPubKeyHex) {
 	const memberX25519Pub = edPubToX25519(Buffer.from(memberEdPubKeyHex, 'hex'))
@@ -350,6 +390,24 @@ export function encryptConvergentPlaintext(plaintext) {
 }
 
 /**
+ * 高隐私模式：随机 contentKey + 随机 IV（放弃跨文件 dedup）。
+ * @param {Buffer | Uint8Array} plaintext 明文字节
+ * @returns {{ contentHash: string, ciphertextHash: string, contentKey: Buffer, raw: Buffer }} 哈希、随机密钥与密文
+ */
+export function encryptRandomPlaintext(plaintext) {
+	const plain = Buffer.from(plaintext)
+	const contentHash = createHash('sha256').update(plain).digest('hex')
+	const contentKey = randomBytes(32)
+	const iv = randomBytes(12)
+	const cipher = createCipheriv('aes-256-gcm', contentKey, iv)
+	const ciphertext = Buffer.concat([cipher.update(plain), cipher.final()])
+	const authTag = cipher.getAuthTag()
+	const raw = Buffer.concat([iv, authTag, ciphertext])
+	const ciphertextHash = createHash('sha256').update(raw).digest('hex')
+	return { contentHash, ciphertextHash, contentKey, raw }
+}
+
+/**
  * 解密收敛密文块（`raw` = iv(12) || authTag(16) || ciphertext）。
  * @param {Buffer | Uint8Array} raw 磁盘上的密文块
  * @param {string} contentHashHex 期望的明文哈希（校验用）
@@ -368,6 +426,33 @@ export function decryptConvergentCiphertext(raw, contentHashHex) {
 		const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()])
 		const check = createHash('sha256').update(plain).digest('hex')
 		if (check !== contentHashHex.toLowerCase()) return null
+		return plain
+	}
+	catch { return null }
+}
+
+/**
+ * 用随机 contentKey 解密密文块（`raw` = iv(12) || authTag(16) || ciphertext）。
+ * @param {Buffer | Uint8Array} raw 磁盘上的密文块
+ * @param {Buffer | Uint8Array} contentKey 32 字节随机 contentKey
+ * @param {string} [contentHashHex] 可选明文哈希（用于完整性校验）
+ * @returns {Buffer | null} 明文；校验失败返回 null
+ */
+export function decryptRandomCiphertext(raw, contentKey, contentHashHex = '') {
+	try {
+		const buf = Buffer.from(raw)
+		if (buf.length < 28) return null
+		const iv = buf.subarray(0, 12)
+		const authTag = buf.subarray(12, 28)
+		const ciphertext = buf.subarray(28)
+		const decipher = createDecipheriv('aes-256-gcm', Buffer.from(contentKey), iv)
+		decipher.setAuthTag(authTag)
+		const plain = Buffer.concat([decipher.update(ciphertext), decipher.final()])
+		const expect = String(contentHashHex || '').trim().toLowerCase()
+		if (expect) {
+			const check = createHash('sha256').update(plain).digest('hex')
+			if (check !== expect) return null
+		}
 		return plain
 	}
 	catch { return null }

@@ -1,26 +1,30 @@
 /**
- * 入群快照：checkpoint + 明文 channelHistories（fed_join_snapshot_*）。
+ * 入群快照：checkpoint + GSH wire channelHistories + gshGrant（HPKE envelope）。
  */
 import { randomUUID } from 'node:crypto'
 
-import { getState, rebuildAndSaveCheckpoint } from '../dag/materialize.mjs'
-import { listChannelMessages, mergeChannelHistories } from '../dag/queries.mjs'
-import { writeJsonAtomicSynced } from '../dag/storage.mjs'
+import { rebuildAndSaveCheckpoint } from '../dag/materialize.mjs'
+import { listChannelMessages } from '../dag/queries.mjs'
 import { pickFederationTargetPeerIds } from '../governance/peerPool.mjs'
 import { isSubjectBlocked, loadPeers } from '../governance/peers.mjs'
-import { verifyRemoteCheckpoint } from '../lib/checkpointVerifier.mjs'
-import { snapshotPath } from '../lib/paths.mjs'
 import { isPlainObject } from '../lib/wireIngress.mjs'
 
 import { wireArchiveSummary, loadLocalFederationArchive } from './archiveHandshake.mjs'
 import { loadFederationGroupSettings, loadFederationMaterializedState, requireDagDeps } from './deps.mjs'
+import { resolveMemberEdPubKeyHex, signPullAttestation, validatePullAttestationForGroup } from './pullAttestation.mjs'
+import {
+	applyPullInner,
+	buildPullResponseEnvelope,
+	unwrapPullEnvelopeForLocalMember,
+} from './pullEnvelope.mjs'
+
 /**
- *
+ * 入群快照 Trystero 请求/响应载荷解析（自 joinSnapshotWire 再导出）。
  */
 export { parseJoinSnapshotRequest, parseJoinSnapshotResponse } from './joinSnapshotWire.mjs'
 
 /**
- *
+ * 入群快照响应中每频道附带的历史消息条数上限。
  */
 export const JOIN_SNAPSHOT_PER_CHANNEL = 500
 const SNAPSHOT_WAIT_MS = 4000
@@ -41,28 +45,22 @@ function snapshotWaitKey(username, groupId, requestId) {
 /**
  * @param {string} username 用户
  * @param {string} groupId 群 ID
- * @param {object} response 解析后的响应
+ * @param {object} envelope 解析后的 HPKE envelope
  * @returns {Promise<boolean>} 是否已应用
  */
-export async function applyJoinSnapshotResponse(username, groupId, response) {
+export async function applyJoinSnapshotResponse(username, groupId, envelope) {
 	const { nodeId } = requireDagDeps()
-	if (response.requesterId !== nodeId) return false
-	const key = snapshotWaitKey(username, groupId, response.requestId)
+	if (envelope.requesterNodeId !== nodeId) return false
+	const key = snapshotWaitKey(username, groupId, envelope.requestId)
 	const pending = pendingSnapshots.get(key)
 	if (pending) {
 		clearTimeout(pending.timer)
 		pendingSnapshots.delete(key)
-		pending.resolve(response)
+		pending.resolve(envelope)
 	}
-	if (isPlainObject(response.checkpoint)) {
-		const checkpointResult = await verifyRemoteCheckpoint(response.checkpoint, undefined)
-			.catch(() => ({ valid: false }))
-		if (!checkpointResult.valid) return false
-		await writeJsonAtomicSynced(snapshotPath(username, groupId), response.checkpoint)
-		await getState(username, groupId, { skipWalRepair: true }).catch(() => {})
-	}
-	if (isPlainObject(response.channelHistories))
-		await mergeChannelHistories(username, groupId, response.channelHistories)
+	const inner = await unwrapPullEnvelopeForLocalMember(username, groupId, envelope)
+	if (!inner) return false
+	await applyPullInner(username, groupId, inner)
 	return true
 }
 
@@ -78,27 +76,34 @@ export async function handleJoinSnapshotRequest(username, groupId, request, peer
 	if (request.groupId !== groupId || !peerId) return
 	const fedState = await loadFederationMaterializedState(username, groupId)
 	if (!fedState) return
+	if (!await validatePullAttestationForGroup(fedState, groupId, request.attestation)) return
 	const peers = await loadPeers(username, groupId)
-	if (isSubjectBlocked(peers, request.requesterId)) return
-	const { nodeId, readJsonl } = requireDagDeps()
+	if (isSubjectBlocked(peers, request.requesterPubKeyHash)) return
+	const recipientEdPubKeyHex = resolveMemberEdPubKeyHex(fedState, request.requesterPubKeyHash)
+	if (!recipientEdPubKeyHex) return
+
+	const { readJsonl } = requireDagDeps()
 	const checkpoint = await rebuildAndSaveCheckpoint(username, groupId, { skipChannelGc: true })
 	const channelHistories = {}
-	for (const channelId of Object.keys(fedState.channels || {})) 
+	for (const channelId of Object.keys(fedState.channels || {}))
 		channelHistories[channelId] = await listChannelMessages(username, groupId, channelId, {
 			limit: JOIN_SNAPSHOT_PER_CHANNEL,
 			limitCap: JOIN_SNAPSHOT_PER_CHANNEL,
-			decrypt: true,
+			decrypt: false,
 		})
-	
+
 	const localArchive = await loadLocalFederationArchive(username, groupId, readJsonl)
-	sendResponse({
+	const envelope = await buildPullResponseEnvelope(username, groupId, {
 		requestId: request.requestId,
-		requesterId: request.requesterId,
-		responderNodeId: nodeId,
+		requesterNodeId: request.requesterNodeId,
+		requesterPubKeyHash: request.requesterPubKeyHash,
+		recipientEdPubKeyHex,
 		checkpoint,
 		archiveSummary: wireArchiveSummary(localArchive.summary),
 		channelHistories,
-	}, peerId)
+		includeGshGrant: true,
+	})
+	sendResponse(envelope, peerId)
 }
 
 /**
@@ -111,11 +116,14 @@ export async function requestJoinSnapshotFromPeers(username, groupId, slot) {
 	const { nodeId, readJsonl } = requireDagDeps()
 	const localArchive = await loadLocalFederationArchive(username, groupId, readJsonl)
 	const requestId = randomUUID()
+	const attestation = await signPullAttestation(username, groupId, { requestId })
 	const request = {
 		requestId,
-		requesterId: nodeId,
+		requesterNodeId: nodeId,
+		requesterPubKeyHash: attestation.requesterPubKeyHash,
 		groupId,
 		tipsHash: localArchive.summary?.tipsHash || '',
+		attestation,
 	}
 	const responsePromise = new Promise(resolve => {
 		const timer = setTimeout(() => {
@@ -127,18 +135,18 @@ export async function requestJoinSnapshotFromPeers(username, groupId, slot) {
 	const groupSettings = await loadFederationGroupSettings(username, groupId)
 	const roster = slot.getRoster()
 	const targets = await pickFederationTargetPeerIds(username, groupId, roster, groupSettings, nodeId)
-	if (targets.length) 
+	if (targets.length)
 		for (const peerId of targets)
 			slot.sendJoinSnapshotRequest(request, peerId)
-	
 	else
 		slot.sendJoinSnapshotRequest(request, null)
 
-	const response = await responsePromise
-	if (!response) return { applied: false, channels: 0 }
-	const ok = await applyJoinSnapshotResponse(username, groupId, response)
-	const channelCount = isPlainObject(response.channelHistories)
-		? Object.keys(response.channelHistories).length
+	const envelope = await responsePromise
+	if (!envelope) return { applied: false, channels: 0 }
+	const ok = await applyJoinSnapshotResponse(username, groupId, envelope)
+	const inner = await unwrapPullEnvelopeForLocalMember(username, groupId, envelope)
+	const channelCount = isPlainObject(inner?.channelHistories)
+		? Object.keys(inner.channelHistories).length
 		: 0
 	return { applied: ok, channels: channelCount }
 }

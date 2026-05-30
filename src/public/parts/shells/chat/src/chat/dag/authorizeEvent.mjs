@@ -39,7 +39,7 @@ export function eventChannelId(event) {
  * @returns {{ ok: boolean, reason?: string }} 是否允许
  */
 export function checkEventPermission(state, event, senderHash) {
-	const type = event.type
+	const { type } = event
 	if (!type) return { ok: false, reason: 'missing event type' }
 	if (!FEDERATION_ACL_GATED_EVENT_TYPES.has(type)) return { ok: true }
 

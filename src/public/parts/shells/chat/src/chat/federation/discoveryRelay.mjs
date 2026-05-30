@@ -11,6 +11,7 @@ import { listUserGroups } from '../lib/userGroups.mjs'
 
 import { loadFederationGroupSettings, requireDagDeps } from './deps.mjs'
 
+/** 重导出 discovery wire 解析函数。 */
 export { parseDiscoveryAnnounce, parseDiscoveryQuery, parseDiscoveryQueryResponse } from '../discovery/wire.mjs'
 
 /**
@@ -28,7 +29,7 @@ export async function publishDiscoveryAnnounceForGroup(username, groupId, nodeId
 	const targets = await pickFederationTargetPeerIds(
 		username,
 		groupId,
-		slot.getRoster?.() || [],
+		slot.getRoster(),
 		groupSettings,
 		selfNodeId,
 	)

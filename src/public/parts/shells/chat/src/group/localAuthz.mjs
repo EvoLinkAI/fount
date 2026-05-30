@@ -1,7 +1,7 @@
 /**
  * 【文件】group/localAuthz.mjs
  * 【职责】校验经 POST /events 提交的本地未签名授权类 DAG 事件载荷与批次。
- * 【原理】LOCAL_APPEND_AUTHZ_TYPES 白名单；reputation_slash/reset 校验目标活跃成员；peer_invite 校验 from/to 与可选 encrypted_H；已签名行跳过本地校验。
+ * 【原理】LOCAL_APPEND_AUTHZ_TYPES 白名单；reputation_slash/reset 校验目标活跃成员；peer_invite 校验 from/to 与可选 gshGrant；已签名行跳过本地校验。
  * 【数据结构】事件 type/content、物化 state.members、LOCAL_APPEND_AUTHZ_TYPES Set。
  * 【关联】被 group/routes/dag.mjs 在批量追加前调用；依赖 access.mjs、chat/governance/blocklist。
  */
@@ -39,10 +39,10 @@ export function validateLocalAuthzPayload(type, content, username, state) {
 		if (from !== username) throw new Error('peer_invite from must match caller')
 		if (!to || to === username) throw new Error('peer_invite requires distinct to')
 		if (!resolveActiveMemberKey(state, from)) throw new Error('peer_invite from must be active member')
-		if (content.encrypted_H !== undefined) {
-			const encryptedH = content.encrypted_H
-			if (!encryptedH?.ephemPub || !encryptedH?.iv || !encryptedH?.ciphertext || !encryptedH?.authTag)
-				throw new Error('peer_invite.encrypted_H must be a GSH-encrypted object or omitted (server injects)')
+		if (content.gshGrant !== undefined) {
+			const grant = content.gshGrant
+			if (!Array.isArray(grant?.generations) || !grant.generations.length)
+				throw new Error('peer_invite.gshGrant must be a non-empty grant object or omitted (server injects)')
 		}
 	}
 }

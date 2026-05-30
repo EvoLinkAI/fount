@@ -7,6 +7,7 @@
  */
 import { isPlainObject } from '../lib/wireIngress.mjs'
 
+import { parsePullAttestation } from './fedPullWire.mjs'
 import { EVENT_ID_HEX } from './registry.mjs'
 
 /**
@@ -31,7 +32,7 @@ export function parseFedTipPong(payload) {
 
 /**
  * @param {unknown} payload gossip_request 载荷
- * @returns {{ wantIds: string[], ttl: number, requesterId: string, archiveSummary: unknown } | null} 解析结果
+ * @returns {{ wantIds: string[], ttl: number, requesterId: string, archiveSummary: unknown, attestation: import('./fedPullWire.mjs').PullAttestation } | null} 解析结果
  */
 export function parseGossipRequest(payload) {
 	if (!isPlainObject(payload)) return null
@@ -41,8 +42,13 @@ export function parseGossipRequest(payload) {
 	if (!wantIds.length) return null
 	const ttl = Number(payload.ttl)
 	const requesterId = String(payload.requesterId || '').trim()
-	if (!Number.isFinite(ttl) || !requesterId) return null
-	return { wantIds, ttl, requesterId, archiveSummary: payload.archiveSummary }
+	const attestation = parsePullAttestation(payload.attestation)
+	if (!Number.isFinite(ttl) || !requesterId || !attestation) return null
+	if (attestation.wantIds?.length) {
+		const attSet = new Set(attestation.wantIds)
+		if (wantIds.some(id => !attSet.has(id))) return null
+	}
+	return { wantIds, ttl, requesterId, archiveSummary: payload.archiveSummary, attestation }
 }
 
 /**

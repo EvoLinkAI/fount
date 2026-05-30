@@ -8,11 +8,11 @@ import {
 	scoreMailboxImportance,
 } from '../../../../../../../scripts/p2p/mailbox_importance.mjs'
 import { takeIncomingMailboxPutSlot } from '../../../../../../../scripts/p2p/mailbox_rate.mjs'
+import { requireTrustGraphProvider } from '../../../../../../../scripts/p2p/trust_graph_registry.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 import { appendValidatedRemoteEvent } from '../dag/remoteIngest.mjs'
 import { requireDagDeps } from '../federation/deps.mjs'
 import { loadReputation } from '../governance/reputation.mjs'
-import { fanoutToTopSocialNodes } from '../social/graph.mjs'
 
 import { isKnownMailboxSubject } from './memberIndex.mjs'
 import {
@@ -62,7 +62,7 @@ export async function dispatchMailboxMessage(username, signedEvent, toPubKeyHash
 		tier: 'trusted',
 		importance: 1,
 	})
-	await fanoutToTopSocialNodes(username, 'mailbox_put', {
+	await requireTrustGraphProvider('chat').fanoutToTopNodes(username, 'mailbox_put', {
 		nodeId,
 		record: {
 			toPubKeyHash: normalizeHex64(toPubKeyHash),
@@ -102,7 +102,7 @@ export async function onFederationRoomReadyForMailbox(username, groupId) {
  * @returns {Promise<void>}
  */
 export async function requestMailboxFromNetwork(username, toPubKeyHash) {
-	await fanoutToTopSocialNodes(username, 'mailbox_want', {
+	await requireTrustGraphProvider('chat').fanoutToTopNodes(username, 'mailbox_want', {
 		toPubKeyHash: normalizeHex64(toPubKeyHash),
 		ids: (await listMailboxIdsForRecipient(username, toPubKeyHash)).slice(0, 64),
 	}, 6)
@@ -114,7 +114,7 @@ export async function requestMailboxFromNetwork(username, toPubKeyHash) {
  * @returns {Promise<void>}
  */
 export async function ingestMailboxPut(username, put) {
-	const record = put.record
+	const { record } = put
 	if (!record?.envelope || !record?.toPubKeyHash) return
 	const fromNode = String(put.nodeId || record.fromNodeHash || '').trim()
 	if (!takeIncomingMailboxPutSlot(username, fromNode)) return
@@ -151,7 +151,7 @@ export async function ingestMailboxPut(username, put) {
 	})) return
 	if (hop >= MAX_MAILBOX_HOP) return
 	if (!allowMailboxRelayForTier(tier)) return
-	await fanoutToTopSocialNodes(username, 'mailbox_put', {
+	await requireTrustGraphProvider('chat').fanoutToTopNodes(username, 'mailbox_put', {
 		nodeId: put.nodeId,
 		record: { ...record, hop: relayHop, tier, importance: score },
 	}, tier === 'trusted' ? 4 : 2)
@@ -187,6 +187,6 @@ export async function ingestMailboxGive(username, groupId, give) {
 }
 
 /**
- *
+ * mailbox Put/Want/Give 联邦 wire 载荷解析（自 wire.mjs 再导出）。
  */
 export { parseMailboxPut, parseMailboxWant, parseMailboxGive } from './wire.mjs'

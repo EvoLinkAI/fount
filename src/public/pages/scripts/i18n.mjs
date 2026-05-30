@@ -321,9 +321,10 @@ export function geti18n(key, params = {}) {
 }
 
 /**
- *
+ * 重导出全局 `console`，并挂载 i18n 日志方法（`infoI18n` 等）。
+ * @type {Console}
  */
-export const {console} = globalThis
+export const { console } = globalThis
 
 /**
  * 将值转换为字符串。
@@ -557,11 +558,6 @@ export function confirmI18n(key, params = {}) {
 	return confirm(toString(geti18n(key, params)))
 }
 /**
- * 导出的控制台对象。
- * @type {Console}
- */
-
-/**
  * 翻译单个元素。
  * @param {HTMLElement} element - 要翻译的元素。
  * @returns {boolean} 如果元素已更新，则返回 true。
@@ -695,7 +691,7 @@ if (document.body) observeBody()
 else window.addEventListener('DOMContentLoaded', observeBody)
 
 /**
- *
+ * 重导出 i18n 初始化与 locale 工具（`initTranslations` 等）。
  */
 export {
 	preferredLangsStorageKey,

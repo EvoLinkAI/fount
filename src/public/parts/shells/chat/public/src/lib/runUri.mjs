@@ -3,7 +3,8 @@
 import { normalizePubKeyHex } from './pubKeyHex.mjs'
 
 /**
- *
+ * chat shell 在 `fount://run/` 协议中的 part 路径标识。
+ * @type {string}
  */
 export const CHAT_RUN_PART = 'parts:shells:chat'
 const RUN_PREFIX = `fount://run/${CHAT_RUN_PART}/`

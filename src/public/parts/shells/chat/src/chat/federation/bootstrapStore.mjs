@@ -63,7 +63,7 @@ export function peekFederationBootstrap(username, groupId) {
 /**
  * @param {string} username 用户
  * @param {string} groupId 群 ID
- * @returns {{ mqttAppId: string, mqttRoomSecret: string, fromNodeId: string, setAt: number, settingsEventId?: string } | undefined}
+ * @returns {{ mqttAppId: string, mqttRoomSecret: string, fromNodeId: string, setAt: number, settingsEventId?: string } | undefined} 邻居 MQTT 提示
  */
 export function peekPeerMqttHint(username, groupId) {
 	return peerHintByKey.get(federationBootstrapKey(username, groupId))

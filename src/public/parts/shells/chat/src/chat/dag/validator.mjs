@@ -12,7 +12,7 @@ import { signPayloadBytes, sortedPrevEventIds } from '../../../../../../../scrip
 import { HEX_ID_64, isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 
 /**
- *
+ * 发件人 pubKeyHash 的 64 位小写 hex 校验正则。
  */
 export const PUB_KEY_HASH_HEX = HEX_ID_64
 
@@ -84,14 +84,13 @@ export async function validateSignature(username, groupId, body, signPayload, ev
 	if (!hasSignature) throw new Error('signed events require signature (sender is pubKeyHash)')
 
 	let publicKeyBytes = null
-	if (secretKey) 
+	if (secretKey)
 		publicKeyBytes = publicKeyFromSeed(secretKey)
-	
-	else 
+	else
 		publicKeyBytes = publicKeyBytesFromHex(eventLike.senderPubKey || signPayload.senderPubKey)
 			|| publicKeyBytesFromHex(eventLike.content?.pubKeyHex || eventLike.content?.pubKey)
 			|| publicKeyBytesFromHex(memberRecord(materializedState, sender)?.pubKeyHex)
-	
+
 	if (!publicKeyBytes) throw new Error('cannot verify: missing public key for sender hash')
 
 	if (pubKeyHash(publicKeyBytes).toLowerCase() !== sender.toLowerCase())

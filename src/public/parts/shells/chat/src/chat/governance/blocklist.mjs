@@ -128,7 +128,7 @@ export async function addBlocklistEntry(username, entry) {
 	if (scope === 'node' && !isHex64(normalizeHex64(value)))
 		throw new Error('invalid nodeHash')
 
-	const store = /** @type {{ blocked?: Array<Record<string, string>> }} */ 
+	const store = /** @type {{ blocked?: Array<Record<string, string>> }} */
 		loadShellData(username, 'chat', 'blocklist')
 	if (!Array.isArray(store.blocked)) store.blocked = []
 	const normValue = scope === 'node' || scope === 'subject' ? normalizeHex64(value) : value

@@ -1,7 +1,7 @@
 /**
  * 【文件】`dag/groupLock.mjs` — 单群 DAG 写路径互斥锁。
  * 【职责】保证同一用户同一群的 events 追加、频道消息写入与 checkpoint 刷新串行执行。
- * 【原理】基于 Promise 链的 per-key 队列（§7 WAL）：避免并发写导致 JSONL 与快照不一致；Map 过大时裁剪最旧 500 个键。
+ * 【原理】基于 Promise 链的 per-key 队列（§7 WAL）：避免并发写导致 JSONL 与快照不一致；写完成后自动清理 Map 项。
  * 【数据结构】`tails: Map<string, Promise<void>>`，键为 `username\0groupId`。
  * 【关联】`append.mjs`、`remoteIngest.mjs`、`events/quarantine.mjs`。
  */
@@ -30,11 +30,12 @@ function lockKey(username, groupId) {
 export async function withGroupWriteLock(username, groupId, fn) {
 	const key = lockKey(username, groupId)
 	const prev = tails.get(key) ?? Promise.resolve()
-	const run = prev.catch(() => {}).then(() => fn())
-	tails.set(key, run.then(() => {}, () => {}))
-	if (tails.size > 4000) {
-		const drop = [...tails.keys()].slice(0, 500)
-		for (const k of drop) tails.delete(k)
+	const run = prev.catch(() => { }).then(() => fn())
+	tails.set(key, run)
+	try {
+		return await run
 	}
-	return run
+	finally {
+		if (tails.get(key) === run) tails.delete(key)
+	}
 }

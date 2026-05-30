@@ -9,78 +9,86 @@ import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { loadJsonFile } from '../../../../../../../scripts/json_loader.mjs'
+import { parseEvfsRef } from '../../../../../../../scripts/p2p/entity/files/evfs_ref.mjs'
 import { readJsonl } from '../dag/storage.mjs'
 import { groupDir, eventsPath, quarantinePath } from '../lib/paths.mjs'
 import { listUserGroups } from '../lib/userGroups.mjs'
 import { isEnoent, rethrowUnlessEnoentOrEnotdir } from '../lib/utils.mjs'
 import { groupMetadatas } from '../session/wsLifecycle.mjs'
 
-const FILE_REF_PREFIX = 'file:'
 
 /**
  * @param {unknown} value JSON 子树
  * @param {Set<string>} referenced 就地写入的 hash 集合
+ * @param {Set<string>} evfsPaths EVFS 逻辑路径 entityHash/logicalPath
  * @returns {void}
  */
-export function collectFileRefHashesFromValue(value, referenced) {
+export function collectFileRefHashesFromValue(value, referenced, evfsPaths) {
 	if (typeof value === 'string') {
-		if (value.startsWith(FILE_REF_PREFIX)) {
-			const hash = value.slice(FILE_REF_PREFIX.length)
-			if (hash) referenced.add(hash)
+		const parsed = parseEvfsRef(value)
+		if (parsed) evfsPaths.add(`${parsed.entityHash}/${parsed.logicalPath}`)
+		if (value.includes('/api/p2p/entities/') && value.includes('/files/')) {
+			const m = value.match(/\/api\/p2p\/entities\/([\da-f]{128})\/files\/(.+?)(?:\?|$)/iu)
+			if (m) evfsPaths.add(`${m[1].toLowerCase()}/${decodeURIComponent(m[2])}`)
 		}
 		return
 	}
 	if (!value || typeof value !== 'object') return
 	if (Array.isArray(value)) {
-		for (const item of value) collectFileRefHashesFromValue(item, referenced)
+		for (const item of value) collectFileRefHashesFromValue(item, referenced, evfsPaths)
 		return
 	}
 	for (const key of Object.keys(value))
-		collectFileRefHashesFromValue(value[key], referenced)
+		collectFileRefHashesFromValue(value[key], referenced, evfsPaths)
 }
 
 /**
  * @param {object} entry 聊天日志条目或侧车上下文行
  * @param {Set<string>} referenced hash 集合
+ * @param {Set<string>} evfsPaths EVFS 路径
  * @returns {void}
  */
-function collectFromChatLogEntry(entry, referenced) {
+function collectFromChatLogEntry(entry, referenced, evfsPaths) {
 	if (!entry) return
 	for (const file of entry.files || []) {
 		const buffer = file?.buffer
-		if (typeof buffer === 'string' && buffer.startsWith(FILE_REF_PREFIX))
-			referenced.add(buffer.slice(FILE_REF_PREFIX.length))
+		if (typeof buffer === 'string') {
+			const parsed = parseEvfsRef(buffer)
+			if (parsed) evfsPaths.add(`${parsed.entityHash}/${parsed.logicalPath}`)
+		}
 	}
 	for (const contextEntry of entry.logContextBefore || [])
-		collectFromChatLogEntry(contextEntry, referenced)
+		collectFromChatLogEntry(contextEntry, referenced, evfsPaths)
 	for (const contextEntry of entry.logContextAfter || [])
-		collectFromChatLogEntry(contextEntry, referenced)
+		collectFromChatLogEntry(contextEntry, referenced, evfsPaths)
 }
 
 /**
  * @param {string} username replica 所有者
  * @param {Set<string>} referenced hash 集合
+ * @param {Set<string>} evfsPaths EVFS 路径
  * @returns {void}
  */
-function collectFromRuntimeChatMetadatas(username, referenced) {
+function collectFromRuntimeChatMetadatas(username, referenced, evfsPaths) {
 	for (const [, slot] of groupMetadatas) {
 		if (slot.username !== username || !slot.chatMetadata) continue
 		for (const entry of slot.chatMetadata.chatLog)
-			collectFromChatLogEntry(entry, referenced)
+			collectFromChatLogEntry(entry, referenced, evfsPaths)
 	}
 }
 
 /**
  * @param {object[]} lines JSONL 行
  * @param {Set<string>} referenced hash 集合
+ * @param {Set<string>} evfsPaths EVFS 路径
  * @returns {void}
  */
-function collectFromDagJsonlLines(lines, referenced) {
+function collectFromDagJsonlLines(lines, referenced, evfsPaths) {
 	const deleted = new Set()
-	for (const line of lines) 
+	for (const line of lines)
 		if (line.type === 'message_delete' && line.content?.targetId)
 			deleted.add(String(line.content.targetId))
-	
+
 
 	for (const line of lines) {
 		if (line.type === 'message') {
@@ -94,7 +102,7 @@ function collectFromDagJsonlLines(lines, referenced) {
 		else if (line.type === 'message_delete')
 			continue
 
-		collectFileRefHashesFromValue(line, referenced)
+		collectFileRefHashesFromValue(line, referenced, evfsPaths)
 	}
 }
 
@@ -102,9 +110,10 @@ function collectFromDagJsonlLines(lines, referenced) {
  * @param {string} username 本地账户名
  * @param {string} groupId 群 ID
  * @param {Set<string>} referenced hash 集合
+ * @param {Set<string>} evfsPaths EVFS 路径
  * @returns {Promise<void>}
  */
-async function scanGroupContextCache(username, groupId, referenced) {
+async function scanGroupContextCache(username, groupId, referenced, evfsPaths) {
 	const contextCacheRoot = join(groupDir(username, groupId), 'context_cache')
 	let channelDirNames = []
 	try {
@@ -128,7 +137,7 @@ async function scanGroupContextCache(username, groupId, referenced) {
 		for (const name of sidecarNames) {
 			if (!name.endsWith('.json')) continue
 			const data = loadJsonFile(join(channelPath, name))
-			collectFileRefHashesFromValue(data, referenced)
+			collectFileRefHashesFromValue(data, referenced, evfsPaths)
 		}
 	}
 }
@@ -137,9 +146,10 @@ async function scanGroupContextCache(username, groupId, referenced) {
  * @param {string} username 本地账户名
  * @param {string} groupId 群 ID
  * @param {Set<string>} referenced hash 集合
+ * @param {Set<string>} evfsPaths EVFS 路径 entityHash/logicalPath
  * @returns {Promise<void>}
  */
-async function scanGroupDagStores(username, groupId, referenced) {
+async function scanGroupDagStores(username, groupId, referenced, evfsPaths) {
 	const messagesDir = join(groupDir(username, groupId), 'messages')
 	let indexFilenames = []
 	try {
@@ -151,31 +161,52 @@ async function scanGroupDagStores(username, groupId, referenced) {
 	for (const name of indexFilenames) {
 		if (!name.endsWith('.jsonl')) continue
 		const lines = await readJsonl(join(messagesDir, name))
-		collectFromDagJsonlLines(lines, referenced)
+		collectFromDagJsonlLines(lines, referenced, evfsPaths)
 	}
 
 	const eventLines = await readJsonl(eventsPath(username, groupId))
-	collectFromDagJsonlLines(eventLines, referenced)
+	collectFromDagJsonlLines(eventLines, referenced, evfsPaths)
 
 	const quarantineLines = await readJsonl(quarantinePath(username, groupId))
-	collectFromDagJsonlLines(quarantineLines, referenced)
+	collectFromDagJsonlLines(quarantineLines, referenced, evfsPaths)
 
-	await scanGroupContextCache(username, groupId, referenced)
+	await scanGroupContextCache(username, groupId, referenced, evfsPaths)
 }
 
 /**
- * 汇总本用户仍被引用的附件 hash（DAG + sidecar + 活跃 runtime）。
+ * 汇总本用户仍被引用的 legacy 附件 hash。
  * @param {string} username 本地账户名
  * @returns {Promise<Set<string>>} 引用中的 blake2b 文件名（无扩展名）
  */
 export async function collectReferencedAttachmentHashes(username) {
 	/** @type {Set<string>} */
 	const referenced = new Set()
+	/** @type {Set<string>} */
+	const evfsPaths = new Set()
 
-	collectFromRuntimeChatMetadatas(username, referenced)
+	collectFromRuntimeChatMetadatas(username, referenced, evfsPaths)
 
 	for (const groupId of await listUserGroups(username))
-		await scanGroupDagStores(username, groupId, referenced)
+		await scanGroupDagStores(username, groupId, referenced, evfsPaths)
 
 	return referenced
+}
+
+/**
+ * 汇总仍被引用的 EVFS 路径（entityHash/logicalPath）。
+ * @param {string} username 本地账户名
+ * @returns {Promise<Set<string>>} entityHash/logicalPath 集合
+ */
+export async function collectReferencedEvfsPaths(username) {
+	/** @type {Set<string>} */
+	const referenced = new Set()
+	/** @type {Set<string>} */
+	const evfsPaths = new Set()
+
+	collectFromRuntimeChatMetadatas(username, referenced, evfsPaths)
+
+	for (const groupId of await listUserGroups(username))
+		await scanGroupDagStores(username, groupId, referenced, evfsPaths)
+
+	return evfsPaths
 }

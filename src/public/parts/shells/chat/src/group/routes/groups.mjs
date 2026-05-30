@@ -22,7 +22,6 @@ import { calculateMemberPermissions, PERMISSIONS } from '../../../../../../../sc
 import { getUserByReq } from '../../../../../../../server/auth.mjs'
 import { createGroup, removeLocalGroupReplica } from '../../chat/dag/lifecycle.mjs'
 import { getLocalSignerForNewGroup } from '../../chat/dag/localSigner.mjs'
-import { getState } from '../../chat/dag/materialize.mjs'
 import { createEcdhDmGroup } from '../../chat/dm/index.mjs'
 import { validateDmIntroLinkProof } from '../../chat/dm/linkValidate.mjs'
 import { initGroupH } from '../../chat/gsh/store.mjs'
@@ -30,8 +29,10 @@ import { newMetadata } from '../../chat/session/crud.mjs'
 import { modifyTimeLine } from '../../chat/session/generation.mjs'
 import { getActiveGroupRuntime } from '../../chat/session/persistence.mjs'
 import { registerGroupRuntime } from '../../chat/session/runtime.mjs'
-import { governanceChannelId, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
+import { governanceChannelId } from '../access.mjs'
 import { enumerateJoinedFederatedGroups } from '../queries.mjs'
+
+import { requireGroupMember } from './middleware.mjs'
 
 /**
  * 注册群列表、创建与删除路由。
@@ -63,7 +64,8 @@ export function registerGroupLifecycleRoutes(router, authenticate) {
 			const hasDmNonce = dmNonce.length > 0
 			const hasDmSignature = dmIntroSignatureHex.length > 0
 			if (hasDmNonce !== hasDmSignature)
-				return res.status(400).json({ error: 'provide both dmIntroNonce and dmIntroSignatureHex for DM link proof or omit both',
+				return res.status(400).json({
+					error: 'provide both dmIntroNonce and dmIntroSignatureHex for DM link proof or omit both',
 				})
 			if (hasDmNonce) {
 				const dmCheck = await validateDmIntroLinkProof(username, { members: {} }, peerPubKeyHex, dmNonce, dmIntroSignatureHex)
@@ -72,7 +74,8 @@ export function registerGroupLifecycleRoutes(router, authenticate) {
 			}
 
 			const directMessage = await createEcdhDmGroup(username, myPubKeyHex, peerPubKeyHex)
-			return res.status(201).json({ groupId: directMessage.groupId,
+			return res.status(201).json({
+				groupId: directMessage.groupId,
 				defaultChannelId: directMessage.defaultChannelId,
 				channelId: directMessage.defaultChannelId,
 				dmSessionTag: directMessage.dmSessionTag,
@@ -97,19 +100,15 @@ export function registerGroupLifecycleRoutes(router, authenticate) {
 		registerGroupRuntime(result.groupId, username)
 		await newMetadata(result.groupId, username)
 		await initGroupH(username, result.groupId)
-		res.status(201).json({ groupId: result.groupId,
+		res.status(201).json({
+			groupId: result.groupId,
 			defaultChannelId: result.defaultChannelId,
 			channelId: result.defaultChannelId,
 		})
 	})
 
-	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/timeline$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
-
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/timeline$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { groupId } = req.groupContext
 		const meta = await getActiveGroupRuntime(groupId)
 		if (!meta?.timeLines?.length)
 			return res.status(200).json({ current: 0, total: 1 })
@@ -119,13 +118,8 @@ export function registerGroupLifecycleRoutes(router, authenticate) {
 		res.status(200).json({ current, total })
 	})
 
-	router.put(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/timeline$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state))
-			return res.status(403).json({ error: 'Not a member' })
-
+	router.put(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/timeline$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId } = req.groupContext
 		let { delta } = req.body || {}
 		if (delta === null) delta = Number.POSITIVE_INFINITY
 		if (typeof delta !== 'number' || !Number.isFinite(delta))
@@ -136,14 +130,8 @@ export function registerGroupLifecycleRoutes(router, authenticate) {
 		res.status(200).json({ entry: await entry.toData(username) })
 	})
 
-	router.delete(/^\/api\/parts\/shells:chat\/groups\/([^/]+)$/, authenticate, async (req, res) => {
-		const { username } = await getUserByReq(req)
-		const groupId = req.params[0]
-		const { state } = await getState(username, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-		if (!memberKey)
-			return res.status(403).json({ error: 'Not a member' })
-		const member = state.members[memberKey]
+	router.delete(/^\/api\/parts\/shells:chat\/groups\/([^/]+)$/, authenticate, requireGroupMember(), async (req, res) => {
+		const { username, groupId, state, member } = req.groupContext
 		const permissionsChannelId = governanceChannelId(state)
 		const perms = calculateMemberPermissions(
 			member,

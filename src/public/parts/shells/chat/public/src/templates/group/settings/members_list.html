@@ -15,14 +15,8 @@ ${members.length ? members.map(member => `
 		</div>
 	</div>
 	<div class="flex gap-2">
-		<button class="btn btn-xs btn-warning"
-			data-action="kick" data-username="${member.pubKeyHash}"
-			data-i18n="chat.group.settingsPage.kick"
-			${member.isAdmin ? 'disabled' : ''}></button>
-		<button class="btn btn-xs btn-error"
-			data-action="ban" data-username="${member.pubKeyHash}"
-			data-i18n="chat.group.settingsPage.ban"
-			${member.isAdmin ? 'disabled' : ''}></button>
+		<button class="btn btn-xs btn-warning" data-action="kick" data-username="${member.pubKeyHash}" data-i18n="chat.group.settingsPage.kick" ${member.isAdmin ? 'disabled' : '' }></button>
+		<button class="btn btn-xs btn-error" data-action="ban" data-username="${member.pubKeyHash}" data-i18n="chat.group.settingsPage.ban" ${member.isAdmin ? 'disabled' : '' }></button>
 	</div>
 </div>
 `).join('') : '<p class="text-sm opacity-60" data-i18n="chat.group.settingsPage.noMembers"></p>'}
@@ -31,9 +25,7 @@ ${bannedMembers?.length ? `
 ${bannedMembers.map(member => `
 <div class="flex items-center justify-between p-3 bg-base-300 rounded-lg">
 	<div class="font-medium truncate font-mono text-sm">${member.pubKeyHash}</div>
-	<button class="btn btn-xs btn-outline"
-		data-action="unban" data-username="${member.pubKeyHash}"
-		data-i18n="chat.group.settingsPage.unban"></button>
+	<button class="btn btn-xs btn-outline" data-action="unban" data-username="${member.pubKeyHash}" data-i18n="chat.group.settingsPage.unban"></button>
 </div>
 `).join('')}
 ` : ''}

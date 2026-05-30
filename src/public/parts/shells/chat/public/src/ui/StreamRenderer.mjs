@@ -14,10 +14,6 @@ export class StreamRenderer {
 	#animationFrameId = null
 
 	/**
-	 *
-	 * @param bodyElement
-	 */
-	/**
 	 * @param {HTMLElement} bodyElement 流式正文容器
 	 */
 	constructor(bodyElement) {
@@ -88,10 +84,10 @@ export class StreamRenderer {
 		const text = this.#displayedText
 		this.#lastRendered = text
 		this.#bodyElement.innerHTML = await renderMarkdownAsString(text, this.#markdownCache)
-		if (text.trim()) 
+		if (text.trim())
 			this.#bodyElement.parentElement
 				?.querySelector('.hub-streaming-skeleton')
 				?.classList.add('hidden')
-		
+
 	}
 }

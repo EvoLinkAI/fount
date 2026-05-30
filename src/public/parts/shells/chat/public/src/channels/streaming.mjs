@@ -209,7 +209,8 @@ export async function startAvSession(p) {
 		}
 
 		/**
-		 *
+		 * 连接失败或关闭时移除该 peer 及其远端 tile。
+		 * @returns {void}
 		 */
 		pc.onconnectionstatechange = () => {
 			if (pc.connectionState === 'failed' || pc.connectionState === 'closed')
@@ -264,7 +265,7 @@ export async function startAvSession(p) {
 	async function handleSignal(signalMessage) {
 		if (signalMessage.type !== 'webrtc_signal') return
 		if (signalMessage.channelId !== channelId) return
-		const {from} = signalMessage
+		const { from } = signalMessage
 		if (!from || from === clientId) return
 		// 消息有 to 字段时只处理发给自己的
 		if (signalMessage.to && signalMessage.to !== clientId) return
@@ -344,7 +345,8 @@ export async function startAvSession(p) {
 		},
 		handleSignal,
 		/**
-		 *
+		 * 广播离开并清理所有 peer 与本地采集流。
+		 * @returns {Promise<void>}
 		 */
 		close: async () => {
 			await broadcast({

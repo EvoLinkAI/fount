@@ -11,7 +11,7 @@
 /** @typedef {import('../../../../../../../decl/pluginAPI.ts').PluginAPI_t} PluginAPI_t */
 /** @typedef {import('../../../../../../../decl/basedefs.ts').locale_t} locale_t */
 
-import { syncEntityProfileFromPersona } from '../../profile/profile.mjs'
+import { syncEntityProfileFromPersona } from '../../profile/syncFromPersona.mjs'
 import { getDefaultChannelId } from '../dag/queries.mjs'
 
 import { broadcastGroupEvent } from './broadcast.mjs'
@@ -83,7 +83,7 @@ export async function setWorld(groupId, channelId, worldname, replicaUsername) {
 
 	if (!worldname) return null
 
-	const world = chatMetadata.LastTimeSlice.world
+	const { world } = chatMetadata.LastTimeSlice
 	if (!world) return null
 
 	const timeSlice = chatMetadata.LastTimeSlice.copy()

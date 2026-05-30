@@ -5,14 +5,16 @@
  * 【数据结构】返回 `'ok' | 'dup' | 'invalid' | 'quarantined'`；持久化前经 `sanitizeFederatedEvent`。
  * 【关联】`events/hlcPolicy.mjs`、`events/quarantine.mjs`、`eventPersist.mjs`、`ingest.mjs`、`../federation/index.mjs`。
  */
+import { debugLog } from '../../../../../../../scripts/debug_log.mjs'
 import { computeEventId } from '../../../../../../../scripts/p2p/dag/index.mjs'
+import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { validateRemoteEventShape } from '../../../../../../../scripts/p2p/schemas/remote_event.mjs'
 import {
 	classifyHlcSkewAction,
 	resolveHlcMaxSkewMs,
 } from '../events/hlcPolicy.mjs'
 import { recordEventReceivedAt } from '../events/meta.mjs'
 import { appendQuarantinedEvent, replayQuarantinedEvents } from '../events/quarantine.mjs'
-import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { publishSignedEventToFederation } from '../federation/index.mjs'
 import { isPubKeyHashBlocked, isSubjectBannedByState, isSubjectBlocked } from '../governance/blocklist.mjs'
 import {
@@ -21,10 +23,11 @@ import {
 import { eventsPath } from '../lib/paths.mjs'
 import { extractInboundSignedEvent } from '../lib/wireIngress.mjs'
 
+import { canonicalizeSignedChatEvent } from './canonicalizeEvent.mjs'
 import { broadcastAndPersist } from './eventPersist.mjs'
 import { withGroupWriteLock } from './groupLock.mjs'
 import { validateIngestAuthz } from './ingest.mjs'
-import { getState, rebuildAndSaveCheckpoint } from './materialize.mjs'
+import { getState } from './materialize.mjs'
 import { readJsonl, appendJsonlSynced } from './storage.mjs'
 import { PUB_KEY_HASH_HEX, unsignedEventFields, validateSignature } from './validator.mjs'
 
@@ -34,12 +37,7 @@ import { PUB_KEY_HASH_HEX, unsignedEventFields, validateSignature } from './vali
  * @param {object} signPayload 完整签名事件
  */
 export async function publishEventToFederation(username, groupId, signPayload) {
-	try {
-		await publishSignedEventToFederation(username, groupId, signPayload)
-	}
-	catch (error) {
-		console.error('federation: publish failed', error)
-	}
+	await publishSignedEventToFederation(username, groupId, signPayload)
 }
 
 /**
@@ -60,7 +58,10 @@ export async function appendValidatedRemoteEvent(username, groupId, signPayload,
 
 	const bodyForId = unsignedEventFields(signPayload)
 	if (computeEventId(bodyForId) !== signPayload.id) {
-		if (logFailures) console.error('federation: drop remote event (id mismatch)')
+		if (logFailures) {
+			console.error('federation: drop remote event (id mismatch)')
+			await debugLog('remote-ingest-invalid', { username, groupId, reason: 'id_mismatch', eventId: signPayload.id }).catch(() => {})
+		}
 		return 'invalid'
 	}
 
@@ -75,7 +76,10 @@ export async function appendValidatedRemoteEvent(username, groupId, signPayload,
 		await validateSignature(username, groupId, bodyForId, signPayload, signPayload, undefined, state)
 	}
 	catch (error) {
-		if (logFailures) console.error('federation: drop remote event (signature)', error)
+		if (logFailures) {
+			console.error('federation: drop remote event (signature)', error)
+			await debugLog('remote-ingest-invalid', { username, groupId, reason: 'signature', eventId: signPayload.id, message: error?.message }).catch(() => {})
+		}
 		return 'invalid'
 	}
 
@@ -100,8 +104,8 @@ export async function appendValidatedRemoteEvent(username, groupId, signPayload,
 		const homeNodeHash = String(member?.homeNodeHash || '').trim().toLowerCase()
 		const subject = {
 			pubKeyHash: senderKey,
-			nodeHash: /^[\da-f]{64}$/u.test(homeNodeHash) ? homeNodeHash : undefined,
-			entityHash: /^[\da-f]{64}$/u.test(homeNodeHash) ? `${homeNodeHash}${senderKey}` : undefined,
+			nodeHash: isHex64(homeNodeHash) ? homeNodeHash : undefined,
+			entityHash: isHex64(homeNodeHash) ? `${homeNodeHash}${senderKey}` : undefined,
 		}
 		if (isSubjectBannedByState(state, subject) || isSubjectBlocked(username, subject)) {
 			if (logFailures) console.error('federation: drop remote event (banned/blocked subject)')
@@ -148,6 +152,7 @@ export async function appendValidatedRemoteEvent(username, groupId, signPayload,
 	}
 
 	try {
+		validateRemoteEventShape(signPayload)
 		await validateIngestAuthz(username, groupId, signPayload, { source: 'federation' })
 	}
 	catch (error) {
@@ -155,22 +160,18 @@ export async function appendValidatedRemoteEvent(username, groupId, signPayload,
 		return 'invalid'
 	}
 
-	const wireEvent = sanitizeFederatedEvent(signPayload)
+	const wireEvent = canonicalizeSignedChatEvent(signPayload)
 	const receivedAt = Date.now()
 
 	await withGroupWriteLock(username, groupId, async () => {
 		await appendJsonlSynced(path, wireEvent)
 		await recordEventReceivedAt(username, groupId, String(wireEvent.id), receivedAt)
-		try {
-			await broadcastAndPersist(username, groupId, wireEvent, {})
-		}
-		catch (error) {
-			console.error('federation: broadcastAndPersist failed; rebuilding checkpoint', error)
-			await rebuildAndSaveCheckpoint(username, groupId, {}).catch(() => {})
-		}
+		await broadcastAndPersist(username, groupId, wireEvent, {})
 		if (!opts.skipQuarantineRelease)
 			await releaseQuarantinedEvents(username, groupId)
 	})
+	const { recordMessageRate } = await import('../governance/rateLimitState.mjs')
+	recordMessageRate(username, groupId, wireEvent)
 	if (wireEvent.type === 'group_settings_update' && wireEvent.content?.mqttRoomSecret) {
 		const { onMqttCredentialsSyncedFromDag, mqttCredentialsFromGroupSettings } = await import('../federation/mqttCredentials.mjs')
 		const { state: fresh } = await getState(username, groupId)

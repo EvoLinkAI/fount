@@ -1,6 +1,10 @@
 /**
  * 群发现联邦线消息解析（入站）。
  */
+import {
+	assertDiscoveryNodeId,
+	assertDiscoveryRequestId,
+} from '../../../../../../../scripts/p2p/schemas/discovery_wire.mjs'
 import { isPlainObject } from '../lib/wireIngress.mjs'
 
 /**
@@ -9,11 +13,14 @@ import { isPlainObject } from '../lib/wireIngress.mjs'
  */
 export function parseDiscoveryAnnounce(payload) {
 	if (!isPlainObject(payload)) return null
-	const nodeId = String(payload.nodeId || '').trim()
-	if (!nodeId) return null
-	return {
-		nodeId,
-		advertisements: Array.isArray(payload.advertisements) ? payload.advertisements : [],
+	try {
+		return {
+			nodeId: assertDiscoveryNodeId(payload.nodeId),
+			advertisements: Array.isArray(payload.advertisements) ? payload.advertisements : [],
+		}
+	}
+	catch {
+		return null
 	}
 }
 
@@ -23,13 +30,15 @@ export function parseDiscoveryAnnounce(payload) {
  */
 export function parseDiscoveryQuery(payload) {
 	if (!isPlainObject(payload)) return null
-	const nodeId = String(payload.nodeId || '').trim()
-	const requestId = String(payload.requestId || '').trim()
-	if (!nodeId || !requestId) return null
-	return {
-		nodeId,
-		requestId,
-		limit: Math.min(64, Math.max(1, Number(payload.limit) || 32)),
+	try {
+		return {
+			nodeId: assertDiscoveryNodeId(payload.nodeId),
+			requestId: assertDiscoveryRequestId(payload.requestId),
+			limit: Math.min(64, Math.max(1, Number(payload.limit) || 32)),
+		}
+	}
+	catch {
+		return null
 	}
 }
 
@@ -39,12 +48,14 @@ export function parseDiscoveryQuery(payload) {
  */
 export function parseDiscoveryQueryResponse(payload) {
 	if (!isPlainObject(payload)) return null
-	const requestId = String(payload.requestId || '').trim()
-	const nodeId = String(payload.nodeId || '').trim()
-	if (!requestId || !nodeId) return null
-	return {
-		requestId,
-		nodeId,
-		advertisements: Array.isArray(payload.advertisements) ? payload.advertisements : [],
+	try {
+		return {
+			requestId: assertDiscoveryRequestId(payload.requestId),
+			nodeId: assertDiscoveryNodeId(payload.nodeId),
+			advertisements: Array.isArray(payload.advertisements) ? payload.advertisements : [],
+		}
+	}
+	catch {
+		return null
 	}
 }

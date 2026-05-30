@@ -1,0 +1,17 @@
+/**
+ * Social vault 文件 ACL（EVFS manifest 读权限）。
+ * @param {string} replicaUsername 观看者 replica
+ * @param {string} ownerEntityHash vault owner
+ * @param {import('../../../../../scripts/p2p/files/manifest.mjs').FileManifest} manifest manifest
+ * @returns {Promise<boolean>}
+ */
+export async function canViewVaultFile(replicaUsername, ownerEntityHash, manifest) {
+	const visibility = String(manifest.meta?.visibility || 'followers')
+	if (visibility === 'public') return true
+	const { resolveOperatorEntityHash } = await import('../../../../../scripts/p2p/entity/replica.mjs')
+	if (resolveOperatorEntityHash(replicaUsername) === ownerEntityHash.toLowerCase()) return true
+	if (visibility !== 'followers') return false
+	const { loadFollowing } = await import('./following.mjs')
+	const { following } = await loadFollowing(replicaUsername)
+	return following.includes(String(ownerEntityHash).trim().toLowerCase())
+}

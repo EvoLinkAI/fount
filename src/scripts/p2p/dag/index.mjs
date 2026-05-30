@@ -8,7 +8,7 @@ import { HEX_ID_64 } from '../hexIds.mjs'
 import { HLC } from '../hlc.mjs'
 
 /**
- *
+ * 重导出 64 位十六进制事件 ID 正则（`HEX_ID_64` 别名）。
  */
 export { HEX_ID_64 as EVENT_ID_HEX }
 const EVENT_ID_HEX = HEX_ID_64
@@ -84,7 +84,7 @@ export function eventBodyForSign(event) {
 		sender: event.sender,
 		charId: event.charId ?? null,
 		timestamp: event.timestamp,
-		hlc: event.hlc || { wall: Number(event.timestamp) || 0, logical: 0 },
+		hlc: event.hlc,
 		prev_event_ids: sortedPrevEventIds(event.prev_event_ids),
 		content: event.content,
 	}
@@ -117,6 +117,65 @@ export function signPayloadBytes(body) {
 }
 
 /**
+ * 最小堆（按 compare 取最小元素）。
+ * @template T
+ */
+class MinHeap {
+	/** @type {T[]} */
+	#data = []
+	/** @type {(left: T, right: T) => number} */
+	#compare
+
+	/** @param {(left: T, right: T) => number} compare 比较函数 */
+	constructor(compare) {
+		this.#compare = compare
+	}
+
+	/** @returns {number} 元素个数 */
+	get size() {
+		return this.#data.length
+	}
+
+	/** @param {T} value 入堆 */
+	push(value) {
+		const data = this.#data
+		data.push(value)
+		let index = data.length - 1
+		while (index > 0) {
+			const parent = (index - 1) >> 1
+			if (this.#compare(data[index], data[parent]) >= 0) break
+			;[data[index], data[parent]] = [data[parent], data[index]]
+			index = parent
+		}
+	}
+
+	/** @returns {T | undefined} 弹出最小元素 */
+	pop() {
+		const data = this.#data
+		if (!data.length) return undefined
+		const top = data[0]
+		const last = data.pop()
+		if (data.length && last !== undefined) {
+			data[0] = last
+			let index = 0
+			for (; ;) {
+				const left = index * 2 + 1
+				const right = left + 1
+				let smallest = index
+				if (left < data.length && this.#compare(data[left], data[smallest]) < 0)
+					smallest = left
+				if (right < data.length && this.#compare(data[right], data[smallest]) < 0)
+					smallest = right
+				if (smallest === index) break
+				;[data[index], data[smallest]] = [data[smallest], data[index]]
+				index = smallest
+			}
+		}
+		return top
+	}
+}
+
+/**
  * 规范拓扑序（Kahn + tiebreaker：hlc.wall, hlc.logical, node_id, id；与分布式群聊规范 §4 一致）。
  * @param {Array<{ id: string, prev_event_ids?: unknown, hlc?: { wall: number, logical: number }, sender?: string, node_id?: string }>} metas 事件元数据列表
  * @returns {string[]} 按规范顺序排列的事件 id 列表
@@ -125,9 +184,16 @@ export function topologicalCanonicalOrder(metas) {
 	if (!metas.length) return []
 	const byId = new Map(metas.map(meta => [meta.id, meta]))
 	const parentCount = new Map()
+	/** @type {Map<string, string[]>} */
+	const children = new Map()
 	for (const meta of metas) {
-		const parentsInGraph = sortedPrevEventIds(meta.prev_event_ids).filter(parentId => byId.has(parentId)).length
-		parentCount.set(meta.id, parentsInGraph)
+		const parentsInGraph = sortedPrevEventIds(meta.prev_event_ids).filter(parentId => byId.has(parentId))
+		parentCount.set(meta.id, parentsInGraph.length)
+		for (const parentId of parentsInGraph) {
+			const list = children.get(parentId)
+			if (list) list.push(meta.id)
+			else children.set(parentId, [meta.id])
+		}
 	}
 
 	/**
@@ -156,24 +222,20 @@ export function topologicalCanonicalOrder(metas) {
 	}
 
 	const ordered = []
-	const ready = new Set(metas.filter(meta => parentCount.get(meta.id) === 0).map(meta => meta.id))
+	const ready = new MinHeap(compareIds)
+	for (const meta of metas)
+		if (parentCount.get(meta.id) === 0) ready.push(meta.id)
+
 
 	while (ready.size) {
-		const next = [...ready].sort(compareIds)[0]
-		ready.delete(next)
+		const next = ready.pop()
+		if (next == null) break
 		ordered.push(next)
-		for (const meta of metas) {
-			if (meta.id === next) continue
-			if (!sortedPrevEventIds(meta.prev_event_ids).includes(next)) continue
-			const remaining = (parentCount.get(meta.id) || 0) - 1
-			parentCount.set(meta.id, remaining)
-			if (remaining === 0) ready.add(meta.id)
+		for (const childId of children.get(next) || []) {
+			const remaining = (parentCount.get(childId) || 0) - 1
+			parentCount.set(childId, remaining)
+			if (remaining === 0) ready.push(childId)
 		}
-	}
-
-	if (ordered.length < metas.length) {
-		const rest = metas.map(meta => meta.id).filter(id => !ordered.includes(id)).sort(compareIds)
-		ordered.push(...rest)
 	}
 
 	return ordered

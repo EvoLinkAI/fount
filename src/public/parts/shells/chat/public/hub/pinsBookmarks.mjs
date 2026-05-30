@@ -46,7 +46,7 @@ export async function refreshPinsBookmarks() {
 			resolvePinMessagePreview(hubStore.currentGroupId, channelId, eventId)),
 	)
 	pinsHost.replaceChildren()
-	if (pinEntries.length) 
+	if (pinEntries.length)
 		for (const [index, { channelId, channelName, eventId }] of pinEntries.entries()) {
 			const previewFields = pinPreviewTemplateFields(
 				previews[index] || { text: eventId.slice(0, 8) },
@@ -58,7 +58,6 @@ export async function refreshPinsBookmarks() {
 				...previewFields,
 			}))
 		}
-	
 	else await mountTemplate(pinsHost, 'hub/nav/side_muted', { i18nKey: 'chat.hub.noPins' })
 
 	pinsHost.querySelectorAll('.hub-pinned-message-row').forEach(pinRow => {

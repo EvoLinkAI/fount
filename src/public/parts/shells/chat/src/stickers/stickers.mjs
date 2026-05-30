@@ -7,6 +7,7 @@
  */
 import { Buffer } from 'node:buffer'
 import fs from 'node:fs'
+import fsp from 'node:fs/promises'
 import path from 'node:path'
 
 import { geti18nForUser } from '../../../../../../scripts/i18n.mjs'
@@ -41,6 +42,7 @@ export function stickerMediaUrl(packId, filename) {
 }
 
 /**
+ * 解析贴纸二进制文件的磁盘绝对路径。
  * @param {string} replicaUsername replica 磁盘所有者
  * @param {string} authorEntityHash 作者 entityHash
  * @param {string} packId 贴纸包 ID
@@ -52,6 +54,7 @@ export function resolveStickerFilePath(replicaUsername, authorEntityHash, packId
 }
 
 /**
+ * 贴纸包 `config.json` 的绝对路径。
  * @param {string} replicaUsername replica 所有者
  * @param {string} authorEntityHash 作者 entityHash
  * @param {string} packId 贴纸包 ID
@@ -69,10 +72,10 @@ export function findStickerPackHost(packId) {
 	for (const replicaUsername of getAllUserNames()) {
 		const entitiesRoot = path.join(shellChatRoot(replicaUsername), 'entities')
 		if (!fs.existsSync(entitiesRoot)) continue
-		for (const authorEntityHash of fs.readdirSync(entitiesRoot)) 
+		for (const authorEntityHash of fs.readdirSync(entitiesRoot))
 			if (fs.existsSync(packConfigPath(replicaUsername, authorEntityHash, packId)))
 				return { replicaUsername, authorEntityHash }
-		
+
 	}
 	return null
 }
@@ -89,11 +92,21 @@ export async function getStickerPacks(viewerEntityHash = null) {
 
 	for (const replicaUsername of getAllUserNames()) {
 		const entitiesRoot = path.join(shellChatRoot(replicaUsername), 'entities')
-		if (!fs.existsSync(entitiesRoot)) continue
-		for (const authorEntityHash of fs.readdirSync(entitiesRoot)) {
+		try {
+			await fsp.access(entitiesRoot)
+		}
+		catch {
+			continue
+		}
+		for (const authorEntityHash of await fsp.readdir(entitiesRoot)) {
 			const root = entityStickersPacksRoot(replicaUsername, authorEntityHash)
-			if (!fs.existsSync(root)) continue
-			for (const packId of fs.readdirSync(root)) {
+			try {
+				await fsp.access(root)
+			}
+			catch {
+				continue
+			}
+			for (const packId of await fsp.readdir(root)) {
 				if (seen.has(packId)) continue
 				try {
 					const config = await loadJsonFile(packConfigPath(replicaUsername, authorEntityHash, packId))
@@ -121,8 +134,7 @@ export async function getStickerPacks(viewerEntityHash = null) {
 export async function createStickerPack(replicaUsername, authorEntityHash, pack) {
 	const packId = `pack_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 	const mediaDir = entityStickerPackMediaDir(replicaUsername, authorEntityHash, packId)
-	if (!fs.existsSync(mediaDir))
-		fs.mkdirSync(mediaDir, { recursive: true })
+	await fsp.mkdir(mediaDir, { recursive: true })
 
 
 	const trimmedName = String(pack.name || '').trim()
@@ -197,8 +209,7 @@ export async function deleteStickerPack(packId) {
 	if (!host)
 		throw new Error('Sticker pack not found')
 	const packDir = entityStickerPackDir(host.replicaUsername, host.authorEntityHash, packId)
-	if (fs.existsSync(packDir))
-		fs.rmSync(packDir, { recursive: true, force: true })
+	await fsp.rm(packDir, { recursive: true, force: true })
 }
 
 /**
@@ -218,11 +229,10 @@ export async function uploadSticker(packId, fileBuffer, filename, metadata) {
 	const stickerId = `sticker_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 	const uniqueFilename = `${stickerId}${ext}`
 	const mediaDir = entityStickerPackMediaDir(host.replicaUsername, host.authorEntityHash, packId)
-	if (!fs.existsSync(mediaDir))
-		fs.mkdirSync(mediaDir, { recursive: true })
+	await fsp.mkdir(mediaDir, { recursive: true })
 	const stickerPath = path.join(mediaDir, uniqueFilename)
 
-	fs.writeFileSync(stickerPath, fileBuffer)
+	await fsp.writeFile(stickerPath, fileBuffer)
 
 	const sticker = {
 		id: stickerId,
@@ -257,8 +267,10 @@ export async function deleteSticker(packId, stickerId) {
 
 	const filename = path.basename(sticker.url)
 	const stickerPath = resolveStickerFilePath(host.replicaUsername, host.authorEntityHash, packId, filename)
-	if (fs.existsSync(stickerPath))
-		fs.unlinkSync(stickerPath)
+	try {
+		await fsp.unlink(stickerPath)
+	}
+	catch { }
 
 	pack.stickers = pack.stickers.filter(s => s.id !== stickerId)
 	pack.updatedAt = Date.now()
@@ -392,11 +404,6 @@ export async function importStickerFromDataUrl(replicaUsername, authorEntityHash
 	return sticker
 }
 
-/**
- *
- * @param username
- * @param stickerId
- */
 /**
  * 记录最近使用
  * @param {string} username 用户名

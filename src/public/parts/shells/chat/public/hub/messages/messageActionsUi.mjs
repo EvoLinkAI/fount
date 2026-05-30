@@ -15,7 +15,7 @@ import { bindComposerEditKeys } from '../../src/ui/composerKeys.mjs'
 import { addDragAndDropSupport } from '../../src/ui/dragAndDrop.mjs'
 import { escapeHtml } from '../core/domUtils.mjs'
 /**
- *
+ * 消息编辑/反馈/删除动画时长常量。
  */
 const EDIT_FADE_MS = 150
 const FEEDBACK_COLLAPSE_MS = 200
@@ -55,13 +55,13 @@ export function menuActionItem(action, attrs, icon, i18nKey = '') {
  * @param {{ alwaysVisible?: boolean }} [opts] 显示选项
  * @returns {string} 操作栏 HTML
  */
-export function renderActionsBar(inlineHtml, menuItemsHtml, shiftHtml = '', opts = {}) {
+export async function renderActionsBar(inlineHtml, menuItemsHtml, shiftHtml = '', opts = {}) {
 	if (!inlineHtml && !menuItemsHtml && !shiftHtml) return ''
 	const menuHtml = menuItemsHtml
-		? `<div class="dropdown dropdown-top dropdown-end">
-	<label tabindex="0" class="btn btn-ghost btn-xs hub-message-action hub-message-action-menu">${hubActionMenuIcon}</label>
-	<ul tabindex="0" class="dropdown-content menu menu-sm bg-base-100 rounded-box shadow z-20 w-44 p-1">${menuItemsHtml}</ul>
-</div>`
+		? await renderTemplateAsHtmlString('hub/messages/actions_menu', {
+			menuItemsHtml,
+			menuIconHtml: hubActionMenuIcon,
+		})
 		: ''
 	const visClass = opts.alwaysVisible
 		? 'hub-message-actions--always'
@@ -69,10 +69,12 @@ export function renderActionsBar(inlineHtml, menuItemsHtml, shiftHtml = '', opts
 	const shiftLayerHtml = shiftHtml
 		? `<div class="hub-message-actions-shift-buttons flex flex-wrap items-center gap-1">${shiftHtml}</div>`
 		: ''
-	return `<div class="hub-message-actions flex flex-wrap items-center gap-1 ${visClass} mt-1">
-	<div class="hub-message-actions-normal-buttons flex flex-wrap items-center gap-1">${inlineHtml}${menuHtml}</div>
-	${shiftLayerHtml}
-</div>`
+	return renderTemplateAsHtmlString('hub/messages/actions_bar', {
+		visClass,
+		inlineHtml,
+		menuHtml,
+		shiftLayerHtml,
+	})
 }
 
 /**

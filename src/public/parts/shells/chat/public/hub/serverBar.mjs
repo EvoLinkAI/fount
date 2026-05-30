@@ -78,15 +78,15 @@ export async function renderServerBar() {
 				await appendHubServerItem(itemsHost, group)
 		}
 	}
-	else 
+	else
 		for (const group of sidebarGroups)
 			await appendHubServerItem(list, group)
-	
+
 
 	list.querySelectorAll('.hub-server-item').forEach(el => {
 		el.addEventListener('click', () => selectGroup(el.dataset.groupId))
 		el.addEventListener('contextmenu', (event) => {
-			const {groupId} = el.dataset
+			const { groupId } = el.dataset
 			if (groupId) void showGroupContextMenu(event, groupId)
 		})
 	})

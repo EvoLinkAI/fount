@@ -1,7 +1,11 @@
 /**
  * Mailbox 联邦线消息解析（入站）。
  */
-import { normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { assertHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import {
+	assertMailboxPubKeyHash,
+	assertMailboxRecordShape,
+} from '../../../../../../../scripts/p2p/schemas/mailbox_wire.mjs'
 import { isPlainObject } from '../lib/wireIngress.mjs'
 
 /**
@@ -9,8 +13,16 @@ import { isPlainObject } from '../lib/wireIngress.mjs'
  * @returns {object | null} 解析结果
  */
 export function parseMailboxPut(payload) {
-	if (!isPlainObject(payload) || !payload.record) return null
-	return payload
+	if (!isPlainObject(payload) || !isPlainObject(payload.record)) return null
+	try {
+		assertMailboxRecordShape(payload.record)
+		if (payload.nodeId != null)
+			assertHex64(payload.nodeId, 'mailbox_put.nodeId')
+		return payload
+	}
+	catch {
+		return null
+	}
 }
 
 /**
@@ -19,8 +31,15 @@ export function parseMailboxPut(payload) {
  */
 export function parseMailboxWant(payload) {
 	if (!isPlainObject(payload)) return null
-	if (!normalizeHex64(payload.toPubKeyHash)) return null
-	return payload
+	try {
+		return {
+			...payload,
+			toPubKeyHash: assertMailboxPubKeyHash(payload.toPubKeyHash),
+		}
+	}
+	catch {
+		return null
+	}
 }
 
 /**

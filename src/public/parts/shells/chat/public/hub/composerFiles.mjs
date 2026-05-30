@@ -101,7 +101,8 @@ export async function toggleVoiceRecording() {
 		 */
 		mediaRecorder.ondataavailable = e => { audioChunks.push(e.data) }
 		/**
-		 *
+		 * 录音结束：组装 wav 文件并加入待发附件队列。
+		 * @returns {Promise<void>}
 		 */
 		mediaRecorder.onstop = async () => {
 			const audioBlob = new Blob(audioChunks, { type: 'audio/wav' })

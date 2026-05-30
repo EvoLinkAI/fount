@@ -1,11 +1,13 @@
 /** 主观信誉标量运算（§0.3、§0.1）；持久化由 chat shell 的 `reputation.mjs` 负责。 */
 
 /**
- *
+ * 主观信誉标量下界（§0.3）。
+ * @type {number}
  */
 export const REP_MIN = -1
 /**
- *
+ * 主观信誉标量上界（§0.3）。
+ * @type {number}
  */
 export const REP_MAX = 1
 /** §0.1：`rep_max_eff = max(已链邻居最大信誉, ε)` */
@@ -24,13 +26,12 @@ export function clampReputationScore(x) {
  * @returns {number} `max(已链邻居最大信誉, ε)`（§0.1 `rep_max_eff`）
  */
 export function computeRepMaxEff(data) {
-	let m = /** @type {number | null} */ null
-	for (const k of Object.keys(data.byNodeId || {})) {
-		const s = Number(data.byNodeId[k]?.score)
-		if (Number.isFinite(s)) m = m === null ? s : Math.max(m, s)
+	let maxScore = /** @type {number | null} */ null
+	for (const nodeId of Object.keys(data.byNodeId || {})) {
+		const score = Number(data.byNodeId[nodeId]?.score)
+		if (Number.isFinite(score)) maxScore = maxScore === null ? score : Math.max(maxScore, score)
 	}
-	const repMax = m === null ? 0 : clampReputationScore(m)
-	return Math.max(repMax, REP_MAX_EFF_EPS)
+	return Math.max(maxScore === null ? 0 : clampReputationScore(maxScore), REP_MAX_EFF_EPS)
 }
 
 /**
@@ -42,9 +43,10 @@ export function computeRepMaxEff(data) {
  * @returns {number} 对目标的扣分幅度（正数）
  */
 export function subjectiveSlashPenalty(claim, repSender, repMaxEff, verified = false) {
-	const c = Number.isFinite(claim) ? claim : 0.2
-	const effective = (c * repSender) / repMaxEff
-	return verified ? Math.abs(c) * 0.5 : Math.abs(effective)
+	const claimStrength = Number.isFinite(claim) ? claim : 0.2
+	return verified
+		? Math.abs(claimStrength) * 0.5
+		: Math.abs((claimStrength * repSender) / repMaxEff)
 }
 
 /**
@@ -54,6 +56,5 @@ export function subjectiveSlashPenalty(claim, repSender, repMaxEff, verified = f
  * @returns {number} 新成员初值
  */
 export function seedReputationFromIntro(introRep, repEdge = 1) {
-	const edge = typeof repEdge === 'number' && Number.isFinite(repEdge) ? clampReputationScore(repEdge) : 1
-	return clampReputationScore(introRep * edge)
+	return clampReputationScore(introRep * (Number.isFinite(repEdge) ? clampReputationScore(repEdge) : 1))
 }

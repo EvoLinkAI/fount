@@ -86,9 +86,9 @@ async function renderBotDropdown() {
 		valueKey: 'value',
 		disabled,
 		/**
-		 *
-		 * @param {any} selectedItem 下拉框选中项。
- * @returns {Promise<any>} 操作执行结果。
+		 * 机器人下拉选中回调：切换配置前确认未保存变更。
+		 * @param {any} selectedItem 下拉框选中项
+		 * @returns {Promise<any>} 操作执行结果
 		 */
 		onSelect: async (selectedItem) => {
 			const botName = selectedItem ? selectedItem.value : null
@@ -114,9 +114,9 @@ async function renderCharDropdown() {
 		valueKey: 'value',
 		disabled,
 		/**
-		 *
-		 * @param {any} selectedItem 下拉框选中项。
- * @returns {any} 操作执行结果。
+		 * 角色下拉选中回调。
+		 * @param {any} selectedItem 下拉框选中项
+		 * @returns {any} 操作执行结果
 		 */
 		onSelect: (selectedItem) => {
 			const charName = selectedItem ? selectedItem.value : null
@@ -159,12 +159,12 @@ async function loadBotConfig(botname) {
 			configEditor = createJsonEditor(configEditorContainer, {
 				label: geti18n('wechat_bots.configCard.labels.config'),
 				/**
-				 *
-				 * @param {any} updatedContent 编辑器更新后的内容。
-				 * @param {any} previousContent 编辑器更新前的内容。
-				 * @param {any} root0 解构参数对象。
-				 * @param {any} root0.error 错误对象。
- * @returns {any} 返回值。
+				 * JSON 编辑器内容变更：无语法错误时标记为脏。
+				 * @param {any} updatedContent 编辑器更新后的内容
+				 * @param {any} previousContent 编辑器更新前的内容
+				 * @param {object} root0 解构参数对象
+				 * @param {any} root0.error 错误对象
+				 * @returns {any} 返回值
 				 */
 				onChange: (updatedContent, previousContent, { error }) => {
 					if (!error) isDirty = true
@@ -251,8 +251,8 @@ async function handleCharSelectChange(selectedChar) {
 }
 
 /**
- *
- * @returns {any} 操作执行结果。
+ * 切换 Token 输入框明文/密文显示。
+ * @returns {any} 操作执行结果
  */
 function handleToggleToken() {
 	tokenInput.type = tokenInput.type === 'password' ? 'text' : 'password'
@@ -398,8 +398,8 @@ async function initializeFromURLParams() {
 }
 
 /**
- *
- * @returns {any} 返回值。
+ * 停止 QR 登录轮询。
+ * @returns {any} 返回值
  */
 function stopQrPoll() {
 	qrPollActive = false
@@ -487,8 +487,8 @@ async function handleQrStart() {
 }
 
 /**
- *
- * @returns {Promise<any>} 操作执行结果。
+ * 页面初始化：主题、i18n、URL 参数与事件绑定。
+ * @returns {Promise<any>} 操作执行结果
  */
 async function init() {
 	applyTheme()

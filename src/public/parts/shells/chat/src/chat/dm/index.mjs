@@ -7,7 +7,6 @@
  */
 import { randomUUID } from 'node:crypto'
 
-import { encryptHForMember } from '../../../../../../../scripts/p2p/gsh.mjs'
 import { HEX_ID_64 as PUB_KEY_HEX_64, normalizeHex64 as normalizePubKeyHex } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { buildUserFriendBinding } from '../../../public/src/friendBinding.mjs'
 import { resolveActiveMemberKeyForLocalUser } from '../../group/access.mjs'
@@ -19,6 +18,7 @@ import { setFederationBootstrap } from '../federation/bootstrapStore.mjs'
 import { getFederationSettings } from '../federation/config.mjs'
 import { catchUpGroupFromPeers } from '../federation/index.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../federation/room.mjs'
+import { buildGshGenerationGrant } from '../gsh/historicalGrant.mjs'
 import { initGroupH, getCurrentH } from '../gsh/store.mjs'
 import { consumeGroupInviteTicket } from '../lib/inviteTickets.mjs'
 import { listUserGroups } from '../lib/userGroups.mjs'
@@ -97,16 +97,18 @@ export async function createEcdhDmGroup(username, myPubKeyHex, peerPubKeyHex) {
 	})
 
 	const hEntry = await getCurrentH(username, groupId)
-	if (hEntry?.h)
+	if (hEntry?.h) {
+		const gshGrant = await buildGshGenerationGrant(username, groupId, peerPubKey)
 		await appendSignedLocalEvent(username, groupId, {
 			type: 'peer_invite',
 			timestamp: Date.now(),
 			content: {
 				from: ownerPubKeyHash,
 				to: peerPubKey,
-				encrypted_H: encryptHForMember(hEntry.h, peerPubKey),
+				gshGrant,
 			},
 		})
+	}
 
 	invalidateFederationRoomCache(username, groupId)
 	void ensureFederationRoom(username, groupId).catch(error => console.error('DM federation bind:', error))

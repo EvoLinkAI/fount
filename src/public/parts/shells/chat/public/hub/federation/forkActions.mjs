@@ -19,7 +19,8 @@ import { hubStore } from '../core/state.mjs'
 import { loadMessages } from '../messages/messages.mjs'
 
 /**
- *
+ * 绑定 Hub 顶栏 DAG 分叉/合并/封锁等治理按钮事件。
+ * @returns {void}
  */
 export function wireForkActions() {
 	document.getElementById('hub-fork-branch-button')?.addEventListener('click', async () => {

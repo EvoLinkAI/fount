@@ -75,7 +75,9 @@ export async function handleFedEmojiWant(username, groupId, data, peerId, sendEm
 	try {
 		sendEmojiData({ emojiId, dataUrl, mimeType: local.mimeType }, peerId)
 	}
-	catch { /* ignore */ }
+	catch (error) {
+		console.warn('federation: fed_emoji_data send failed', error)
+	}
 }
 
 /**
@@ -100,7 +102,7 @@ export async function handleFedEmojiData(username, groupId, data) {
 	}
 	const existing = await getGroupEmojiEntry(username, groupId, emojiId)
 	if (!existing)
-		await persistGroupEmojiFromDataUrl(username, groupId, emojiId, dataUrl, mimeType).catch(() => {})
+		await persistGroupEmojiFromDataUrl(username, groupId, emojiId, dataUrl, mimeType)
 }
 
 /**
@@ -125,8 +127,12 @@ export async function requestGroupEmojiFromPeers(username, groupId, emojiId, slo
 		pendingFetches.set(key, { resolve, timer })
 		const payload = { emojiId }
 		for (const { peerId } of roster)
-			try { slot.sendToPeer(peerId, 'fed_emoji_want', payload) }
-			catch { /* ignore */ }
+			try {
+				slot.sendToPeer(peerId, 'fed_emoji_want', payload)
+			}
+			catch (error) {
+				console.warn('federation: fed_emoji_want send failed', error)
+			}
 	})
 }
 
@@ -147,8 +153,12 @@ export async function replicateGroupEmojiToFederation(username, groupId, emojiId
 	const dataUrl = bufferToDataUrl(local.buffer, local.mimeType)
 	const payload = { emojiId, dataUrl, mimeType: local.mimeType }
 	for (const { peerId } of roster)
-		try { slot.sendToPeer(peerId, 'fed_emoji_data', payload) }
-		catch { /* ignore */ }
+		try {
+			slot.sendToPeer(peerId, 'fed_emoji_data', payload)
+		}
+		catch (error) {
+			console.warn('federation: fed_emoji_data replicate failed', error)
+		}
 }
 
 /**
@@ -175,16 +185,21 @@ export function attachFedEmojiHandlers(fedRoom) {
 			data,
 			peerId,
 			(payload, targetPeer) => {
-				try { sendEmojiData(payload, targetPeer) }
-				catch { /* ignore */ }
+				try {
+					sendEmojiData(payload, targetPeer)
+				}
+				catch (error) {
+					console.warn('federation: fed_emoji_data handler send failed', error)
+				}
 			},
 			isBlockedPeer,
 			peerToNode,
-		).catch(() => {})
+		).catch(error => console.warn('federation: fed_emoji_want handler failed', error))
 	})
 
 	getEmojiData(data => {
-		void handleFedEmojiData(username, groupId, data).catch(() => {})
+		void handleFedEmojiData(username, groupId, data)
+			.catch(error => console.warn('federation: fed_emoji_data handler failed', error))
 	})
 
 	/**

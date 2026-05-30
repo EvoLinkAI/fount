@@ -3,7 +3,7 @@
  * 【职责】为聊天流式/预览管线提供 Markdown 代码块与内联代码的安全渲染，以及基于用户 locale 的 i18n 文案读取。
  * 【原理】getSafeFence 按内容中反引号 run 长度选围栏；renderMarkdownCodeBlock 组合 lang/title info 字符串；inferCodeLanguageFromPath 经 lang-map 由扩展名推断高亮语言；getChatI18n 合并 args.locales 与 localhostLocales。
  * 【数据结构】fence 字符串、options `{ lang?, title? }`、LocaleKey、languageMap 查询结果。
- * 【关联】被 toolBlocks 与 stream/index 导出；依赖 scripts/i18n.mjs。
+ * 【关联】被 toolBlocks 与其它 shell 插件直接 import；依赖 scripts/i18n.mjs。
  */
 import languageMap from 'https://esm.sh/lang-map'
 

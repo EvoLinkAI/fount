@@ -7,6 +7,18 @@
  * 【关联】parts_loader 加载；import endpoints、group/endpoints、files、locales。
  */
 import './src/chat/dag/index.mjs'
+import './src/chat/federation/config.mjs'
+import { registerMaterializedSessionProvider, unregisterMaterializedSessionProvider } from '../../../../../scripts/p2p/entity/session_snapshot_registry.mjs'
+import { registerGroupMemberEntityResolver, unregisterGroupMemberEntityResolver } from '../../../../../scripts/p2p/p2p_viewer_registry.mjs'
+import { unregisterTrustGraphProvider } from '../../../../../scripts/p2p/trust_graph_registry.mjs'
+
+import { registerChatChunkProviders, unregisterChatChunkProviders } from './src/chat/chunkProviders.mjs'
+import { registerChatTrustGraphProvider } from './src/chat/federation/chatTrustGraph.mjs'
+import { registerChatGroupEntityIndex, unregisterChatGroupEntityIndex } from './src/chat/groupEntityIndex.mjs'
+import { getGroupMemberEntityHash } from './src/chat/lib/replica.mjs'
+import { registerChatManifestAcl, unregisterChatManifestAcl } from './src/chat/manifestAcl.mjs'
+import { registerChatManifestTransfer, unregisterChatManifestTransfer } from './src/chat/manifestTransfer.mjs'
+import { getMaterializedSession } from './src/chat/session/dagSession.mjs'
 import { setEndpoints } from './src/endpoints.mjs'
 import { cleanFilesInterval } from './src/files.mjs'
 import { setGroupEndpoints } from './src/group/endpoints.mjs'
@@ -24,10 +36,29 @@ let loadCount = 0
  */
 async function handleAction(user, action, params) {
 	const { actions } = await import('./src/actions.mjs')
-	if (!actions[action])
-		throw new Error(`Unknown action: ${action}. Available actions: ${Object.keys(actions).join(', ')}`)
+	if (actions[action])
+		return actions[action]({ user, ...params })
 
-	return actions[action]({ user, ...params })
+	const { actions: profileActions } = await import('./src/profile/actions.mjs')
+	if (profileActions[action])
+		return profileActions[action]({ user, ...params })
+
+	const stickerActionMap = {
+		'sticker-list': 'list',
+		'sticker-create': 'create',
+		'sticker-info': 'info',
+		'sticker-install': 'install',
+		'sticker-uninstall': 'uninstall',
+		'sticker-delete': 'delete',
+	}
+	const stickerKey = stickerActionMap[action]
+	if (stickerKey) {
+		const { actions: stickerActions } = await import('./src/stickers/actions.mjs')
+		if (stickerActions[stickerKey])
+			return stickerActions[stickerKey]({ user, ...params })
+	}
+
+	throw new Error(`Unknown action: ${action}. Available actions: ${Object.keys(actions).join(', ')}`)
 }
 
 /**
@@ -43,6 +74,13 @@ export default {
 	 */
 	Load: ({ router }) => {
 		loadCount++
+		registerChatTrustGraphProvider()
+		registerChatManifestAcl()
+		registerChatManifestTransfer()
+		registerChatChunkProviders()
+		registerChatGroupEntityIndex()
+		registerGroupMemberEntityResolver('chat', getGroupMemberEntityHash)
+		registerMaterializedSessionProvider('chat', getMaterializedSession)
 		setGroupEndpoints(router)
 		setEndpoints(router)
 	},
@@ -51,8 +89,16 @@ export default {
 	 */
 	Unload: () => {
 		loadCount--
-		if (!loadCount)
+		if (!loadCount) {
 			clearInterval(cleanFilesInterval)
+			unregisterTrustGraphProvider('chat')
+			unregisterChatManifestAcl()
+			unregisterGroupMemberEntityResolver('chat')
+			unregisterChatManifestTransfer()
+			unregisterChatChunkProviders()
+			unregisterChatGroupEntityIndex()
+			unregisterMaterializedSessionProvider('chat')
+		}
 	},
 	interfaces: {
 		web: {},

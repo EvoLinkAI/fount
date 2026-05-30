@@ -318,7 +318,6 @@ class UserSubfountManager {
 				if (subfount)
 					// 更新现有分机
 					this.updateSubfountConnection(subfount, peerId, remoteDeviceId)
-
 				else
 					// 创建新分机
 					subfount = this.addSubfount(peerId, remoteDeviceId)

@@ -87,6 +87,8 @@ export async function savePeers(username, groupId, data) {
 	const path = peersPath(username, groupId)
 	await mkdir(dirname(path), { recursive: true })
 	await writeFile(path, JSON.stringify({ ...normalizePeersFile(data), lastRosterAt: Date.now() }, null, '\t'), 'utf8')
+	const { invalidateTrustGraphCache } = await import('../../../../../../../scripts/p2p/trust_graph_cache.mjs')
+	invalidateTrustGraphCache(username)
 }
 
 /**
@@ -138,9 +140,9 @@ export function isSubjectBlocked(peers, subject) {
  * @returns {Promise<void>}
  */
 export async function addBlockedPeers(username, groupId, keys) {
-	for (const key of keys) 
+	for (const key of keys)
 		if (key) await addBlockedPeer(username, groupId, key)
-	
+
 }
 
 /**

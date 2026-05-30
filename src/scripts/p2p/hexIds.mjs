@@ -27,9 +27,35 @@ export function isHex64(value) {
 }
 
 /**
+ * 外部入站专用：规范化并断言 64 位 hex。
+ * @param {unknown} value 原始值
+ * @param {string} [label='hex64'] 字段名（错误信息）
+ * @returns {string} 小写 64 位 hex
+ */
+export function assertHex64(value, label = 'hex64') {
+	const normalized = normalizeHex64(value)
+	if (!HEX_ID_64.test(normalized))
+		throw new Error(`${label} must be 64 hex characters`)
+	return normalized
+}
+
+/**
  * @param {unknown} value 待校验值
  * @returns {boolean} 是否为 128 位签名 hex
  */
 export function isSignatureHex128(value) {
 	return SIGNATURE_HEX_128.test(String(value ?? '').trim())
+}
+
+/**
+ * 外部入站专用：断言 128 位签名 hex。
+ * @param {unknown} value 原始值
+ * @param {string} [label='signature'] 字段名
+ * @returns {string} 签名 hex
+ */
+export function assertSignatureHex128(value, label = 'signature') {
+	const normalized = String(value ?? '').trim().toLowerCase()
+	if (!SIGNATURE_HEX_128.test(normalized))
+		throw new Error(`${label} must be 128 hex characters`)
+	return normalized
 }

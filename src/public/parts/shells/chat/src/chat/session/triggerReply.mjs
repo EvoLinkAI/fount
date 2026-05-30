@@ -20,6 +20,7 @@ import {
 	finalizeDagGeneratingMessage,
 	syncChatLogEntryToDag,
 } from '../dag/chatLogMirror.mjs'
+import { getState } from '../dag/materialize.mjs'
 import { getDefaultChannelId } from '../dag/queries.mjs'
 import { resolveGroupChannelId } from '../lib/channelId.mjs'
 import { persistLogContextSidecar, sidecarChannelForEntry } from '../lib/contextSidecar.mjs'
@@ -47,6 +48,8 @@ import { groupMetadatas } from './wsLifecycle.mjs'
 
 /** @type {Set<string>} 进行中的角色生成（groupId\\0channelId\\0charname） */
 const charReplyInFlight = new Set()
+/** @type {Map<string, { tokens: number }>} 角色自动回复桶状态 */
+const autoReplyBuckets = new Map()
 
 /**
  * @param {string} groupId 群 ID
@@ -289,6 +292,10 @@ export async function getCharReplyFrequency(groupId) {
 	if (!chatMetadata) throw new Error('Group not found')
 	const result = [{ charname: null, frequency: 1 }]
 	const defaultChannelId = await getDefaultChannelId(chatMetadata.username, groupId)
+	const { state } = await getState(chatMetadata.username, groupId)
+	const bucketEnabled = !!state?.groupSettings?.autoReplyTokenBucketEnabled
+	const bucketBurst = Math.max(1, Number(state?.groupSettings?.autoReplyTokenBurst) || 2)
+	const bucketRefill = Math.max(0.1, Number(state?.groupSettings?.autoReplyTokenRefillPerMessage) || 0.5)
 	const session = await getMaterializedSession(chatMetadata.username, groupId)
 
 	for (const charname of Object.keys(session.chars || {})) {
@@ -297,12 +304,27 @@ export async function getCharReplyFrequency(groupId) {
 		if (!char) continue
 		let frequency = session.charFrequencies?.[charname] ?? 1
 		if (char.interfaces?.chat?.onMessage) {
+			const bucketKey = `${groupId}\0${defaultChannelId}\0${charname}`
+			if (bucketEnabled) {
+				const row = autoReplyBuckets.get(bucketKey) || { tokens: bucketBurst }
+				row.tokens = Math.min(bucketBurst, row.tokens + bucketRefill)
+				autoReplyBuckets.set(bucketKey, row)
+				if (row.tokens < 1) {
+					frequency = 0
+					continue
+				}
+			}
 			const onlineCount = Object.keys(session.chars || {}).length + 1
 			const spoke = await char.interfaces.chat.onMessage({
 				chatReplyRequest: await getChatRequest(groupId, charname, defaultChannelId, { replicaUsername: chatMetadata.username }),
 				onlineCount,
 			}).catch(() => false)
 			frequency = spoke ? 1e6 : 0
+			if (bucketEnabled && spoke) {
+				const row = autoReplyBuckets.get(bucketKey) || { tokens: bucketBurst }
+				row.tokens = Math.max(0, row.tokens - 1)
+				autoReplyBuckets.set(bucketKey, row)
+			}
 		}
 		if (frequency > 0)
 			result.push({ charname, frequency })
@@ -445,7 +467,6 @@ export async function triggerCharReply(groupId, channelId, charname, requestOver
 			Object.assign(request, requestOverride)
 
 		if (owner) {
-			const { getState } = await import('../dag/materialize.mjs')
 			const { resolveLocalEventSigner } = await import('../dag/localSigner.mjs')
 			const { checkMessageRateLimit } = await import('../governance/messageRateLimit.mjs')
 			const { appendLocalSystemChatLog } = await import('./localSystemLog.mjs')
