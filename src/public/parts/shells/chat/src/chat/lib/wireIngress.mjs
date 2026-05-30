@@ -1,0 +1,64 @@
+/**
+ * 【文件】src/chat/lib/wireIngress.mjs
+ * 【职责】入站 wire 事件预处理：大小、schema、visibility 统一门禁。
+ * 【原理】sanitize → jsonBoundary → visibility → 交 authorizeEvent。
+ * 【数据结构】WireIngressResult：accepted、reason、normalizedEvent。
+ * 【关联】events/wire、lib/jsonBoundary、dag/remoteIngest。
+ */
+import { Buffer } from 'node:buffer'
+
+import { isHex64, isSignatureHex128 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+
+/**
+ * @param {unknown} value 待判定值
+ * @returns {value is Record<string, unknown>} 是否为非 null 的普通对象（非数组）
+ */
+export function isPlainObject(value) {
+	return value != null && !Array.isArray(value) && typeof value === 'object'
+}
+
+/**
+ * 解析 WebSocket / HTTP 入站 JSON 帧。
+ * @param {unknown} raw `ws` message 或字符串
+ * @returns {Record<string, unknown> | null} 解析失败或非对象时为 null
+ */
+export function parseInboundJson(raw) {
+	if (raw == null) return null
+	const text = typeof raw === 'string'
+		? raw
+		: Buffer.isBuffer(raw)
+			? raw.toString('utf8')
+			: String(raw)
+	let parsed
+	try {
+		parsed = JSON.parse(text)
+	}
+	catch {
+		return null
+	}
+	return isPlainObject(parsed) ? parsed : null
+}
+
+/**
+ * @param {unknown} event 单条 DAG 行
+ * @returns {boolean} 是否具备完整远程签名形态
+ */
+export function isSignedDagEventRow(event) {
+	return isPlainObject(event)
+		&& isHex64(event.id)
+		&& isSignatureHex128(event.signature)
+}
+
+/**
+ * 从联邦 `dag_event` 载荷取出已签名事件行。
+ * @param {unknown} payload Trystero 载荷或 `{ event }` 包装
+ * @param {string} groupId 本群 ID
+ * @returns {object | null} 验形通过的事件；否则 null
+ */
+export function extractInboundSignedEvent(payload, groupId) {
+	if (!isPlainObject(payload)) return null
+	const event = isPlainObject(payload.event) ? payload.event : payload
+	if (!isSignedDagEventRow(event)) return null
+	if (event.groupId && String(event.groupId) !== groupId) return null
+	return event
+}

@@ -13,7 +13,7 @@
 - **APIs & Types**: Defined in `@src/decl/` (e.g., `CharAPI_t` in `charAPI.ts`). **Consult these files for required methods.**
 - **Data Structures**:
   - `prompt_struct_t`: Central prompt building (@src/decl/prompt_struct.ts).
-  - `chatMetadata_t`: Chat session state (@src/public/parts/shells/chat/src/chat.mjs).
+  - `chatMetadata_t`: Chat session state (@src/public/parts/shells/chat/src/chat/session.mjs).
 
 ## 3. Development Guidelines
 

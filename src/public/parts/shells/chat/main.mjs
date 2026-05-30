@@ -1,11 +1,19 @@
-import { hosturl } from '../../../../server/server.mjs'
-
+/**
+ * 【文件】main.mjs
+ * 【职责】chat shell 的 Part 入口：向 parts_loader 导出 shellAPI_t，注册 HTTP/群路由与文件 GC，并分发 CLI/IPC 动作。
+ * 【原理】side-effect 预加载 dag/index；Load 调用 setGroupEndpoints + setEndpoints；Unload 在 loadCount 归零时 clearInterval(cleanFilesInterval)。
+ *   handleAction 动态 import actions 表；ArgumentsHandler 解析 dm/join/start/send 等；IPCInvokeHandler 透传 command。
+ * 【数据结构】loadCount、shellAPI_t（info/Load/Unload/interfaces）、actions 命令键。
+ * 【关联】parts_loader 加载；import endpoints、group/endpoints、files、locales。
+ */
+import './src/chat/dag/index.mjs'
 import { setEndpoints } from './src/endpoints.mjs'
 import { cleanFilesInterval } from './src/files.mjs'
+import { setGroupEndpoints } from './src/group/endpoints.mjs'
 
 const { info } = (await import('./locales.json', { with: { type: 'json' } })).default
 
-let loading_count = 0
+let loadCount = 0
 
 /**
  * 处理传入的聊天动作请求。
@@ -34,15 +42,16 @@ export default {
 	 * @param {object} root0.router - Express的路由实例。
 	 */
 	Load: ({ router }) => {
-		loading_count++
+		loadCount++
+		setGroupEndpoints(router)
 		setEndpoints(router)
 	},
 	/**
 	 * 卸载聊天Shell，减少加载计数并在必要时清理定时器。
 	 */
 	Unload: () => {
-		loading_count--
-		if (!loading_count)
+		loadCount--
+		if (!loadCount)
 			clearInterval(cleanFilesInterval)
 	},
 	interfaces: {
@@ -60,50 +69,55 @@ export default {
 				let result
 
 				switch (command) {
+					case 'dm': {
+						params = {
+							introPubKeyHex: args[1],
+							dmIntroNonce: args[2],
+							dmIntroSignatureHex: args[3],
+						}
+						result = await handleAction(user, command, params)
+						if (result?.groupId) console.log(JSON.stringify(result))
+						break
+					}
+					case 'join': {
+						params = { groupId: args[1], inviteCode: args[2] || '' }
+						result = await handleAction(user, command, params)
+						if (result?.groupId) console.log(JSON.stringify(result))
+						break
+					}
 					case 'start':
 						params = { charName: args[1] }
 						result = await handleAction(user, command, params)
-						console.log(`Started new chat at: ${hosturl}/parts/shells:chat/#${result}`)
 						break
 					case 'asjson':
 						params = { chatInfo: JSON.parse(args[1]) }
 						result = await handleAction(user, command, params)
-						console.log(`Loaded chat from JSON: ${args[1]}`)
 						break
 					case 'load':
-						params = { chatId: args[1] }
+						params = { groupId: args[1] }
 						result = await handleAction(user, command, params)
-						console.log(`Continue chat at: ${hosturl}/parts/shells:chat/#${result}`)
 						break
 					case 'tail':
-						params = { chatId: args[1], n: Number(args[2] || '5') }
+						params = { groupId: args[1], n: Number(args[2] || '5') }
 						result = await handleAction(user, command, params)
 						result.forEach(log => {
 							console.log(`[${new Date(log.time_stamp).toLocaleString()}] ${log.name}: ${log.content}`)
 						})
 						break
 					case 'send':
-						params = { chatId: args[1], message: { content: args[2] } }
+						params = { groupId: args[1], message: { content: args[2] } }
 						await handleAction(user, command, params)
-						console.log(`Message sent to chat ${args[1]}`)
-						break
-					case 'edit-message':
-						params = { chatId: args[1], index: Number(args[2]), newContent: { content: args.slice(3).join(' ') } }
-						await handleAction(user, command, params)
-						console.log(`Message at index ${args[2]} in chat ${args[1]} edited.`)
 						break
 					default: {
-						const [chatId, ...rest] = args.slice(1)
+						const [groupId, ...rest] = args.slice(1)
 						const paramMap = {
 							'remove-char': { charName: rest[0] },
 							'set-persona': { personaName: rest[0] },
 							'set-world': { worldName: rest[0] },
 							'set-char-frequency': { charName: rest[0], frequency: parseFloat(rest[1]) },
 							'trigger-reply': { charName: rest[0] },
-							'delete-message': { index: Number(rest[0]) },
-							'modify-timeline': { delta: Number(rest[0]) }
 						}
-						params = { chatId, ...paramMap[command] }
+						params = { groupId, ...paramMap[command] }
 						result = await handleAction(user, command, params)
 						if (result !== undefined) console.log(result)
 						break
