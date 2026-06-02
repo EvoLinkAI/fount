@@ -39,8 +39,15 @@ export async function discoverAccounts(username, options = {}) {
 	for (const entityHash of owners.slice(0, accountLimit)) {
 		const view = await getTimelineMaterialized(username, entityHash)
 		if (view.socialMeta?.isProtected) continue
-		await ensureLocalEntityProfile(username, entityHash)
-		const profile = await getProfile(entityHash, username)
+		let profile = null
+		try {
+			await ensureLocalEntityProfile(username, entityHash)
+			profile = await getProfile(entityHash, username)
+		}
+		catch {
+			// 本地时间线可能包含远端 owner；探索页应降级跳过而非 500
+			continue
+		}
 		accounts.push({
 			entityHash,
 			name: profile?.displayName || profile?.name || entityHash.slice(0, 8),

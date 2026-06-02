@@ -1,13 +1,13 @@
 /**
  * Social 时间线事件入库 canonicalize。
  */
+import { isEntityHash128 } from '../../../../../../scripts/p2p/entity_id.mjs'
 import { assertHex64 } from '../../../../../../scripts/p2p/hexIds.mjs'
 import { validateRemoteEventShape } from '../../../../../../scripts/p2p/schemas/remote_event.mjs'
 
 /** @type {Set<string>} */
 const HEX_CONTENT_KEYS = new Set([
 	'targetPostId',
-	'targetEntityHash',
 	'targetId',
 ])
 
@@ -23,8 +23,12 @@ function canonicalizeTimelineContent(content) {
 		if (key in out && out[key] != null && out[key] !== '')
 			out[key] = assertHex64(out[key], key)
 
-	if (out.targetEntityHash)
-		out.targetEntityHash = String(out.targetEntityHash).toLowerCase()
+	if (out.targetEntityHash) {
+		const entityHash = String(out.targetEntityHash).toLowerCase()
+		if (!isEntityHash128(entityHash))
+			throw new Error('targetEntityHash must be 128 hex characters')
+		out.targetEntityHash = entityHash
+	}
 	return out
 }
 

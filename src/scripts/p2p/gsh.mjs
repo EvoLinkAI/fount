@@ -223,7 +223,7 @@ function edPrivToX25519(seed) {
  */
 export function encryptHForMember(H_hex, memberEdPubKeyHex) {
 	const memberX25519Pub = edPubToX25519(Buffer.from(memberEdPubKeyHex, 'hex'))
-	const ephemPriv = x25519.utils.randomPrivateKey()
+	const ephemPriv = x25519.utils.randomSecretKey()
 	const ephemPub = x25519.getPublicKey(ephemPriv)
 	const sharedSecret = x25519.getSharedSecret(ephemPriv, memberX25519Pub)
 	const wrapKey = createHash('sha256').update(sharedSecret).digest()
@@ -271,7 +271,7 @@ export function decryptH(encryptedH, myEdPrivKeySeed) {
  */
 export function encryptUtf8ForMember(utf8Text, memberEdPubKeyHex) {
 	const memberX25519Pub = edPubToX25519(Buffer.from(memberEdPubKeyHex, 'hex'))
-	const ephemPriv = x25519.utils.randomPrivateKey()
+	const ephemPriv = x25519.utils.randomSecretKey()
 	const ephemPub = x25519.getPublicKey(ephemPriv)
 	const sharedSecret = x25519.getSharedSecret(ephemPriv, memberX25519Pub)
 	const wrapKey = createHash('sha256').update(sharedSecret).digest()
