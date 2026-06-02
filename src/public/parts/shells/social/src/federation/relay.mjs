@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import { requireTrustGraphProvider } from '../../../../../../../scripts/p2p/trust_graph_registry.mjs'
+import { requireTrustGraphProvider } from '../../../../../../scripts/p2p/trust_graph_registry.mjs'
 import { requireDagDeps } from '../../../chat/src/chat/federation/deps.mjs'
 import { ingestRemoteTimelineEvent } from '../timeline/sync.mjs'
 

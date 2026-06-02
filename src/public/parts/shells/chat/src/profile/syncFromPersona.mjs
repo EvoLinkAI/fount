@@ -4,15 +4,15 @@
 import {
 	getInfoDefaultsForEntity,
 	normalizeLocalizedMap,
-} from '../../../../../scripts/p2p/entity/localized.mjs'
+} from '../../../../../../scripts/p2p/entity/localized.mjs'
 import {
 	isPlaceholderDisplayName,
 	resolvePersonaPresentation,
-} from '../../../../../scripts/p2p/entity/personaPresentation.mjs'
+} from '../../../../../../scripts/p2p/entity/personaPresentation.mjs'
 import {
 	getProfile,
 	updateProfile,
-} from '../../../../../scripts/p2p/entity/profile.mjs'
+} from '../../../../../../scripts/p2p/entity/profile.mjs'
 import { getGroupMemberEntityHash, isWritableLocalEntity } from '../chat/lib/replica.mjs'
 
 /**

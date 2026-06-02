@@ -4,7 +4,7 @@ import {
 	registerDagManifestPlaintextReader,
 	registerTransferKeyDeps,
 	unregisterTransferKeyDeps,
-} from '../../../../../../../scripts/p2p/files/transfer_key_registry.mjs'
+} from '../../../../../../scripts/p2p/files/transfer_key_registry.mjs'
 
 import { getDecryptedFile } from './files/groupFiles.mjs'
 import { getHByGeneration, getCurrentH } from './gsh/store.mjs'

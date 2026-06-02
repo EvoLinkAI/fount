@@ -25,15 +25,25 @@ function parseEvfsLogicalPath(rawPath) {
 }
 
 /**
+ * @param {unknown} wildcardParam 路由通配参数
+ * @returns {string} 原始路径字符串
+ */
+function readWildcardPath(wildcardParam) {
+	if (Array.isArray(wildcardParam))
+		return wildcardParam.join('/')
+	return String(wildcardParam || '')
+}
+
+/**
  * @param {import('npm:express').Router} router Express 路由
  * @param {import('npm:express').RequestHandler} authenticate 认证中间件
  * @param {(req: import('npm:express').Request) => { username: string }} getUserByReq 用户解析
  * @returns {void}
  */
 export function registerP2pFileEndpoints(router, authenticate, getUserByReq) {
-	router.get('/api/p2p/entities/:entityHash/files/*', authenticate, async (req, res) => {
+	router.get('/api/p2p/entities/:entityHash/files/*logicalPath', authenticate, async (req, res) => {
 		const entityHash = String(req.params.entityHash || '').toLowerCase()
-		const logicalPath = parseEvfsLogicalPath(req.params[0])
+		const logicalPath = parseEvfsLogicalPath(readWildcardPath(req.params.logicalPath))
 		if (!isEntityHash128(entityHash) || !logicalPath)
 			return res.status(400).json({ error: 'invalid path' })
 
@@ -54,9 +64,9 @@ export function registerP2pFileEndpoints(router, authenticate, getUserByReq) {
 		plain.pipe(res.status(200))
 	})
 
-	router.head('/api/p2p/entities/:entityHash/files/*', authenticate, async (req, res) => {
+	router.head('/api/p2p/entities/:entityHash/files/*logicalPath', authenticate, async (req, res) => {
 		const entityHash = String(req.params.entityHash || '').toLowerCase()
-		const logicalPath = parseEvfsLogicalPath(req.params[0])
+		const logicalPath = parseEvfsLogicalPath(readWildcardPath(req.params.logicalPath))
 		if (!isEntityHash128(entityHash) || !logicalPath)
 			return res.status(400).end()
 		const { username } = getUserByReq(req)
@@ -67,9 +77,9 @@ export function registerP2pFileEndpoints(router, authenticate, getUserByReq) {
 		return res.status(200).end()
 	})
 
-	router.put('/api/p2p/entities/:entityHash/files/*', authenticate, async (req, res) => {
+	router.put('/api/p2p/entities/:entityHash/files/*logicalPath', authenticate, async (req, res) => {
 		const entityHash = String(req.params.entityHash || '').toLowerCase()
-		const logicalPath = parseEvfsLogicalPath(req.params[0])
+		const logicalPath = parseEvfsLogicalPath(readWildcardPath(req.params.logicalPath))
 		if (!isEntityHash128(entityHash) || !logicalPath)
 			return res.status(400).json({ error: 'invalid path' })
 

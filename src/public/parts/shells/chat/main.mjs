@@ -8,9 +8,9 @@
  */
 import './src/chat/dag/index.mjs'
 import './src/chat/federation/config.mjs'
-import { registerMaterializedSessionProvider, unregisterMaterializedSessionProvider } from '../../../../../scripts/p2p/entity/session_snapshot_registry.mjs'
-import { registerGroupMemberEntityResolver, unregisterGroupMemberEntityResolver } from '../../../../../scripts/p2p/p2p_viewer_registry.mjs'
-import { unregisterTrustGraphProvider } from '../../../../../scripts/p2p/trust_graph_registry.mjs'
+import { registerMaterializedSessionProvider, unregisterMaterializedSessionProvider } from '../../../../scripts/p2p/entity/session_snapshot_registry.mjs'
+import { registerGroupMemberEntityResolver, unregisterGroupMemberEntityResolver } from '../../../../scripts/p2p/p2p_viewer_registry.mjs'
+import { unregisterTrustGraphProvider } from '../../../../scripts/p2p/trust_graph_registry.mjs'
 
 import { registerChatChunkProviders, unregisterChatChunkProviders } from './src/chat/chunkProviders.mjs'
 import { registerChatTrustGraphProvider } from './src/chat/federation/chatTrustGraph.mjs'

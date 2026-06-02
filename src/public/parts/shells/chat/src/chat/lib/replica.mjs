@@ -4,16 +4,18 @@
  */
 import { pubKeyHash, publicKeyFromSeed } from '../../../../../../../scripts/p2p/crypto.mjs'
 import {
-	encodeEntityHash,
 	getLocalNodeHash,
 	getOperatorEntityHash,
 	getReplicaFromReq,
 	isWritableLocalEntity,
 	resolveOperatorEntityHash,
 } from '../../../../../../../scripts/p2p/entity/replica.mjs'
-
+import { encodeEntityHash } from '../../../../../../../scripts/p2p/entity_id.mjs'
 import { readLocalSignerSeed } from '../dag/localSigner.mjs'
 
+/**
+ *
+ */
 export {
 	getLocalNodeHash,
 	getOperatorEntityHash,

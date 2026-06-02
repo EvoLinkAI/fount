@@ -1,9 +1,9 @@
 import path from 'node:path'
 
-import { groupEntityHash } from '../../../../../../../scripts/p2p/entity/group_entity.mjs'
-import { registerGroupIdResolver, unregisterGroupIdResolver } from '../../../../../../../scripts/p2p/entity/group_entity_index_registry.mjs'
-import { loadJsonFile, saveJsonFile } from '../../../../../../../scripts/p2p/json_loader.mjs'
-import { getUserDictionary } from '../../../../../../../server/auth.mjs'
+import { loadJsonFile, saveJsonFile } from '../../../../../../scripts/json_loader.mjs'
+import { groupEntityHash } from '../../../../../../scripts/p2p/entity/group_entity.mjs'
+import { registerGroupIdResolver, unregisterGroupIdResolver } from '../../../../../../scripts/p2p/entity/group_entity_index_registry.mjs'
+import { getUserDictionary } from '../../../../../../server/auth.mjs'
 
 const OWNER_ID = 'chat'
 

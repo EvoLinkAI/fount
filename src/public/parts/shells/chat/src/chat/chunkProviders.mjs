@@ -2,7 +2,7 @@ import {
 	registerFederationChunkFetcher,
 	registerNodeIdProvider,
 	unregisterChunkProviders,
-} from '../../../../../../../scripts/p2p/files/chunk_provider_registry.mjs'
+} from '../../../../../../scripts/p2p/files/chunk_provider_registry.mjs'
 
 import { fetchCiphertextFromFederation } from './federation/chunks.mjs'
 import { requireDagDeps } from './federation/deps.mjs'
