@@ -6,7 +6,7 @@
 	"configurations": [
 		{
 			"request": "launch",
-			"name": "Launch Program",
+			"name": "fount server",
 			"type": "node",
 			"program": "${workspaceFolder}/src/server/index.mjs",
 			"cwd": "${workspaceFolder}",
@@ -21,7 +21,7 @@
 				"${workspaceFolder}/deno.json",
 				"--v8-flags=--expose-gc"
 			],
-			"attachSimplePort": 9229
+			"attachSimplePort": 9229,
 		}
 	]
 }
