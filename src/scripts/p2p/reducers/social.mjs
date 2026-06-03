@@ -110,6 +110,9 @@ export const SOCIAL_TIMELINE_REDUCERS = {
 	repost: reduceRepost,
 	follow: reduceFollow,
 	unfollow: reduceUnfollow,
+	state_summary: reduceSocialMeta,
+	file_share: (state, _event) => state,
+	follow_approve: (state, _event) => state,
 }
 
 /**

@@ -98,14 +98,14 @@ export async function createEcdhDmGroup(username, myPubKeyHex, peerPubKeyHex) {
 
 	const hEntry = await getCurrentH(username, groupId)
 	if (hEntry?.h) {
-		const gshGrant = await buildGshGenerationGrant(username, groupId, peerPubKey)
+		const fileHGrant = await buildGshGenerationGrant(username, groupId, peerPubKey)
 		await appendSignedLocalEvent(username, groupId, {
 			type: 'peer_invite',
 			timestamp: Date.now(),
 			content: {
 				from: ownerPubKeyHash,
 				to: peerPubKey,
-				gshGrant,
+				fileHGrant,
 			},
 		})
 	}

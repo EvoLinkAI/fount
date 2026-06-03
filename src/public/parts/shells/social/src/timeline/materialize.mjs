@@ -1,5 +1,5 @@
 import { createLruMap } from '../../../../../../scripts/memo.mjs'
-import { readJsonlTipId, writeJsonAtomicSynced } from '../../../../../../scripts/p2p/dag/storage.mjs'
+import { readJsonlTipId } from '../../../../../../scripts/p2p/dag/storage.mjs'
 import { parseEntityHash } from '../../../../../../scripts/p2p/entity_id.mjs'
 import {
 	createSocialTimelineState,
@@ -112,8 +112,11 @@ export async function getTimelineMaterialized(username, entityHash) {
 		materializedAt: Date.now(),
 		...view,
 	}
-	await writeJsonAtomicSynced(timelineSnapshotPath(username, entityHash), snapshot)
-	bucket.set(entityKey, { tipId, view: snapshot })
+	const { rebuildSignedTimelineSnapshot } = await import('./rebuildCheckpoint.mjs')
+	const signedSnapshot = await rebuildSignedTimelineSnapshot(username, entityHash, snapshot)
+	bucket.set(entityKey, { tipId, view: signedSnapshot })
 	timelineViewCache.touch(username, bucket)
+	const { runSocialTimelineMaintenance } = await import('./retention.mjs')
+	await runSocialTimelineMaintenance(username, entityHash, signedSnapshot, view.socialMeta)
 	return view
 }

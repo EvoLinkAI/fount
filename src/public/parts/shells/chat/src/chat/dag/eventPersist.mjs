@@ -21,8 +21,11 @@ import {
 	decryptEventContent,
 	GSH_ENCRYPT_EVENT_TYPES,
 } from '../gsh/content.mjs'
+import { applyChannelKeyRotateEvent } from '../channel_keys/store.mjs'
+import { appendChannelKeyRotate, rotateAllChannelKeys } from '../channel_keys/schedule.mjs'
 import { tryImportHFromPeerInvite } from '../gsh/peerInviteImport.mjs'
 import { applyGshRotationFromEvent } from '../gsh/store.mjs'
+import { resolveLocalEventSigner } from './localSigner.mjs'
 import { eventsPath, messagesPath } from '../lib/paths.mjs'
 import { broadcastEvent } from '../stream/groupWsHub.mjs'
 import { groupWsRoomKeyForReplica } from '../stream/groupWsRooms.mjs'
@@ -104,8 +107,18 @@ export async function broadcastAndPersist(username, groupId, signPayload, persis
 	await applyReputationHooks(username, groupId, signPayload)
 	await applyGshRotationFromEvent(username, groupId, signPayload)
 	await tryImportHFromPeerInvite(username, groupId, signPayload)
+	if (signPayload.type === 'channel_key_rotate') {
+		const { sender } = await resolveLocalEventSigner(username, groupId)
+		await applyChannelKeyRotateEvent(username, groupId, signPayload, sender)
+	}
 	if (!PERSIST_MESSAGE_TYPES.has(signPayload.type)) {
 		await rebuildAndSaveCheckpoint(username, groupId, { ...persistOpts, skipChannelGc: true })
+		if (signPayload.type === 'channel_permissions_update') {
+			const channelId = String(signPayload.content?.channelId || '').trim()
+			if (channelId) await appendChannelKeyRotate(username, groupId, channelId)
+		}
+		else if (['member_join', 'member_kick', 'role_assign', 'role_revoke'].includes(signPayload.type))
+			await rotateAllChannelKeys(username, groupId)
 		return
 	}
 	const channelId = signPayload.channelId || 'default'
@@ -114,10 +127,10 @@ export async function broadcastAndPersist(username, groupId, signPayload, persis
 	let sidecarContent = storedContent
 	if (GSH_ENCRYPT_EVENT_TYPES.has(signPayload.type)) {
 		displayContent = await decryptEventContent(username, groupId, channelId, storedContent)
-		if (displayContent?.gshDecryptFailed)
+		if (displayContent?.ckgDecryptFailed || displayContent?.gshDecryptFailed)
 			sidecarContent = {
 				decryptFailed: true,
-				pendingGeneration: displayContent.gshPendingGeneration ?? null,
+				pendingGeneration: displayContent.ckgPendingGeneration ?? displayContent.gshPendingGeneration ?? null,
 			}
 		else
 			sidecarContent = displayContent

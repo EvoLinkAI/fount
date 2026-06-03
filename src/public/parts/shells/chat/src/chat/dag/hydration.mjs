@@ -124,7 +124,7 @@ function resolveDagMessageText(content, decryptUnavailableText, contentRefPlaceh
 	if (ref && !content.contentRefResolved)
 		return contentRefPlaceholder?.trim()
 			|| `[content_ref:${ref.contentHash?.trim().slice(0, 12) || '?'}…]`
-	if (content?.gshDecryptFailed || isGshEncryptedContent(content))
+	if (content?.gshDecryptFailed || content?.ckgDecryptFailed || isGshEncryptedContent(content))
 		return decryptUnavailableText
 	if (content?.e2e?.encrypted === true)
 		return decryptUnavailableText

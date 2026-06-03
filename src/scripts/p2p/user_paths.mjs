@@ -77,3 +77,11 @@ export function entityFilesManifestPath(username, entityHash, logicalPath) {
 		throw new Error('invalid EVFS path traversal')
 	return resolved
 }
+
+/**
+ * @param {string} username replica
+ * @returns {string} P2P mailbox store-and-forward JSONL
+ */
+export function mailboxStorePath(username) {
+	return path.join(getUserDictionary(username), 'p2p', 'mailbox', 'store.jsonl')
+}

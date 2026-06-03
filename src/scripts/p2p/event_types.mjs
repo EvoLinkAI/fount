@@ -23,6 +23,8 @@ export const EVENT_TYPE_DEFS = {
 	channel_update: { aclGated: true, governance: true },
 	channel_delete: { aclGated: true, governance: true },
 	channel_permissions_update: { aclGated: true, gcExclude: true, governance: true },
+	channel_key_rotate: { aclGated: true, gcExclude: true, governance: true },
+	state_summary: { aclGated: true, gcExclude: true, governance: true },
 	group_meta_update: { aclGated: true, gcExclude: true, governance: true },
 	group_settings_update: { aclGated: true, gcExclude: true, governance: true },
 	reputation_slash: { aclGated: true, gcExclude: true, governance: true },

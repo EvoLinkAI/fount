@@ -9,10 +9,6 @@
 import './src/chat/dag/index.mjs'
 import './src/chat/federation/config.mjs'
 import { registerMaterializedSessionProvider, unregisterMaterializedSessionProvider } from '../../../../scripts/p2p/entity/session_snapshot_registry.mjs'
-import {
-	registerMailboxHandlers,
-	unregisterMailboxHandlers,
-} from '../../../../scripts/p2p/mailbox/handler_registry.mjs'
 import { registerGroupMemberEntityResolver, unregisterGroupMemberEntityResolver } from '../../../../scripts/p2p/p2p_viewer_registry.mjs'
 import {
 	registerShellPartpath,
@@ -24,10 +20,9 @@ import { registerChatFederationRoomProvider, unregisterChatFederationRoomProvide
 import { registerChatGroupEntityIndex, unregisterChatGroupEntityIndex } from './src/chat/groupEntityIndex.mjs'
 import { getGroupMemberEntityHash } from './src/chat/lib/replica.mjs'
 import {
-	ingestMailboxGive,
-	ingestMailboxPut,
-	respondMailboxWant,
-} from './src/chat/mailbox/delivery.mjs'
+	registerChatMailboxConsumer,
+	unregisterChatMailboxConsumer,
+} from './src/chat/mailbox/ingest.mjs'
 import { registerChatManifestAcl, unregisterChatManifestAcl } from './src/chat/manifestAcl.mjs'
 import { registerChatManifestTransfer, unregisterChatManifestTransfer } from './src/chat/manifestTransfer.mjs'
 import { getMaterializedSession } from './src/chat/session/dagSession.mjs'
@@ -93,11 +88,7 @@ export default {
 		registerGroupMemberEntityResolver('chat', getGroupMemberEntityHash)
 		registerMaterializedSessionProvider('chat', getMaterializedSession)
 		registerChatFederationRoomProvider()
-		registerMailboxHandlers({
-			ingestPut: ingestMailboxPut,
-			respondWant: respondMailboxWant,
-			ingestGive: ingestMailboxGive,
-		})
+		registerChatMailboxConsumer()
 		setGroupEndpoints(router)
 		setEndpoints(router)
 	},
@@ -115,7 +106,7 @@ export default {
 			unregisterChatGroupEntityIndex()
 			unregisterMaterializedSessionProvider('chat')
 			unregisterChatFederationRoomProvider()
-			unregisterMailboxHandlers()
+			unregisterChatMailboxConsumer()
 		}
 	},
 	interfaces: {

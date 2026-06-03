@@ -28,7 +28,8 @@ import { wrapPullResponseInner, unwrapPullResponseEnvelope } from './pullRespons
  * @param {Record<string, object[]>} [opts.channelHistories] 频道历史
  * @param {object} [opts.checkpoint] checkpoint
  * @param {object} [opts.archiveSummary] 存档摘要
- * @param {boolean} [opts.includeGshGrant] 是否附带历史 GSH grant
+ * @param {boolean} [opts.includeFileHGrant] 是否附带群文件密钥 H grant
+ * @param {boolean} [opts.includeChannelKeyRotates] 是否附带频道密钥 rotate 事件
  * @returns {Promise<object>} HPKE envelope
  */
 export async function buildPullResponseEnvelope(username, groupId, opts) {
@@ -41,7 +42,8 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 		channelHistories,
 		checkpoint,
 		archiveSummary,
-		includeGshGrant = false,
+		includeFileHGrant = false,
+		includeChannelKeyRotates = false,
 	} = opts
 	/** @type {Record<string, unknown>} */
 	const inner = {}
@@ -61,8 +63,13 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 		if (Object.keys(wireHistories).length)
 			inner.channelHistories = wireHistories
 	}
-	if (includeGshGrant)
-		inner.gshGrant = await buildGshGenerationGrant(username, groupId, recipientEdPubKeyHex)
+	if (includeFileHGrant)
+		inner.fileHGrant = await buildGshGenerationGrant(username, groupId, recipientEdPubKeyHex)
+	if (includeChannelKeyRotates) {
+		const { collectChannelKeyRotatesForRecipient } = await import('../channel_keys/bootstrap.mjs')
+		const rotates = await collectChannelKeyRotatesForRecipient(username, groupId, recipientEdPubKeyHex)
+		if (rotates.length) inner.channelKeyRotates = rotates
+	}
 	const wrapped = wrapPullResponseInner(recipientEdPubKeyHex, inner)
 	return {
 		requestId,
@@ -80,8 +87,15 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
  */
 export async function applyPullInner(username, groupId, inner) {
 	if (!isPlainObject(inner)) return { eventsApplied: 0, historiesMerged: 0 }
-	if (inner.gshGrant)
-		await applyGshGenerationGrant(username, groupId, inner.gshGrant)
+	if (inner.fileHGrant)
+		await applyGshGenerationGrant(username, groupId, inner.fileHGrant)
+	if (Array.isArray(inner.channelKeyRotates)) {
+		const { applyChannelKeyRotateEvent } = await import('../channel_keys/store.mjs')
+		const { resolveLocalEventSigner } = await import('../dag/localSigner.mjs')
+		const { sender } = await resolveLocalEventSigner(username, groupId)
+		for (const event of inner.channelKeyRotates)
+			await applyChannelKeyRotateEvent(username, groupId, event, sender)
+	}
 	if (isPlainObject(inner.checkpoint)) {
 		const checkpointResult = await verifyRemoteCheckpoint(inner.checkpoint, undefined)
 			.catch(() => ({ valid: false }))

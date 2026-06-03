@@ -251,7 +251,7 @@ async function maybeDispatchMailboxForOfflinePeer(username, groupId, signedEvent
 	const { listFederationPeersForGroup } = await import('../federation/index.mjs')
 	const { peers } = await listFederationPeersForGroup(username, groupId)
 	if (peers.length > 0) return
-	const { dispatchMailboxMessage } = await import('../mailbox/delivery.mjs')
+	const { dispatchMailboxMessage } = await import('../mailbox/ingest.mjs')
 	await dispatchMailboxMessage(username, signedEvent, peerPub, {
 		groupId,
 		channelId: signedEvent.channelId || 'default',

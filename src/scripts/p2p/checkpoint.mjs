@@ -55,6 +55,7 @@ export function buildCheckpointPayload({
 		members: JSON.parse(JSON.stringify(materializedState.members || {})),
 		roles: JSON.parse(JSON.stringify(materializedState.roles || {})),
 		channelPermissions: JSON.parse(JSON.stringify(materializedState.channelPermissions || {})),
+		channelKeyGeneration: JSON.parse(JSON.stringify(materializedState.channelKeyGeneration || {})),
 		channels: JSON.parse(JSON.stringify(materializedState.channels || {})),
 		fileFolders: JSON.parse(JSON.stringify(materializedState.fileFolders || {})),
 		groupMeta: JSON.parse(JSON.stringify(materializedState.groupMeta || {})),

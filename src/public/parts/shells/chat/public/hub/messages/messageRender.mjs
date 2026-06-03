@@ -98,7 +98,7 @@ function isOwnViewerMessage(message, renderOpts) {
  */
 export function getMessageText(message) {
 	const content = message?.content
-	if (content?.gshDecryptFailed) return ''
+	if (content?.gshDecryptFailed || content?.ckgDecryptFailed) return ''
 	return channelMessageShowText(content)
 }
 
@@ -117,10 +117,11 @@ export function getMessageEditText(message) {
  */
 async function renderDecryptBodyHtml(message) {
 	const content = message?.content
-	if (!content?.gshDecryptFailed) return ''
+	if (!content?.gshDecryptFailed && !content?.ckgDecryptFailed) return ''
+	const pendingGen = content.ckgPendingGeneration ?? content.gshPendingGeneration
 	return renderTemplateAsHtmlString('hub/messages/decrypt_body', {
-		mode: content.gshPendingGeneration != null ? 'pending' : 'failed',
-		generation: content.gshPendingGeneration,
+		mode: pendingGen != null ? 'pending' : 'failed',
+		generation: pendingGen,
 		escapeHtml,
 	})
 }

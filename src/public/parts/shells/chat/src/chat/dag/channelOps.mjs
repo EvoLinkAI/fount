@@ -24,7 +24,7 @@ import { setStreamingSession } from './streamingState.mjs'
  */
 export async function createChannel(username, groupId, opts) {
 	const channelId = opts.channelId || randomUUID()
-	return appendSignedLocalEvent(username, groupId, {
+	const created = await appendSignedLocalEvent(username, groupId, {
 		type: 'channel_create',
 		timestamp: Date.now(),
 		content: {
@@ -40,6 +40,9 @@ export async function createChannel(username, groupId, opts) {
 			manualItems: opts.manualItems,
 		},
 	})
+	const { appendChannelKeyRotate } = await import('../channel_keys/schedule.mjs')
+	await appendChannelKeyRotate(username, groupId, channelId)
+	return created
 }
 
 /**

@@ -175,12 +175,12 @@ export function registerDagRoutes(router, authenticate) {
 				continue
 			}
 
-			if (event.type === 'peer_invite' && !content.gshGrant) {
+			if (event.type === 'peer_invite' && !content.fileHGrant && !content.gshGrant) {
 				const peerPubKeyHex = normalizePubKeyHex(content.to || '')
 				if (PUB_KEY_HEX_64.test(peerPubKeyHex)) {
 					const hEntry = await getCurrentH(username, groupId)
 					if (hEntry)
-						content.gshGrant = await buildGshGenerationGrant(username, groupId, peerPubKeyHex)
+						content.fileHGrant = await buildGshGenerationGrant(username, groupId, peerPubKeyHex)
 				}
 			}
 

@@ -126,4 +126,15 @@ export const governanceReducers = {
 		}
 		return state
 	},
+
+	/**
+	 * @param {object} state
+	 * @param {object} event
+	 * @returns {object}
+	 */
+	state_summary(state, event) {
+		withGroupId(state, event)
+		void event
+		return state
+	},
 }

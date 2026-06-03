@@ -2143,8 +2143,9 @@
 				"delete": "删除消息"
 			},
 			"charStreaming": "生成中…",
-			"gshDecryptPending": "等待密钥轮换（generation ${gen}）",
-			"gshDecryptFailed": "无法解密此消息",
+			"gshDecryptPending": "等待频道密钥（generation ${gen}）",
+			"gshDecryptFailed": "无频道密钥，无法解密此消息",
+			"fileDecryptFailed": "无文件密钥，无法访问此文件",
 			"reactionFailed": "回应操作失败",
 			"fileUploadChecking": "正在检查是否已有相同内容…",
 			"fileUploadingChunk": "正在上传加密块…",

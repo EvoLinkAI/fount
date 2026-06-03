@@ -4,7 +4,7 @@
 import { isPeerPoolKeyBlocked, loadPeerPoolView } from '../../../../../../../scripts/p2p/network.mjs'
 import { createTrysteroActionRegistry } from '../../../../../../../scripts/p2p/trystero_session.mjs'
 import { eventsPath } from '../lib/paths.mjs'
-import { onFederationRoomReadyForMailbox } from '../mailbox/delivery.mjs'
+import { onFederationRoomReadyForMailbox } from '../mailbox/ingest.mjs'
 
 import { attachFedChunkHandlers, unregisterChunkSwarm } from './chunks.mjs'
 import { getFederationSettings } from './config.mjs'

@@ -124,6 +124,12 @@ export function registerP2pEndpoints(router) {
 		res.status(200).json({ nodeHash, viewerEntityHash, profile })
 	})
 
+	router.get('/api/p2p/mailbox/summary', authenticate, async (req, res) => {
+		const { username } = getUserByReq(req)
+		const { countMailboxPending } = await import('../../scripts/p2p/mailbox/store.mjs')
+		res.status(200).json({ pending: await countMailboxPending(username) })
+	})
+
 	registerP2pFileEndpoints(router, authenticate, getUserByReq)
 
 	router.get(entityPathRegex('/stats$'), authenticate, async (req, res) => {

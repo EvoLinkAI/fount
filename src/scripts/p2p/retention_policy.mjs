@@ -19,6 +19,8 @@ export const PERMISSION_ANCHOR_TYPES = new Set([
 	'key_rotate',
 	'peer_invite',
 	'channel_permissions_update',
+	'channel_key_rotate',
+	'state_summary',
 	'group_settings_update',
 	'group_meta_update',
 	'dag_tip_merge',

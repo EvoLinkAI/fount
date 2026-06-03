@@ -328,26 +328,6 @@ export async function pruneEventsJsonlAfterCheckpoint(username, groupId, checkpo
 	if (!tipId || !checkpoint?.members_record)
 		return { pruned: false, kept: 0, dropped: 0 }
 
-	const eventsFilePath = eventsPath(username, groupId)
-	const events = await readJsonl(eventsFilePath, { sanitize: sanitizeFederatedEvent })
-	if (!events.length) return { pruned: false, kept: 0, dropped: 0 }
-
-	const order = topologicalCanonicalOrder(events.map(dagEvent => ({
-		id: dagEvent.id,
-		prev_event_ids: dagEvent.prev_event_ids,
-		hlc: dagEvent.hlc,
-		node_id: dagEvent.node_id,
-		sender: dagEvent.sender,
-	})))
-	const tipIdx = order.indexOf(tipId)
-	if (tipIdx < 0) return { pruned: false, kept: events.length, dropped: 0 }
-
-	const byId = new Map(events.map(dagEvent => [dagEvent.id, dagEvent]))
-	const kept = order.slice(tipIdx).map(id => byId.get(id)).filter(Boolean)
-	const dropped = events.length - kept.length
-	if (dropped <= 0) return { pruned: false, kept: kept.length, dropped: 0 }
-
-	await mkdir(dirname(eventsFilePath), { recursive: true })
-	await writeFile(eventsFilePath, kept.map(JSON.stringify).join('\n') + (kept.length ? '\n' : ''), 'utf8')
-	return { pruned: true, kept: kept.length, dropped }
+	const { pruneEventsJsonlAfterCheckpoint: pruneFile } = await import('../../../../../../../scripts/p2p/timeline/prune.mjs')
+	return pruneFile(eventsPath(username, groupId), checkpoint, sanitizeFederatedEvent)
 }

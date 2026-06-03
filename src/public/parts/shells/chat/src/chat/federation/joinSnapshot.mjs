@@ -1,5 +1,5 @@
 /**
- * 入群快照：checkpoint + GSH wire channelHistories + gshGrant（HPKE envelope）。
+ * 入群快照：checkpoint + ckg wire channelHistories + fileHGrant + channelKeyRotates。
  */
 import { randomUUID } from 'node:crypto'
 
@@ -102,7 +102,8 @@ export async function handleJoinSnapshotRequest(username, groupId, request, peer
 		checkpoint,
 		archiveSummary: wireArchiveSummary(localArchive.summary),
 		channelHistories,
-		includeGshGrant: true,
+		includeFileHGrant: true,
+		includeChannelKeyRotates: true,
 	})
 	sendResponse(envelope, peerId)
 }

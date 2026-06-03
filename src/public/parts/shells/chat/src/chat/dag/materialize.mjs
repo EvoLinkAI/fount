@@ -332,6 +332,14 @@ export async function runPostCheckpointMaintenance(username, groupId, checkpoint
 		catch (error) {
 			console.error('message_content_retention:', error)
 		}
+
+	try {
+		const { maybeAppendStateSummary } = await import('./stateSummary.mjs')
+		await maybeAppendStateSummary(username, groupId, state, checkpointPayload?.checkpoint_event_id)
+	}
+	catch (error) {
+		console.error('state_summary:', error)
+	}
 }
 
 /**

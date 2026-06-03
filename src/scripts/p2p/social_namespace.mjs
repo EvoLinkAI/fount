@@ -35,6 +35,7 @@ export const SOCIAL_TIMELINE_EVENT_TYPES = new Set([
 	'unfollow',
 	'file_share',
 	'follow_approve',
+	'state_summary',
 ])
 
 /** @type {Set<string>} */

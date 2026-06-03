@@ -17,7 +17,7 @@ import { applyGshGenerationGrant } from './historicalGrant.mjs'
  */
 export async function tryImportHFromPeerInvite(username, groupId, event) {
 	if (event?.type !== 'peer_invite') return
-	const grant = event.content?.gshGrant
+	const grant = event.content?.fileHGrant || event.content?.gshGrant
 	if (!grant || typeof grant !== 'object') return
 
 	let signer

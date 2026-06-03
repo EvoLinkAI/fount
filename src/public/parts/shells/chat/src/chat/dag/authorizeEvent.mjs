@@ -91,6 +91,14 @@ export function checkEventPermission(state, event, senderHash) {
 			return govPerms[PERMISSIONS.MANAGE_ROLES] || govPerms[PERMISSIONS.MANAGE_CHANNELS]
 				? { ok: true }
 				: { ok: false, reason: 'MANAGE_ROLES or MANAGE_CHANNELS required' }
+		case 'channel_key_rotate':
+			return channelPerms[PERMISSIONS.MANAGE_CHANNELS] || govPerms[PERMISSIONS.MANAGE_CHANNELS]
+				? { ok: true }
+				: { ok: false, reason: 'MANAGE_CHANNELS required' }
+		case 'state_summary':
+			return govPerms[PERMISSIONS.ADMIN]
+				? { ok: true }
+				: { ok: false, reason: 'ADMIN required' }
 		case 'list_item_update':
 			return channelPerms[PERMISSIONS.MANAGE_CHANNELS] || channelPerms[PERMISSIONS.CREATE_THREADS]
 				? { ok: true }

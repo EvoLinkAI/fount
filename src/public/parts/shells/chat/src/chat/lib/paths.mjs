@@ -34,15 +34,6 @@ export function discoveryIndexPath(username) {
 }
 
 /**
- * 用户级 Mailbox store-and-forward 队列。
- * @param {string} username 用户
- * @returns {string} `mailbox/store.jsonl` 绝对路径
- */
-export function mailboxStorePath(username) {
-	return join(shellChatRoot(username), 'mailbox', 'store.jsonl')
-}
-
-/**
  * 单个群 / 会话在磁盘上的 DAG 数据目录。
  * @param {string} username 本地账户名
  * @param {string} groupId 群组或会话 ID
@@ -133,6 +124,16 @@ export function sidecarPath(username, groupId, channelId, messageId) {
  */
 export function gshPath(username, groupId) {
 	return join(groupDir(username, groupId), 'gsh.json')
+}
+
+/**
+ * 频道域密钥本地存储（K_ch 代际）。
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @returns {string}
+ */
+export function channelKeysPath(username, groupId) {
+	return join(groupDir(username, groupId), 'channel_keys.json')
 }
 
 /**

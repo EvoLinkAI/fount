@@ -1,0 +1,45 @@
+import { getNodeHash } from './node_context.mjs'
+import { ensureUserRoom } from './user_room.mjs'
+
+/**
+ * 定向投递：经 User Room / 共享 scope 群房间直发，不使用 TrustGraph fanout。
+ * @param {string} username replica
+ * @param {string} toNodeHash 64 hex 目标节点
+ * @param {string} actionName Trystero action
+ * @param {unknown} payload 载荷
+ * @returns {Promise<boolean>} 是否已发送
+ */
+export async function deliver(username, toNodeHash, actionName, payload) {
+	const target = String(toNodeHash || '').trim().toLowerCase()
+	if (!target) return false
+	const { sendToNode } = await import('./trust_graph.mjs')
+	return sendToNode(username, target, actionName, payload)
+}
+
+/**
+ * @param {string} username replica
+ * @param {string} actionName Trystero action
+ * @param {unknown} payload 载荷
+ * @param {string | null} [exceptPeerId] 跳过的 peer
+ * @param {number} [limit=6] 最多转发 peer 数
+ * @returns {Promise<number>} 发送次数
+ */
+export async function deliverToUserRoomPeers(username, actionName, payload, exceptPeerId = null, limit = 6) {
+	const slot = await ensureUserRoom(username)
+	if (!slot) return 0
+	const body = {
+		...payload && typeof payload === 'object' ? payload : { data: payload },
+		nodeHash: getNodeHash(username),
+	}
+	let sent = 0
+	for (const { peerId } of slot.getRoster()) {
+		if (!peerId || peerId === exceptPeerId) continue
+		try {
+			slot.sendToPeer(peerId, actionName, body)
+			sent++
+			if (sent >= limit) break
+		}
+		catch { /* disconnected */ }
+	}
+	return sent
+}

@@ -320,19 +320,8 @@ export function decryptUtf8ForMember(encrypted, myEdPrivKeySeed) {
  * @param {number} generation 当前 H 代数（写入密文头，供接收方按代数查找 H）
  * @returns {{ scheme: 'gsh', generation: number, iv: string, ciphertext: string, authTag: string }} AES-256-GCM 加密结果，含 scheme 标识与 generation
  */
-export function encryptMessage(plaintext, H, channelId, generation) {
-	const key = deriveChannelKey(H, channelId)
-	const iv = randomBytes(12)
-	const cipher = createCipheriv('aes-256-gcm', key, iv)
-	const ciphertext = Buffer.concat([cipher.update(String(plaintext), 'utf8'), cipher.final()])
-	const authTag = cipher.getAuthTag()
-	return {
-		scheme: 'gsh',
-		generation: Math.floor(generation),
-		iv: iv.toString('base64'),
-		ciphertext: ciphertext.toString('base64'),
-		authTag: authTag.toString('base64'),
-	}
+export function encryptMessage() {
+	throw new Error('encryptMessage: use channel domain keys (ckg) via channel_crypto.mjs')
 }
 
 /**
