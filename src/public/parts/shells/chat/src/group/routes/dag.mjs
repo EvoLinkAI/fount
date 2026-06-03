@@ -60,8 +60,7 @@ export function registerDagRoutes(router, authenticate) {
 			tipScores,
 			tipConsensusScores,
 			local_tips_hash: checkpoint?.local_tips_hash ?? computeLocalTipsHash(tips),
-			authzBranchTip: state.authzBranchTip ?? null,
-			consensusBranchTip: state.consensusBranchTip ?? state.authzBranchTip ?? null,
+			consensusBranchTip: state.consensusBranchTip ?? null,
 			localViewBranchTip: state.localViewBranchTip ?? null,
 			governanceFork: !!state.governanceFork,
 			walOk: state.walOk !== false,
@@ -102,8 +101,7 @@ export function registerDagRoutes(router, authenticate) {
 		await saveGovernanceBranchTip(username, groupId, tipId)
 		const refreshed = await getState(username, groupId, { forceFullReplay: false })
 		res.status(200).json({
-			authzBranchTip: refreshed.state.authzBranchTip,
-			consensusBranchTip: refreshed.state.consensusBranchTip ?? refreshed.state.authzBranchTip ?? null,
+			consensusBranchTip: refreshed.state.consensusBranchTip ?? null,
 			localViewBranchTip: refreshed.state.localViewBranchTip ?? null,
 			governanceFork: refreshed.state.governanceFork,
 		})

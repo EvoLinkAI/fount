@@ -7,7 +7,7 @@
  * @returns {string} 限速实体键
  */
 export function messageRateEntityKey(event) {
-	const charId = String(event?.charId || event?.content?.charId || '').trim()
+	const charId = String(event?.charId || '').trim()
 	if (charId) return `char:${charId}`
 	return String(event?.sender || '').trim().toLowerCase()
 }

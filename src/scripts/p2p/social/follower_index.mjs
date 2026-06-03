@@ -54,12 +54,11 @@ function followerBucketPath(bucketId) {
 async function readFollowerBucket(bucketId) {
 	const { readFile } = await import('node:fs/promises')
 	try {
-		const raw = JSON.parse(await readFile(followerBucketPath(bucketId), 'utf8'))
-		if (!raw || typeof raw !== 'object') return {}
+		const bucket = JSON.parse(await readFile(followerBucketPath(bucketId), 'utf8'))
 		/** @type {Record<string, string[]>} */
 		const out = {}
-		for (const [key, value] of Object.entries(raw)) {
-			if (!parseEntityHash(key) || !Array.isArray(value)) continue
+		for (const [key, value] of Object.entries(bucket)) {
+			if (!parseEntityHash(key)) continue
 			out[key] = [...new Set(value.map(String))]
 		}
 		return out
@@ -99,15 +98,7 @@ async function readFollowerEntry(target) {
 		return cached
 	}
 	const bucket = await readFollowerBucket(followerBucketId(target))
-	let followers = bucket[target] ? [...bucket[target]] : []
-	if (!followers.length) {
-		const { readFile } = await import('node:fs/promises')
-		const legacyPath = path.join(followerIndexDir(), `${target}.json`)
-		try {
-			followers = JSON.parse(await readFile(legacyPath, 'utf8')).map(String)
-		}
-		catch { /* missing */ }
-	}
+	const followers = bucket[target] ? [...bucket[target]] : []
 	followerEntryCache.touch(target, followers)
 	return followers
 }
@@ -219,13 +210,8 @@ export async function rebuildFollowerIndex() {
 		}
 	}
 	const { mkdir, readdir, unlink } = await import('node:fs/promises')
-	const root = followerIndexDir()
 	const bucketsDir = followerBucketsDir()
 	await mkdir(bucketsDir, { recursive: true })
-	for (const name of await readdir(root).catch(() => [])) {
-		if (!name.endsWith('.json')) continue
-		await unlink(path.join(root, name)).catch(() => {})
-	}
 	for (const name of await readdir(bucketsDir).catch(() => [])) {
 		if (!name.endsWith('.json')) continue
 		await unlink(path.join(bucketsDir, name)).catch(() => {})

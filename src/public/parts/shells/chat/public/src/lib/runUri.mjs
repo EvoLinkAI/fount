@@ -41,13 +41,13 @@ export function formatDmRunUri({ pubKeyHex, nonceBase64Url, introSignatureHex, n
  * @param {string} groupId 群 ID
  * @param {string} inviteCode 邀请码
  * @param {string} [mqttRoomSecret] 首次联邦 catch-up bootstrap 口令
- * @param {string} [introducerPubKeyHex] 邀请人 Ed25519 公钥 hex
+ * @param {string} [introducerPubKeyHash] 邀请人 Ed25519 公钥 hex（64 字符）
  * @returns {string} canonical join run URI
  */
-export function formatJoinRunUri(groupId, inviteCode, mqttRoomSecret, introducerPubKeyHex) {
+export function formatJoinRunUri(groupId, inviteCode, mqttRoomSecret, introducerPubKeyHash) {
 	const segments = [groupId.trim(), inviteCode.trim()]
 	if (mqttRoomSecret?.trim()) segments.push(mqttRoomSecret.trim())
-	if (introducerPubKeyHex?.trim()) segments.push(normalizePubKeyHex(introducerPubKeyHex))
+	if (introducerPubKeyHash?.trim()) segments.push(normalizePubKeyHex(introducerPubKeyHash))
 	return buildRunUri('join', segments)
 }
 
@@ -61,29 +61,18 @@ export function wrapProtocolHttpsUrl(fountRunUri) {
 }
 
 /**
- * 解析 `fount://run/shells:chat/…` 或裸 path（`parts:shells:chat/dm;…`）。
+ * 解析 canonical `fount://run/parts:shells:chat/{subcommand};…`。
  * @param {string} raw 输入 URI
  * @returns {{ subcommand: string, args: string[] } | null} 解析结果，非 chat run URI 则 null
  */
 export function parseChatRunUri(raw) {
-	let input = String(raw || '').trim()
-	if (!input) return null
-	if (input.startsWith('fount://run/')) input = input.slice('fount://run/'.length)
-	else if (input.startsWith('fount://')) return null
+	const input = String(raw || '').trim()
+	if (!input.startsWith('fount://run/')) return null
+	const rest = input.slice('fount://run/'.length)
+	if (!rest.startsWith(`${CHAT_RUN_PART}/`)) return null
+	const body = rest.slice(CHAT_RUN_PART.length + 1)
 
-	const semi = input.indexOf(';')
-	const slash = input.indexOf('/')
-	let rest = input
-	if (slash >= 0 && (semi < 0 || slash < semi)) {
-		if (input.slice(0, slash) !== CHAT_RUN_PART) return null
-		rest = input.slice(slash + 1)
-	}
-	else if (input.startsWith(`${CHAT_RUN_PART}/`))
-		rest = input.slice(CHAT_RUN_PART.length + 1)
-	else if (input.startsWith(`${CHAT_RUN_PART};`))
-		rest = input.slice(CHAT_RUN_PART.length + 1)
-
-	const parts = rest.split(';').map(segment => {
+	const parts = body.split(';').map(segment => {
 		try { return decodeURIComponent(segment) }
 		catch { return segment }
 	})
@@ -106,17 +95,17 @@ export function parseDmRunUri(raw) {
 
 /**
  * @param {string} raw URI
- * @returns {{ groupId: string, inviteCode: string, mqttRoomSecret?: string, introducerPubKeyHex?: string } | null} join 载荷或 null
+ * @returns {{ groupId: string, inviteCode: string, mqttRoomSecret?: string, introducerPubKeyHash?: string } | null} join 载荷或 null
  */
 export function parseJoinRunUri(raw) {
 	const parsed = parseChatRunUri(raw)
 	if (!parsed || parsed.subcommand !== 'join') return null
-	const [groupId, inviteCode, mqttRoomSecret, introducerPubKeyHex] = parsed.args
+	const [groupId, inviteCode, mqttRoomSecret, introducerPubKeyHash] = parsed.args
 	if (!groupId) return null
 	return {
 		groupId,
 		inviteCode: inviteCode || '',
 		mqttRoomSecret: mqttRoomSecret?.trim() || undefined,
-		introducerPubKeyHex: introducerPubKeyHex?.trim() || undefined,
+		introducerPubKeyHash: introducerPubKeyHash?.trim() || undefined,
 	}
 }

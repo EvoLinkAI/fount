@@ -5,10 +5,10 @@
  * @returns {number} 正数表示 left 更新
  */
 export function compareFeedItems(left, right) {
-	const lw = Number(left.hlc?.wall) || 0
-	const rw = Number(right.hlc?.wall) || 0
-	if (lw !== rw) return lw - rw
-	return String(left.postId).localeCompare(String(right.postId))
+	const leftWall = left.hlc?.wall || 0
+	const rightWall = right.hlc?.wall || 0
+	if (leftWall !== rightWall) return leftWall - rightWall
+	return left.postId.localeCompare(right.postId)
 }
 
 /**
@@ -50,9 +50,9 @@ class FeedStreamMaxHeap {
 		this.streams = streams
 		/** @type {number[]} */
 		this.heap = []
-		for (let i = 0; i < streams.length; i++)
-			if (streamHasHead(streams, i)) this.heap.push(i)
-		for (let i = (this.heap.length >> 1) - 1; i >= 0; i--) this.#siftDown(i)
+		for (let index = 0; index < streams.length; index++)
+			if (streamHasHead(streams, index)) this.heap.push(index)
+		for (let index = (this.heap.length >> 1) - 1; index >= 0; index--) this.#siftDown(index)
 	}
 
 	/**
@@ -80,30 +80,32 @@ class FeedStreamMaxHeap {
 		this.#siftUp(this.heap.length - 1)
 	}
 
-	/** @param {number} i 堆下标 */
-	#siftUp(i) {
+	/** @param {number} heapIndex 堆下标 */
+	#siftUp(heapIndex) {
 		const streams = this.streams
-		while (i > 0) {
-			const parent = (i - 1) >> 1
-			if (!streamHeadBeats(streams, this.heap[i], this.heap[parent])) break
-			;[this.heap[i], this.heap[parent]] = [this.heap[parent], this.heap[i]]
-			i = parent
+		let index = heapIndex
+		while (index > 0) {
+			const parent = (index - 1) >> 1
+			if (!streamHeadBeats(streams, this.heap[index], this.heap[parent])) break
+			;[this.heap[index], this.heap[parent]] = [this.heap[parent], this.heap[index]]
+			index = parent
 		}
 	}
 
-	/** @param {number} i 堆下标 */
-	#siftDown(i) {
+	/** @param {number} heapIndex 堆下标 */
+	#siftDown(heapIndex) {
 		const streams = this.streams
-		const n = this.heap.length
+		const heapLength = this.heap.length
+		let index = heapIndex
 		while (true) {
-			const left = i * 2 + 1
+			const left = index * 2 + 1
 			const right = left + 1
-			let largest = i
-			if (left < n && streamHeadBeats(streams, this.heap[left], this.heap[largest])) largest = left
-			if (right < n && streamHeadBeats(streams, this.heap[right], this.heap[largest])) largest = right
-			if (largest === i) break
-			;[this.heap[i], this.heap[largest]] = [this.heap[largest], this.heap[i]]
-			i = largest
+			let largest = index
+			if (left < heapLength && streamHeadBeats(streams, this.heap[left], this.heap[largest])) largest = left
+			if (right < heapLength && streamHeadBeats(streams, this.heap[right], this.heap[largest])) largest = right
+			if (largest === index) break
+			;[this.heap[index], this.heap[largest]] = [this.heap[largest], this.heap[index]]
+			index = largest
 		}
 	}
 }

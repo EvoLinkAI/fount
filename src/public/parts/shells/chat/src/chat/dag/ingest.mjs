@@ -10,7 +10,6 @@ import { sortedPrevEventIds } from '../../../../../../../scripts/p2p/dag/index.m
 import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/governance_branch.mjs'
 import { assertHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
-import { resolveActiveMemberKey } from '../../group/access.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import {
 	federationIngestBlockedWithoutSnapshot,
@@ -39,20 +38,6 @@ function validateContentRefPayload(ref) {
 const MESSAGE_MUTATION_TYPES = new Set(['message_edit', 'message_delete', 'message_feedback'])
 
 /**
- * @param {object} state 物化群状态
- * @param {string} sender 事件 sender
- * @param {string} replicaUsername replica 所有者
- * @returns {string | null} pubKeyHash
- */
-function resolveSenderPubKeyHash(state, sender, replicaUsername) {
-	const direct = String(sender || '').trim()
-	if (PUB_KEY_HASH_HEX.test(direct)) return direct.toLowerCase()
-	const memberKey = resolveActiveMemberKey(state, sender) || resolveActiveMemberKey(state, replicaUsername)
-	const hash = state.members[memberKey]?.pubKeyHash?.trim().toLowerCase() || ''
-	return PUB_KEY_HASH_HEX.test(hash) ? hash : null
-}
-
-/**
  * 统一入站鉴权：joinPolicy、消息索引、权限矩阵（本地 append 与联邦落盘共用）。
  * @param {string} replicaUsername replica 所有者
  * @param {string} groupId 群 ID
@@ -70,7 +55,7 @@ export async function validateIngestAuthz(replicaUsername, groupId, event, opts 
 			return
 	}
 
-	if (String(event.type || '').startsWith('session_')) {
+	if (event.type?.startsWith('session_')) {
 		validateSessionEventContent(event)
 		return
 	}
@@ -82,9 +67,9 @@ export async function validateIngestAuthz(replicaUsername, groupId, event, opts 
 		validateContentRefPayload(event.content.content_ref)
 
 	if (MESSAGE_MUTATION_TYPES.has(event.type)) {
-		const targetId = assertHex64(event.content?.targetId, 'targetId')
-		const senderHash = resolveSenderPubKeyHash(state, event.sender, replicaUsername)
-		if (!senderHash) throw new Error(`${event.type} requires pubKeyHash sender`)
+		assertHex64(event.content?.targetId, 'targetId')
+		const senderHash = event.sender.trim().toLowerCase()
+		if (!PUB_KEY_HASH_HEX.test(senderHash)) throw new Error(`${event.type} requires pubKeyHash sender`)
 		assertEventPermission(state, event, senderHash)
 		return
 	}
@@ -105,19 +90,12 @@ export async function validateIngestAuthz(replicaUsername, groupId, event, opts 
 			throw new Error('dag_tip_merge: prev_event_ids must list all current DAG tips')
 	}
 
-	const rawSender = String(event.sender || '').trim()
-	if (!PUB_KEY_HASH_HEX.test(rawSender)) {
-		if (opts.source === 'federation')
-			throw new Error('federated events require pubKeyHash sender')
-		return
-	}
+	const senderHash = event.sender.trim().toLowerCase()
+	if (!PUB_KEY_HASH_HEX.test(senderHash)) throw new Error('events require pubKeyHash sender')
 
-	const bootstrapTypes = ['group_meta_update', 'channel_create', 'group_settings_update', 'role_create', 'member_join']
-	if (!Object.values(state.members).some(member => member?.status === 'active')
-		&& bootstrapTypes.includes(event.type))
+	const bootstrapTypes = new Set(['group_meta_update', 'channel_create', 'group_settings_update', 'role_create', 'member_join'])
+	if (!Object.values(state.members).some(member => member?.status === 'active') && bootstrapTypes.has(event.type))
 		return
 
-	const senderHash = resolveSenderPubKeyHash(state, event.sender, replicaUsername)
-	if (!senderHash) throw new Error('requires pubKeyHash sender')
 	assertEventPermission(state, event, senderHash)
 }

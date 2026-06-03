@@ -65,25 +65,3 @@ export function classifyHlcSkewAction(event, maxSkewMs, opts = {}) {
 
 	return 'reject'
 }
-
-/**
- * @param {{ type?: string, hlc?: { wall?: number } }} event DAG 事件
- * @param {number} maxSkewMs 允许的未来偏移上限（毫秒）
- * @returns {boolean} 是否应隔离
- */
-export function isMessageHlcQuarantined(event, maxSkewMs) {
-	return classifyHlcSkewAction(event, maxSkewMs, { source: 'federation' }) === 'quarantine'
-}
-
-/**
- * 治理/ACL 类事件 HLC 超 skew 时抛出（兼容旧调用方）。
- * @param {{ type?: string, hlc?: { wall?: number } }} event DAG 事件
- * @param {number} maxSkewMs 允许的未来偏移上限（毫秒）
- * @param {{ source?: 'local' | 'federation' }} [opts] 来源
- * @returns {void}
- */
-export function assertGovernanceHlcSkewAllowed(event, maxSkewMs, opts = {}) {
-	const action = classifyHlcSkewAction(event, maxSkewMs, opts)
-	if (action === 'reject')
-		throw new Error(`event HLC skew too large (${event.type}, max ${maxSkewMs}ms)`)
-}

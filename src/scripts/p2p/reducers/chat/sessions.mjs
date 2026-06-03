@@ -1,4 +1,4 @@
-import { createEmptySessionState, refreshMembersDigest, withGroupId } from './helpers.mjs'
+import { createEmptySessionState, withGroupId } from './helpers.mjs'
 
 /** @type {Record<string, (state: object, event: object) => object>} */
 export const sessionReducers = {
@@ -18,7 +18,6 @@ export const sessionReducers = {
 				homeNodeHash: event.content?.homeNodeHash || '',
 			}
 
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -30,13 +29,9 @@ export const sessionReducers = {
 	 */
 	session_char_unbind(state, event) {
 		withGroupId(state, event)
-		if (!state.session) {
-			refreshMembersDigest(state)
-			return state
-		}
+		if (!state.session) return state
 		const charname = String(event.content?.charname || '').trim()
 		if (charname) delete state.session.chars[charname]
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -54,7 +49,6 @@ export const sessionReducers = {
 			ownerUsername: String(event.content?.ownerUsername || '').trim(),
 			homeNodeHash: event.content?.homeNodeHash || '',
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -75,7 +69,6 @@ export const sessionReducers = {
 				homeNodeHash: event.content?.homeNodeHash || '',
 			}
 
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -87,14 +80,10 @@ export const sessionReducers = {
 	 */
 	session_world_clear(state, event) {
 		withGroupId(state, event)
-		if (!state.session) {
-			refreshMembersDigest(state)
-			return state
-		}
+		if (!state.session) return state
 		const channelId = String(event.content?.channelId || '').trim()
 		if (channelId) delete state.session.channelWorlds[channelId]
 		else state.session.world = null
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -115,7 +104,6 @@ export const sessionReducers = {
 			else
 				state.session.personas[ownerUsername] = String(personaname).trim()
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -136,7 +124,6 @@ export const sessionReducers = {
 			if (!state.session.plugins[ownerUsername].includes(pluginname))
 				state.session.plugins[ownerUsername].push(pluginname)
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -148,10 +135,7 @@ export const sessionReducers = {
 	 */
 	session_plugin_remove(state, event) {
 		withGroupId(state, event)
-		if (!state.session) {
-			refreshMembersDigest(state)
-			return state
-		}
+		if (!state.session) return state
 		const ownerUsername = String(event.content?.ownerUsername || '').trim()
 		const pluginname = String(event.content?.pluginname || '').trim()
 		if (ownerUsername && pluginname) {
@@ -162,7 +146,6 @@ export const sessionReducers = {
 					delete state.session.plugins[ownerUsername]
 			}
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -179,7 +162,6 @@ export const sessionReducers = {
 		const frequency = Number(event.content?.frequency)
 		if (charname && Number.isFinite(frequency))
 			state.session.charFrequencies[charname] = frequency
-		refreshMembersDigest(state)
 		return state
 	},
 }

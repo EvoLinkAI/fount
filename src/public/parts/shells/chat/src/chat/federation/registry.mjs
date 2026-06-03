@@ -14,6 +14,8 @@ import {
 } from '../../../../../../../scripts/p2p/composite_key.mjs'
 import { EVENT_ID_HEX } from '../../../../../../../scripts/p2p/dag/index.mjs'
 
+import { LOGIC_SYNC_PARTITION } from './partitions.mjs'
+
 /**
  * DAG 事件 ID 的 64 位小写 hex 正则（自 `p2p/dag` 再导出）。
  */
@@ -47,8 +49,8 @@ export const pendingChannelHistory = new Map()
  * @param {string} [partitionId] 分区 id
  * @returns {object | null | undefined} 已 join 的分区槽
  */
-export function getFederationPartitionSlot(username, groupId, partitionId = 'sync') {
-	return mapGet(federationPartitionSlots, username, groupId, partitionId || 'sync')
+export function getFederationPartitionSlot(username, groupId, partitionId = LOGIC_SYNC_PARTITION) {
+	return mapGet(federationPartitionSlots, username, groupId, partitionId)
 }
 
 /**

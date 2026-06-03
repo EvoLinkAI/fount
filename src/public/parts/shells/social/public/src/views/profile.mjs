@@ -7,8 +7,12 @@ import { formatSocialProfileHref } from '../lib/runUri.mjs'
  * @returns {Promise<void>}
  */
 export async function renderBlocklist(appContext, container) {
-	const data = await appContext.socialApi('/blocklist')
-	const blocked = data.blocked || []
+	const response = await fetch('/api/p2p/blocklist', { credentials: 'include' })
+	if (!response.ok) throw new Error(await response.text())
+	const data = await response.json()
+	const blocked = (data.blocked || [])
+		.filter(entry => entry.scope === 'entity')
+		.map(entry => entry.value)
 	if (!blocked.length) {
 		container.innerHTML = `<p class="hint">${appContext.geti18n('social.blocklist.empty')}</p>`
 		return
@@ -114,14 +118,14 @@ export async function loadProfileFor(appContext, entityHash, highlightPostId = n
 	const data = await appContext.socialApi(`/profile/${entityHash}`)
 	const isSelf = appContext.state.viewerEntityHash && entityHash === appContext.state.viewerEntityHash
 	const container = document.getElementById('profileView')
-	const name = data.profile?.displayName || data.profile?.name || appContext.authorLabel(entityHash)
+	const name = data.profile?.name || appContext.authorLabel(entityHash)
 	container.innerHTML = `
 		<div class="card profile-card">
 			<div class="profile-header-row">
 				${appContext.renderAvatarHtml(entityHash, data.profile, 'profile-avatar')}
 				<div>
 					<h2>${name}</h2>
-					<p>${data.profile?.bio || data.socialMeta?.exploreBlurb || ''}</p>
+					<p>${data.profile?.bio || ''}</p>
 					<p class="post-meta">${appContext.geti18n('social.profile.postCount', { n: data.postCount || 0 })}</p>
 					<p><code class="entity-hash">${entityHash}</code></p>
 				</div>

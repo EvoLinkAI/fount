@@ -47,7 +47,6 @@ export function canonicalizeRowContent(content, hexKeys, entityHashKeys = new Se
  *   prepare?: (event: object) => object,
  *   contentHexKeys?: ReadonlySet<string>,
  *   entityHashKeys?: ReadonlySet<string>,
- *   includeSenderHomeNodeHash?: boolean,
  * }} [opts] 各域字段集
  * @returns {object} canonical 行
  */
@@ -59,8 +58,6 @@ export function canonicalizeSignedRow(event, opts = {}) {
 		out.prev_event_ids = out.prev_event_ids.map((id, index) =>
 			assertHex64(id, `prev_event_ids[${index}]`),
 		)
-	if (opts.includeSenderHomeNodeHash && out.senderHomeNodeHash)
-		out.senderHomeNodeHash = assertHex64(out.senderHomeNodeHash, 'senderHomeNodeHash')
 	const hexKeys = opts.contentHexKeys
 	if (out.content && hexKeys?.size)
 		out.content = canonicalizeRowContent(out.content, hexKeys, opts.entityHashKeys)

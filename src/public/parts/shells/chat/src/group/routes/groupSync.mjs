@@ -127,19 +127,19 @@ export function registerGroupSyncRoutes(router, authenticate) {
 		const member = memberKey ? state.members[memberKey] : undefined
 
 		let { channels } = state
-		let channelPermissions = state.channelPermissions || {}
+		let channelPermissions = state.channelPermissions
 		const groupSettings = { ...state.groupSettings }
 
 		if (active) {
 			channels = {}
-			for (const [channelId, channel] of Object.entries(state.channels || {})) {
+			for (const [channelId, channel] of Object.entries(state.channels)) {
 				const canView = canInChannel(state, member, PERMISSIONS.VIEW_CHANNEL, channelId)
 				const canManage = canInChannel(state, member, PERMISSIONS.MANAGE_CHANNELS, channelId)
 				if (canView || canManage) channels[channelId] = channel
 			}
 
 			channelPermissions = Object.fromEntries(
-				Object.entries(state.channelPermissions || {}).filter(([channelId]) => channelId in channels),
+				Object.entries(state.channelPermissions).filter(([channelId]) => channelId in channels),
 			)
 
 			if (groupSettings.defaultChannelId && !(groupSettings.defaultChannelId in channels))
@@ -150,7 +150,7 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			.filter(([, memberRow]) => memberRow.status === 'active')
 		const profileLocales = localesFromRequest(req, username)
 		const activeMembers = await Promise.all(activeMemberRows.map(async ([memberKey, memberRow]) => {
-			const pubKeyHash = memberRow.pubKeyHash || memberKey
+			const pubKeyHash = memberKey
 			const entityHash = memberEntityHash(memberRow)
 			let displayName = ''
 			if (entityHash)
@@ -174,7 +174,7 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			}
 		}))
 
-		const bannedMembersList = Array.from(state.bannedMembers || [])
+		const bannedMembersList = Array.from(state.bannedMembers)
 			.map(pubKeyHash => ({ pubKeyHash: String(pubKeyHash) }))
 
 		const pinsByChannel = checkpoint?.overlay?.pins || {}
@@ -196,19 +196,18 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			membersPagesCount: state.membersPagesCount ?? null,
 			isMember: active,
 			myRoles: member?.roles || [],
-			viewerMemberPubKeyHash: active ? member?.pubKeyHash || null : null,
+			viewerMemberPubKeyHash: active ? memberKey : null,
 			viewerEntityHash: active
 				? await getGroupMemberEntityHash(username, groupId).catch(() => null)
 				: null,
 			pinsByChannel,
-			authzBranchTip: state.authzBranchTip ?? null,
-			consensusBranchTip: state.consensusBranchTip ?? state.authzBranchTip ?? null,
+			consensusBranchTip: state.consensusBranchTip ?? null,
 			localViewBranchTip: state.localViewBranchTip ?? null,
 			governanceFork: !!state.governanceFork,
 			dagTips: state.dagTips,
 			gshBuffer: getGshBufferStats(username, groupId),
 			quarantineCount: quarantineRows.length,
-			fileFolders: state.fileFolders || {},
+			fileFolders: state.fileFolders,
 			files: listActiveFilesFromState(state),
 		}
 		if (active) {

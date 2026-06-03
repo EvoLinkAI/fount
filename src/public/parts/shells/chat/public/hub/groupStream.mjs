@@ -344,7 +344,7 @@ function handleGroupHubWireMessage(wireMessage, channelId) {
 
 	if (wireMessage.type === 'dag_event') {
 		const dagEvent = wireMessage.event
-		const eventChannelId = dagEvent?.channelId || dagEvent?.content?.channelId
+		const eventChannelId = dagEvent?.channelId
 		const { main, thread } = hubChannelMatch(eventChannelId, channelId)
 		if (eventChannelId && !main && !thread) return
 		if (CHANNEL_STRUCTURE_DAG_TYPES.has(dagEvent?.type) && hubStore.currentGroupId) {

@@ -7,13 +7,13 @@ export const HASHTAG_TOKEN_RE = /#([\p{L}\p{N}_-]{2,32})/gu
  * @returns {string[]} 小写话题列表（去重）
  */
 export function extractHashtagsFromText(text) {
-	const source = String(text || '')
+	const source = text || ''
 	/** @type {Set<string>} */
 	const tags = new Set()
 	for (const match of source.matchAll(HASHTAG_TOKEN_RE)) {
 		const index = match.index ?? 0
 		if (index > 0 && source[index - 1] === '[') continue
-		tags.add(String(match[1]).toLowerCase())
+		tags.add(match[1].toLowerCase())
 	}
 	return [...tags]
 }

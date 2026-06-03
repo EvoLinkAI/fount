@@ -31,6 +31,6 @@ export function eventMatchesLazyChannelScope(event, channelId) {
 	if (eventType === 'list_item_update')
 		return event.content?.channelId?.trim() === channelId
 	if (!CHANNEL_SYNC_MESSAGE_TYPES.has(eventType)) return false
-	return resolveChannelId(event.channelId, resolveChannelId(event.content.channelId)) === channelId
+	return resolveChannelId(event.channelId) === channelId
 }
 

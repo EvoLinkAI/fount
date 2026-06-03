@@ -14,9 +14,9 @@ import { groupFetch, groupPath } from './api/groupClient.mjs'
  */
 export async function fetchPowChallenge(groupId) {
 	const data = await groupFetch(groupPath(groupId, 'pow-challenge'), { method: 'GET' })
-	const row = data.challenge || data
+	const row = data.challenge
 	return {
-		challenge: String(row.challenge || ''),
+		challenge: String(row.challenge),
 		difficulty: Math.max(1, Number(row.difficulty) || 4),
 	}
 }

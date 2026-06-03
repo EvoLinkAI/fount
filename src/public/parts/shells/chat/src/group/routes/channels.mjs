@@ -70,14 +70,14 @@ export function registerChannelRoutes(router, authenticate) {
 	})
 
 	router.delete(new RegExp('^/api/parts/shells:chat/groups/([^/]+)/channels/([^/]+)/reactions/(.+)$'), authenticate, requireGroupChannel(), async (req, res) => {
-		const { username, groupId, channelId, memberKey, member } = req.groupContext
+		const { username, groupId, channelId, memberKey } = req.groupContext
 		const emoji = decodeURIComponent(req.params[2])
 		const targetPubKeyHash = String(req.query.targetPubKeyHash || '').trim() || undefined
 		const targetEventId = String(req.query.targetEventId || '').trim()
 		if (!targetEventId || !emoji)
 			return res.status(400).json({ error: 'targetEventId query and emoji path required' })
 
-		const myPubKeyHash = (member?.pubKeyHash || memberKey).toLowerCase()
+		const myPubKeyHash = memberKey.toLowerCase()
 		await appendReactionEvent(username, groupId, {
 			type: 'reaction_remove',
 			channelId,

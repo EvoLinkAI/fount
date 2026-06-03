@@ -37,7 +37,7 @@ export async function findDmGroupBySessionTag(username, dmSessionTag) {
 	if (!tag) return null
 	for (const groupId of await listUserGroups(username)) {
 		const { state } = await getState(username, groupId)
-		const meta = state.groupMeta || {}
+		const meta = state.groupMeta
 		if (meta.dmKind === 'ecdh' && meta.dmSessionTag?.toLowerCase() === tag)
 			return {
 				groupId,
@@ -126,7 +126,7 @@ export async function createEcdhDmGroup(username, myPubKeyHex, peerPubKeyHex) {
  * @param {string} introPubKeyHex 介绍者公钥 hex
  * @param {string} dmIntroNonce nonce
  * @param {string} dmIntroSignatureHex 签名 hex
- * @returns {Promise<{ groupId: string, defaultChannelId: string, channelId?: string, created: boolean }>} 打开/新建的 DM
+ * @returns {Promise<{ groupId: string, defaultChannelId: string, created: boolean }>} 打开/新建的 DM
  */
 export async function orchestrateDmFirstContact(username, introPubKeyHex, dmIntroNonce, dmIntroSignatureHex) {
 	const introPubKey = normalizePubKeyHex(introPubKeyHex)
@@ -137,7 +137,7 @@ export async function orchestrateDmFirstContact(username, introPubKeyHex, dmIntr
 	if (!/^[\da-f]{128}$/iu.test(signatureHex)) throw new Error('invalid dmIntro signature')
 
 	const dmCheck = await validateDmIntroLinkProof(username, { members: {} }, introPubKey, nonce, signatureHex)
-	if (!dmCheck.ok) throw new Error(dmCheck.error || 'invalid dm intro link')
+	if (!dmCheck.ok) throw new Error(dmCheck.error)
 
 	const { identityPubKeyHex: myPubKey } = getFederationSettings(username)
 	if (!PUB_KEY_HEX_64.test(myPubKey))
@@ -162,7 +162,6 @@ export async function orchestrateDmFirstContact(username, introPubKeyHex, dmIntr
 		return {
 			groupId: existing.groupId,
 			defaultChannelId: existing.defaultChannelId,
-			channelId: existing.defaultChannelId,
 			created: false,
 		}
 	}
@@ -174,7 +173,6 @@ export async function orchestrateDmFirstContact(username, introPubKeyHex, dmIntr
 	return {
 		groupId: created.groupId,
 		defaultChannelId: created.defaultChannelId,
-		channelId: created.defaultChannelId,
 		created: true,
 	}
 }
@@ -185,7 +183,7 @@ export async function orchestrateDmFirstContact(username, introPubKeyHex, dmIntr
  * @param {string} groupId 群 ID
  * @param {string} [inviteCode] 邀请码
  * @param {{ mqttAppId?: string, mqttRoomSecret?: string }} [fedBootstrap] 首次联邦 MQTT 口令
- * @returns {Promise<{ groupId: string, defaultChannelId: string, channelId?: string }>} 入群后的群信息
+ * @returns {Promise<{ groupId: string, defaultChannelId: string }>} 入群后的群信息
  */
 export async function orchestrateJoinGroup(username, groupId, inviteCode = '', fedBootstrap = {}) {
 	if (!groupId?.trim()) throw new Error('groupId required')
@@ -200,7 +198,7 @@ export async function orchestrateJoinGroup(username, groupId, inviteCode = '', f
 	const { state } = await getState(username, groupId)
 	if (await resolveActiveMemberKeyForLocalUser(username, groupId, state)) {
 		const defaultChannelId = state.groupSettings?.defaultChannelId || 'default'
-		return { groupId, defaultChannelId, channelId: defaultChannelId }
+		return { groupId, defaultChannelId }
 	}
 
 	await appendSignedLocalEvent(username, groupId, {
@@ -211,5 +209,5 @@ export async function orchestrateJoinGroup(username, groupId, inviteCode = '', f
 	const { state: afterJoin } = await getState(username, groupId)
 	const defaultChannelId = afterJoin.groupSettings?.defaultChannelId || 'default'
 	void catchUpGroupFromPeers(username, groupId).catch(console.error)
-	return { groupId, defaultChannelId, channelId: defaultChannelId }
+	return { groupId, defaultChannelId }
 }

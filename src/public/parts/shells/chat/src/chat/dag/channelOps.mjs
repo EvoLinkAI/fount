@@ -152,7 +152,7 @@ export async function appendKeyRotateEvent(username, groupId, body) {
 	const { state } = await getState(username, groupId)
 	const permissionsChannelId = governanceChannelId(state)
 	const perms = memberChannelPermissions(state, sender, permissionsChannelId)
-	const activeCount = Object.values(state.members || {}).filter(member => member?.status === 'active').length
+	const activeCount = Object.values(state.members).filter(member => member?.status === 'active').length
 	const isDmPair = activeCount === 2
 	if (!isDmPair && !perms.ADMIN && !perms.MANAGE_ROLES)
 		throw new Error('key_rotate requires ADMIN, MANAGE_ROLES, or DM membership')

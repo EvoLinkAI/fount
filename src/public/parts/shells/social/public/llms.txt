@@ -6,7 +6,7 @@ WebSocket：`/ws/parts/shells:social/feed`（推送 feed 更新，客户端收�
 
 联邦传输：经用户级 Trystero 房间 `fount-node-{nodeHash}` action `part_timeline_put`、`part_invoke` / `part_invoke_response`（`scripts/p2p/user_room.mjs` + `trust_graph.mjs`）。Social RPC 体在 `part_invoke.invoke` 内带 `type` 字段。**不**依赖 Chat shell Load 即可 fanout；群 Chat 仍用 `fount-fed-{groupId}` DAG。
 
-用户级拉黑/网络：`GET|POST /api/p2p/blocklist`、`GET|PUT /api/p2p/network`（`settings/blocklist.json`、`settings/network.json`）。Social `/blocklist` 路由转发至 p2p API。
+用户级拉黑/网络：`GET|POST /api/p2p/blocklist`、`GET|PUT /api/p2p/network`（`settings/blocklist.json`、`settings/network.json`）。
 
 ---
 
@@ -109,7 +109,6 @@ Body：`followerPubKeyHex` — 为关注者签发 GSH vault H（仅关注者可�
 | POST | `/translate` | body: `{ text, targetLang }` |
 | POST | `/files` | 注册 vault 文件并写入 `file_share` 事件 |
 | GET | `/files/:shareId?owner=` | 文件元数据 |
-| GET | `/blocklist` | 转发 `/api/p2p/blocklist`（用户级拉黑表） |
 
 ---
 
@@ -125,7 +124,7 @@ Body：`followerPubKeyHex` — 为关注者签发 GSH vault H（仅关注者可�
 
 ## Agent 集成
 
-本机 agent entity 被 @ 时：`dispatch.mjs` 经 `lib/charSocial.mjs` 加载角色；若无 `interfaces.social` 则注入 `src/default_interface`（对齐 telegrambot 默认面板），再调用 `OnMention`（默认实现走 `chat.GetReply`）。
+本机 agent entity 被 @ 时：`dispatch.mjs` 经 `lib/charSocial.mjs` 加载角色（须已实现 `interfaces.social`），再调用 `OnMention` 等处理器。
 
 关注 / 粉丝更新：`OnFollow`（新关注者，仅本地 agent）；`OnFollowerUpdate`（所关注实体发新帖，仅显式实现该钩子的本地 agent，可返回回复正文，无默认实现）。发帖后服务端依次 `dispatchPostMentions`、`dispatchPostFollowerUpdates`。
 

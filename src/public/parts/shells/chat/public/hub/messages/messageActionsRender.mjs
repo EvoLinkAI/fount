@@ -45,7 +45,7 @@ function isOwnCharMessage(message, opts) {
 			: []
 	if (localCharIds.includes(message.charId)) return true
 	const viewer = String(opts.viewerPubKeyHash || '').trim().toLowerCase()
-	const sender = String(message.authorPubKeyHash || message.sender || '').trim().toLowerCase()
+	const sender = String(message.authorPubKeyHash || '').trim().toLowerCase()
 	return !!(viewer && sender && viewer === sender)
 }
 
@@ -61,7 +61,7 @@ function canDeleteMessage(message, opts) {
 	if (message.charId && opts.canManageMessages) return true
 	if (!message.charId) {
 		const viewer = String(opts.viewerPubKeyHash || '').toLowerCase()
-		const sender = String(message.authorPubKeyHash || message.sender || '').toLowerCase()
+		const sender = String(message.authorPubKeyHash || '').toLowerCase()
 		if (viewer && sender && viewer === sender) return true
 	}
 	return false

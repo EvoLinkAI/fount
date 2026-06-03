@@ -64,7 +64,8 @@ export interface GroupState {
 	bannedNodes: Set<string>
 	delegatedOwnerPubKeyHash?: string | null
 	dagTips?: string[]
-	authzBranchTip?: string | null
+	consensusBranchTip?: string | null
+	localViewBranchTip?: string | null
 	governanceFork?: boolean
 	walOk?: boolean
 	walReason?: string

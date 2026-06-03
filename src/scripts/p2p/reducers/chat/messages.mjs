@@ -1,4 +1,4 @@
-import { isHex64, refreshMembersDigest, withGroupId } from './helpers.mjs'
+import { isHex64, withGroupId } from './helpers.mjs'
 
 /** @type {Record<string, (state: object, event: object) => object>} */
 export const messageReducers = {
@@ -12,17 +12,15 @@ export const messageReducers = {
 		withGroupId(state, event)
 		const eventId = event.id
 		if (isHex64(eventId)) {
-			const channelId = event.channelId || event.content?.channelId || 'default'
-			if (!state.messageSenderIndex) state.messageSenderIndex = {}
+			const channelId = event.channelId || 'default'
 			const charOwner = event.content?.charOwner
 			state.messageSenderIndex[eventId] = {
 				sender: event.sender,
-				charOwner: charOwner && isHex64(charOwner) ? charOwner : null,
+				charOwner: isHex64(charOwner) ? charOwner : null,
 				charId: event.charId || null,
 				channelId,
 			}
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -34,10 +32,9 @@ export const messageReducers = {
 	 */
 	message_delete(state, event) {
 		withGroupId(state, event)
-		const targetId = event.content?.targetId
-		if (targetId) state.messageOverlay.deletedIds.add(targetId)
-		if (targetId && state.messageSenderIndex) delete state.messageSenderIndex[targetId]
-		refreshMembersDigest(state)
+		const { targetId } = event.content
+		state.messageOverlay.deletedIds.add(targetId)
+		delete state.messageSenderIndex[targetId]
 		return state
 	},
 
@@ -49,10 +46,8 @@ export const messageReducers = {
 	 */
 	message_edit(state, event) {
 		withGroupId(state, event)
-		const targetId = event.content?.targetId
-		if (targetId)
-			state.messageOverlay.editHistory.set(targetId, event.content.newContent)
-		refreshMembersDigest(state)
+		const { targetId, newContent } = event.content
+		state.messageOverlay.editHistory.set(targetId, newContent)
 		return state
 	},
 
@@ -64,12 +59,7 @@ export const messageReducers = {
 	 */
 	reaction_add(state, event) {
 		withGroupId(state, event)
-		const targetId = event.content?.targetId
-		const emoji = event.content?.emoji
-		if (!targetId || !emoji) {
-			refreshMembersDigest(state)
-			return state
-		}
+		const { targetId, emoji } = event.content
 		const key = `${targetId}:${emoji}`
 		let voters = state.messageOverlay.reactions.get(key)
 		if (!voters) {
@@ -77,7 +67,6 @@ export const messageReducers = {
 			state.messageOverlay.reactions.set(key, voters)
 		}
 		voters.add(event.sender)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -89,22 +78,12 @@ export const messageReducers = {
 	 */
 	reaction_remove(state, event) {
 		withGroupId(state, event)
-		const targetId = event.content?.targetId
-		const emoji = event.content?.emoji
-		if (!targetId || !emoji) {
-			refreshMembersDigest(state)
-			return state
-		}
+		const { targetId, emoji, targetPubKeyHash } = event.content
 		const key = `${targetId}:${emoji}`
 		const voters = state.messageOverlay.reactions.get(key)
-		if (!voters) {
-			refreshMembersDigest(state)
-			return state
-		}
-		const voterHash = event.content?.targetPubKeyHash || event.sender
-		if (isHex64(voterHash)) voters.delete(voterHash)
+		if (!voters || !isHex64(targetPubKeyHash)) return state
+		voters.delete(targetPubKeyHash)
 		if (!voters.size) state.messageOverlay.reactions.delete(key)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -121,7 +100,6 @@ export const messageReducers = {
 		const pins = state.messageOverlay.pins.get(event.channelId)
 		if (!pins.includes(event.content.targetId))
 			pins.push(event.content.targetId)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -138,7 +116,6 @@ export const messageReducers = {
 				event.channelId,
 				state.messageOverlay.pins.get(event.channelId).filter(id => id !== event.content.targetId),
 			)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -150,13 +127,10 @@ export const messageReducers = {
 	 */
 	vote_cast(state, event) {
 		withGroupId(state, event)
-		const { ballotId, choice } = event.content || {}
-		if (ballotId && choice != null && event.sender) {
-			if (!state.messageOverlay.votes.has(ballotId))
-				state.messageOverlay.votes.set(ballotId, new Map())
-			state.messageOverlay.votes.get(ballotId).set(event.sender, String(choice))
-		}
-		refreshMembersDigest(state)
+		const { ballotId, choice } = event.content
+		if (!state.messageOverlay.votes.has(ballotId))
+			state.messageOverlay.votes.set(ballotId, new Map())
+		state.messageOverlay.votes.get(ballotId).set(event.sender, String(choice))
 		return state
 	},
 }

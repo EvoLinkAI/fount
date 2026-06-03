@@ -475,7 +475,7 @@ export async function getDecryptedChunk(username, groupId, storageLocator, conte
 		raw = await resolveCiphertextRaw(username, groupId, storageLocator)
 	}
 	catch (e) {
-		void penalizeChunkStorageFailure(username, groupId, blamePeerKey || username).catch(() => { })
+		if (blamePeerKey) void penalizeChunkStorageFailure(username, groupId, blamePeerKey).catch(() => { })
 		throw e
 	}
 	let plain = null
@@ -497,7 +497,7 @@ export async function getDecryptedChunk(username, groupId, storageLocator, conte
 	else
 		plain = decryptConvergentCiphertext(raw, contentHash)
 	if (!plain) {
-		void penalizeChunkStorageFailure(username, groupId, blamePeerKey || username).catch(() => { })
+		if (blamePeerKey) void penalizeChunkStorageFailure(username, groupId, blamePeerKey).catch(() => { })
 		throw new Error('convergent blob decrypt failed')
 	}
 	void cachePlaintextFile(username, contentHash, plain).catch(() => { })
@@ -593,7 +593,6 @@ export async function syncGroupFileManifest(username, groupId, uploadMeta) {
 
 	if (Array.isArray(uploadMeta.parts) && uploadMeta.parts.length) 
 		manifest = normalizeFileManifest({
-			version: 1,
 			ownerEntityHash,
 			logicalPath,
 			name: uploadMeta.name || fileId,
@@ -617,7 +616,6 @@ export async function syncGroupFileManifest(username, groupId, uploadMeta) {
 	
 	else if (uploadMeta.ciphertextHash) 
 		manifest = normalizeFileManifest({
-			version: 1,
 			ownerEntityHash,
 			logicalPath,
 			name: uploadMeta.name || fileId,

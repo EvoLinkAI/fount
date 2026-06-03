@@ -55,10 +55,8 @@ export function parsePullResponseEnvelope(envelope) {
 	const iv = readTrimmed(envelope.iv)
 	const ciphertext = readTrimmed(envelope.ciphertext)
 	const authTag = readTrimmed(envelope.authTag)
-	const scheme = readTrimmed(envelope.scheme)
 	if (!requestId || !isHex64(requesterPubKeyHash) || !requesterNodeHash) return null
 	if (!ephemPub || !iv || !ciphertext || !authTag) return null
-	if (scheme !== 'fed_pull_v1') return null
 	return {
 		requestId,
 		requesterPubKeyHash,

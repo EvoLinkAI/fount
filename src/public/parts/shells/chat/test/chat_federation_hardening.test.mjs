@@ -128,7 +128,6 @@ Deno.test('joinSnapshot wire parse', () => {
 		iv: 'bb',
 		ciphertext: 'cc',
 		authTag: 'dd',
-		scheme: 'fed_pull_v1',
 	})?.requesterNodeHash, 'node-a')
 })
 
@@ -209,7 +208,7 @@ Deno.test('validatePullAttestationForGroup member gate', async () => {
 	assertEquals(await validatePullAttestationForGroup(kicked, 'g-gate', body), true)
 })
 
-Deno.test('pull response rejects legacy plaintext gossip shape', () => {
+Deno.test('pull response rejects plaintext gossip shape', () => {
 	const eventId = 'a'.repeat(64)
 	assertEquals(parsePullResponseEnvelope({ events: [{ id: eventId }], checkpoint: {} }), null)
 	assertEquals(parsePullResponseEnvelope({

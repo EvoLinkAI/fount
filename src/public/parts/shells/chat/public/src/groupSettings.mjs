@@ -271,7 +271,7 @@ async function readApiError(response) {
 	const text = await response.text()
 	try {
 		const data = JSON.parse(text)
-		return String(data.error || data.message || text)
+		return String(data.error || text)
 	}
 	catch {
 		return text || `HTTP ${response.status}`

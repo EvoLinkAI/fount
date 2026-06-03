@@ -216,6 +216,6 @@ export async function listFederationPeersForGroup(username, groupId) {
 	})
 	const peers = [...peersByPeerId.values()]
 	void reconcilePeerPoolFromRoster(username, groupId, peers, groupSettings)
-		.catch(error => console.error('peers.json pool reconcile failed', error))
+		.catch(error => console.error('network pool reconcile failed', error))
 	return { selfNodeHash: nodeHash, federationEnabled: true, peers }
 }

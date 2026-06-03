@@ -6,12 +6,12 @@
  * @returns {Promise<boolean>} 观看者是否可读该 vault 文件
  */
 export async function canViewVaultFile(replicaUsername, ownerEntityHash, manifest) {
-	const visibility = String(manifest.meta?.visibility || 'followers')
+	const visibility = manifest.meta?.visibility || 'followers'
 	if (visibility === 'public') return true
 	const { resolveOperatorEntityHash } = await import('../../../../../scripts/p2p/entity/replica.mjs')
 	if (resolveOperatorEntityHash(replicaUsername) === ownerEntityHash.toLowerCase()) return true
 	if (visibility !== 'followers') return false
 	const { loadFollowing } = await import('./following.mjs')
 	const { following } = await loadFollowing(replicaUsername)
-	return following.includes(String(ownerEntityHash).trim().toLowerCase())
+	return following.includes(ownerEntityHash.toLowerCase())
 }

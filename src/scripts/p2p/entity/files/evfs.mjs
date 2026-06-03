@@ -79,7 +79,7 @@ export async function readManifestPlaintext(replicaUsername, manifest, opts = {}
 				username,
 				ciphertextHash: part.hash,
 				ownerEntityHash: manifest.ownerEntityHash,
-				groupId: manifest.meta?.groupId || manifest.transferKeyDescriptor?.groupId,
+				groupId: manifest.transferKeyDescriptor.groupId,
 			})
 			if (fetchedChunk) {
 				await putChunk(replicaUsername, part.hash, fetchedChunk)
@@ -190,7 +190,6 @@ export async function putFileManifestFromStream(params) {
 	const enc = await encryptReadableToParts(readable, ceMode, async part =>
 		putChunk(replicaUsername, part.hash, part.raw), plainSize)
 	const manifest = normalizeFileManifest({
-		version: 1,
 		ownerEntityHash: ownerEntityHash.toLowerCase(),
 		logicalPath: logicalPath.replace(/^\/+/, ''),
 		name: name || logicalPath.split('/').pop() || 'file',

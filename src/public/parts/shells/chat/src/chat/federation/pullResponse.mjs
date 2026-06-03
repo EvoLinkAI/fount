@@ -6,11 +6,10 @@ import { encryptUtf8ForMember, decryptUtf8ForMember } from '../../../../../../..
 /**
  * @param {string} recipientEdPubKeyHex 接收方 Ed25519 公钥 hex
  * @param {object} inner 明文 inner（events、gshGrant 等）
- * @returns {{ ephemPub: string, iv: string, ciphertext: string, authTag: string, scheme: string }} ECIES 外层密文对象
+ * @returns {{ ephemPub: string, iv: string, ciphertext: string, authTag: string }} ECIES 外层密文对象
  */
 export function wrapPullResponseInner(recipientEdPubKeyHex, inner) {
-	const encrypted = encryptUtf8ForMember(JSON.stringify(inner), recipientEdPubKeyHex)
-	return { ...encrypted, scheme: 'fed_pull_v1' }
+	return encryptUtf8ForMember(JSON.stringify(inner), recipientEdPubKeyHex)
 }
 
 /**

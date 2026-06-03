@@ -31,16 +31,6 @@ export function normalizePartpath(value) {
 }
 
 /**
- * @param {unknown} data handler 返回值
- * @returns {PartInvokeResponse | null} 包装后的线协议响应
- */
-function normalizeHandlerReturn(data) {
-	if (data == null) return null
-	if (isPartInvokeResponse(data)) return data
-	return { result: data }
-}
-
-/**
  * 经 loadPart(username, partpath) 调用目标 Part 的 P2PInvokeHandler（对齐 IPC invokepart）。
  * @param {string} username replica 登录名
  * @param {string} partpath 如 shells/social
@@ -64,7 +54,11 @@ export async function invokePartUserRoom(username, partpath, data, ingress = {})
 	const handler = part?.interfaces?.invokes?.P2PInvokeHandler
 	if (!handler) return null
 	try {
-		return normalizeHandlerReturn(await handler(username, data, ingress))
+		const response = await handler(username, data, ingress)
+		if (response == null) return null
+		if (!isPartInvokeResponse(response))
+			throw new Error('P2PInvokeHandler must return { result } or { error }')
+		return response
 	}
 	catch (err) {
 		console.error('p2p: P2PInvokeHandler failed', { partpath: path, err })

@@ -95,7 +95,7 @@ export async function resolveFederationSlotForAction(username, groupId, opts = {
 /**
  * @param {string} username 用户名
  * @param {string} groupId 群组 ID
- * @param {string} partitionId 分区 id（空=legacy）
+ * @param {string} partitionId 分区 id
  * @param {{ channelId?: string }} [opts] 选项
  * @returns {Promise<FederationSlot | null>} 房间句柄或 null
  */

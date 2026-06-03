@@ -130,7 +130,6 @@ export function buildFileManifest(params) {
 	} = params
 	const enc = encryptPlaintextToParts(plaintext, ceMode)
 	const manifest = normalizeFileManifest({
-		version: 1,
 		ownerEntityHash: ownerEntityHash.toLowerCase(),
 		logicalPath: logicalPath.replace(/^\/+/, ''),
 		name: name || logicalPath.split('/').pop() || 'file',
@@ -164,7 +163,6 @@ export function buildFileManifestFromEnc(params, enc) {
 		meta,
 	} = params
 	const manifest = normalizeFileManifest({
-		version: 1,
 		ownerEntityHash: ownerEntityHash.toLowerCase(),
 		logicalPath: logicalPath.replace(/^\/+/, ''),
 		name: name || logicalPath.split('/').pop() || 'file',

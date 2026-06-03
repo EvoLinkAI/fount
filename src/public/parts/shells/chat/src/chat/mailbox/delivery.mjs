@@ -116,8 +116,8 @@ export async function requestMailboxFromNetwork(username, toPubKeyHash) {
 export async function ingestMailboxPut(username, put) {
 	const { record } = put
 	if (!record?.envelope || !record?.toPubKeyHash) return
-	const fromNode = String(put.nodeHash || record.fromNodeHash || '').trim()
-	if (!takeIncomingMailboxPutSlot(username, fromNode)) return
+	const fromNode = String(put.nodeHash || '').trim()
+	if (!fromNode || !takeIncomingMailboxPutSlot(username, fromNode)) return
 	const hop = Number(record.hop) || 0
 	const relayHop = hop + 1
 	const sender = String(record.envelope?.sender || '').trim().toLowerCase()
@@ -143,7 +143,7 @@ export async function ingestMailboxPut(username, put) {
 	if (!tier) return
 	if (!await storeMailboxRecord(username, {
 		...record,
-		fromNodeHash: put.nodeHash || record.fromNodeHash,
+		fromNodeHash: fromNode,
 		hop: relayHop,
 		tier,
 		importance: score,

@@ -217,7 +217,7 @@ export const actions = {
 	 * @param {string} root0.introPubKeyHex 介绍者公钥 hex
 	 * @param {string} root0.dmIntroNonce nonce
 	 * @param {string} root0.dmIntroSignatureHex 签名 hex
-	 * @returns {Promise<{ groupId: string, defaultChannelId: string, channelId?: string, created: boolean }>} DM 群信息
+	 * @returns {Promise<{ groupId: string, defaultChannelId: string, created: boolean }>} DM 群信息
 	 */
 	dm: async ({ user, introPubKeyHex, dmIntroNonce, dmIntroSignatureHex }) => {
 		if (!introPubKeyHex || !dmIntroNonce || !dmIntroSignatureHex)
@@ -232,7 +232,7 @@ export const actions = {
 	 * @param {string} [root0.inviteCode] 邀请码
 	 * @param {string} [root0.mqttRoomSecret] 首次联邦 MQTT 口令
 	 * @param {string} [root0.mqttAppId] MQTT 应用 ID
-	 * @returns {Promise<{ groupId: string, defaultChannelId: string, channelId?: string }>} 入群结果
+	 * @returns {Promise<{ groupId: string, defaultChannelId: string }>} 入群结果
 	 */
 	join: async ({ user, groupId, inviteCode, mqttRoomSecret, mqttAppId }) => {
 		if (!groupId) throw new Error('groupId is required for join action')

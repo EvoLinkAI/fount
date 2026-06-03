@@ -31,7 +31,7 @@ async function enrichPostRef(username, ref) {
 		return {
 			...base,
 			preview,
-			authorName: profile?.displayName || profile?.name || `${entityHash.slice(0, 8)}…`,
+			authorName: profile?.name || `${entityHash.slice(0, 8)}…`,
 			savedAt: ref.savedAt,
 		}
 	}

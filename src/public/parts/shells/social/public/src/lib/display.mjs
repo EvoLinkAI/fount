@@ -13,7 +13,7 @@ const ENTITY_AVATAR_API = '/api/p2p/entities'
  * @returns {string} 展示名
  */
 export function authorLabel(entityHash, profile) {
-	return profile?.displayName || profile?.name || `${entityHash.slice(0, 8)}…${entityHash.slice(-4)}`
+	return profile?.name || `${entityHash.slice(0, 8)}…${entityHash.slice(-4)}`
 }
 
 /**
@@ -23,7 +23,7 @@ export function authorLabel(entityHash, profile) {
  * @returns {string} 头像 URL
  */
 export function entityAvatarUrl(entityHash, profile) {
-	return profile?.avatarUrl || `${ENTITY_AVATAR_API}/${encodeURIComponent(entityHash)}/files/profile/avatar`
+	return profile?.avatar || `${ENTITY_AVATAR_API}/${encodeURIComponent(entityHash)}/files/profile/avatar`
 }
 
 /**
@@ -44,15 +44,10 @@ export function renderAvatarHtml(entityHash, profile, sizeClass = '') {
  * @returns {Promise<boolean>} 是否为可信作者
  */
 export async function isTrusted(pubKeyHash) {
-	try {
-		const response = await fetch('/api/user/trusted-authors', { credentials: 'include' })
-		if (!response.ok) return false
-		const data = await response.json()
-		return (data.hashes || []).includes(String(pubKeyHash || '').toLowerCase())
-	}
-	catch {
-		return false
-	}
+	const response = await fetch('/api/user/trusted-authors', { credentials: 'include' })
+	if (!response.ok) return false
+	const data = await response.json()
+	return (data.hashes || []).includes((pubKeyHash || '').toLowerCase())
 }
 
 /**
@@ -63,7 +58,7 @@ export async function isTrusted(pubKeyHash) {
  */
 export async function renderMarkdown(markdown, pubKeyHash) {
 	const trusted = await isTrusted(pubKeyHash)
-	return processFountMessageMarkdown(String(markdown || ''), trusted, {
+	return processFountMessageMarkdown(markdown || '', trusted, {
 		extraRemarkPlugins: [remarkExpandSocialLinks, remarkHashtagLinks],
 	})
 }

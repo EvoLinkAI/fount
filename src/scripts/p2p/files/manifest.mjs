@@ -18,7 +18,6 @@ import { isHex64 } from '../hexIds.mjs'
 
 /**
  * @typedef {{
- *   version: number,
  *   ownerEntityHash: string,
  *   logicalPath: string,
  *   name: string,
@@ -56,7 +55,6 @@ export function normalizeFileManifest(input) {
 	const transferKeyDescriptor = normalizeTransferKeyDescriptor(input.transferKeyDescriptor)
 	if (!transferKeyDescriptor) return null
 	return {
-		version: Number(input.version) || 1,
 		ownerEntityHash,
 		logicalPath,
 		name: String(input.name || logicalPath.split('/').pop() || 'file'),

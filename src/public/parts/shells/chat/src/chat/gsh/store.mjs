@@ -9,7 +9,7 @@
  * 【文件】gsh/store.mjs
  * 【职责】群 GSH（Group Symmetric History）本地持久化：维护 H 代数历史，供加密取当前 H、解密按 generation 查历史 H，并处理 key_rotate 等 DAG 事件。
  * 【原理】gsh.json 存 schema/current/generations[]（最多 64 代）；initGroupH 创世、appendH 推进、applyGshRotationFromEvent 响应成员变更事件。encryptHForMember 供 DM 双方导入密钥。与联邦无独立同步——随 DAG 成员事件在各节点各自推导/同步代数。
- * 【数据结构】GshFile { schema:1, current:number, generations:[{gen,h}] }；h 为 32 字节 hex。
+ * 【数据结构】GshFile { current:number, generations:[{gen,h}] }；h 为 32 字节 hex。
  * 【关联】gsh/content.mjs、dm/index.mjs、groupFiles 文件密钥、lib/paths gshPath、scripts/p2p/gsh.mjs。
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -23,7 +23,7 @@ import { gshPath } from '../lib/paths.mjs'
 const MAX_GENERATIONS = 64
 
 /**
- * @typedef {{ schema: number, current: number, generations: Array<{ gen: number, h: string }> }} GshFile
+ * @typedef {{ current: number, generations: Array<{ gen: number, h: string }> }} GshFile
  */
 
 /**
@@ -35,7 +35,6 @@ function normalizeGshFile(raw) {
 		.filter(g => g?.h && Number.isFinite(g.gen))
 		.sort((a, b) => a.gen - b.gen)
 	return {
-		schema: 1,
 		current: generations.length ? generations.at(-1).gen : -1,
 		generations,
 	}
@@ -70,7 +69,7 @@ async function saveGsh(username, groupId, data) {
 	// 只保留最近 MAX_GENERATIONS 代
 	const gens = data.generations.slice(-MAX_GENERATIONS)
 	const current = gens.length ? gens[gens.length - 1].gen : -1
-	const out = { schema: 1, current, generations: gens }
+	const out = { current, generations: gens }
 	await writeFile(p, JSON.stringify(out, null, '\t'), 'utf8')
 }
 
@@ -110,7 +109,7 @@ export async function initGroupH(username, groupId) {
 	const existing = await getCurrentH(username, groupId)
 	if (existing) return existing
 	const h = generateH()
-	const data = { schema: 1, current: 0, generations: [{ gen: 0, h }] }
+	const data = { current: 0, generations: [{ gen: 0, h }] }
 	await saveGsh(username, groupId, data)
 	return { h, generation: 0 }
 }

@@ -39,7 +39,7 @@ export async function loadKnownMemberIndex(username) {
 		const snapshot = await safeReadJson(join(groupsDir, groupId, 'snapshot.json'))
 		const members = snapshot?.members_record?.members || {}
 		for (const [key, row] of Object.entries(members)) {
-			const pk = String(row?.pubKeyHash || key).trim().toLowerCase()
+			const pk = String(key).trim().toLowerCase()
 			if (isHex64(pk)) pubKeys.add(pk)
 			const home = String(row?.homeNodeHash || '').trim().toLowerCase()
 			if (isHex64(home)) nodeHashes.add(home)

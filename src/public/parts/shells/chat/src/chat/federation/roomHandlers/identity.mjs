@@ -53,9 +53,10 @@ export function registerIdentityHandlers(roomContext) {
 	const fedPex = wireAction(roomContext, 'fed_pex')
 	fedPex.on((data, peerId) => {
 		if (!isFederationActionAllowedUnderLoad(key, 'fed_pex', rtcLimits)) return
+		if (!isPlainObject(data)) return
 		void (async () => {
-			const remoteNode = String(data?.nodeHash || '').trim()
-			const hints = Array.isArray(data?.hints) ? data.hints : []
+			const remoteNode = data.nodeHash?.trim()
+			const hints = Array.isArray(data.hints) ? data.hints : []
 			if (!remoteNode || remoteNode === nodeHash) return
 			const settings = await loadFederationGroupSettings(username, groupId)
 			await mergePexNodeHints(username, groupId, hints, settings)
@@ -90,11 +91,11 @@ export function registerIdentityHandlers(roomContext) {
 	const partitionBridge = wireAction(roomContext, 'fed_partition_bridge')
 	partitionBridge.on((data, peerId) => {
 		void (async () => {
-			const envelope = isPlainObject(data) ? data : null
-			const actionName = String(envelope?.actionName || '').trim()
-			const targetPartition = String(envelope?.targetPartition || '').trim()
-			const dedupeId = String(envelope?.dedupeId || '').trim()
-			const ttl = Number(envelope?.ttl ?? 0)
+			if (!isPlainObject(data)) return
+			const actionName = data.actionName?.trim()
+			const targetPartition = data.targetPartition?.trim()
+			const dedupeId = data.dedupeId?.trim()
+			const ttl = Number(data.ttl ?? 0)
 			if (!actionName || !targetPartition || !dedupeId) return
 			if (!Number.isFinite(ttl) || ttl <= 0) return
 			if (shouldDropPartitionBridgeUnderLoad(key, actionName, rtcLimits)) return
@@ -103,7 +104,7 @@ export function registerIdentityHandlers(roomContext) {
 			if (!localPartitions.includes(targetPartition)) {
 				if (ttl <= 1) return
 				if (!takePartitionBridgeForwardSlot(key)) return
-				const relayEnvelope = { ...envelope, ttl: ttl - 1 }
+				const relayEnvelope = { ...data, ttl: ttl - 1 }
 				const slot = getSlot()
 				if (!slot) return
 				for (const { peerId: remotePeerId } of slot.getRoster())
@@ -115,9 +116,9 @@ export function registerIdentityHandlers(roomContext) {
 			if (!targetSlot) return
 			try {
 				if (actionName === 'dag_event')
-					targetSlot.send('dag_event', envelope.payload, null)
+					targetSlot.send('dag_event', data.payload, null)
 				else
-					targetSlot.sendToPeer(null, actionName, envelope.payload)
+					targetSlot.sendToPeer(null, actionName, data.payload)
 			}
 			catch (error) {
 				console.warn('federation: partition bridge dispatch failed', error)

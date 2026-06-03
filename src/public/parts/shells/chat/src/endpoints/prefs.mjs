@@ -1,99 +1,61 @@
-import { addBlocklistEntry, loadBlocklist } from '../../../../../../scripts/p2p/blocklist.mjs'
 import { authenticate, getUserByReq } from '../../../../../../server/auth.mjs'
 import { assignShellData, loadShellData } from '../../../../../../server/setting_loader.mjs'
 import { loadTrustedAuthorHashes, saveTrustedAuthorHashes } from '../../../../../../server/trustedAuthors.mjs'
-
-import { optionalChannelId } from './shared.mjs'
 
 /**
  * @param {import('npm:express').Router} router Express 路由
  * @returns {void}
  */
 export function registerPrefsRoutes(router) {
-	router.get('/api/parts/shells\\:chat/blocklist', authenticate, async (req, res) => {
-		const { username } = getUserByReq(req)
-		res.status(200).json(loadBlocklist(username))
-	})
-	router.post('/api/parts/shells\\:chat/blocklist', authenticate, async (req, res) => {
-		const { username } = getUserByReq(req)
-		const body = req.body || {}
-		const scope = String(body.scope || 'subject').trim().toLowerCase()
-		const value = String(body.value ?? '').trim()
-		if (!value)
-			return res.status(400).json({ error: 'value required' })
-		await addBlocklistEntry(username, { scope, value, groupId: optionalChannelId(body.groupId) })
-		res.status(200).json(loadBlocklist(username))
-	})
-
-	router.get('/api/parts/shells\\:chat/trusted-authors', authenticate, async (req, res) => {
-		const { username } = getUserByReq(req)
-		res.status(200).json({ hashes: loadTrustedAuthorHashes(username) })
-	})
-	router.put('/api/parts/shells\\:chat/trusted-authors', authenticate, async (req, res) => {
-		const { username } = getUserByReq(req)
-		const body = req.body || {}
-		const hashes = saveTrustedAuthorHashes(username, body.hashes)
-		res.status(200).json({ hashes })
-	})
-
 	router.get('/api/user/trusted-authors', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
 		res.status(200).json({ hashes: loadTrustedAuthorHashes(username) })
 	})
 	router.put('/api/user/trusted-authors', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		const body = req.body || {}
-		const hashes = saveTrustedAuthorHashes(username, body.hashes)
+		const hashes = saveTrustedAuthorHashes(username, req.body.hashes)
 		res.status(200).json({ hashes })
 	})
 
 	router.get('/api/parts/shells\\:chat/bookmarks', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		const raw = loadShellData(username, 'chat', 'bookmarks')
-		res.status(200).json(Array.isArray(raw?.entries) ? raw.entries : [])
+		res.status(200).json(loadShellData(username, 'chat', 'bookmarks').entries || [])
 	})
 	router.put('/api/parts/shells\\:chat/bookmarks', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		const body = req.body || {}
-		assignShellData(username, 'chat', 'bookmarks', { entries: Array.isArray(body.entries) ? body.entries : [] })
+		assignShellData(username, 'chat', 'bookmarks', { entries: req.body.entries || [] })
 		res.status(200).json({})
 	})
 
 	router.get('/api/parts/shells\\:chat/group-folders', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		const raw = loadShellData(username, 'chat', 'groupFolders')
-		res.status(200).json({ folders: Array.isArray(raw?.folders) ? raw.folders : [] })
+		res.status(200).json({ folders: loadShellData(username, 'chat', 'groupFolders').folders || [] })
 	})
 	router.put('/api/parts/shells\\:chat/group-folders', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		const body = req.body || {}
-		assignShellData(username, 'chat', 'groupFolders', { folders: Array.isArray(body.folders) ? body.folders : [] })
+		assignShellData(username, 'chat', 'groupFolders', { folders: req.body.folders || [] })
 		res.status(200).json({})
 	})
 
 	router.get('/api/parts/shells\\:chat/custom-emojis', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		const raw = loadShellData(username, 'chat', 'customEmojis')
-		res.status(200).json({ entries: Array.isArray(raw?.entries) ? raw.entries : [] })
+		res.status(200).json({ entries: loadShellData(username, 'chat', 'customEmojis').entries || [] })
 	})
 	router.put('/api/parts/shells\\:chat/custom-emojis', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		const body = req.body || {}
-		assignShellData(username, 'chat', 'customEmojis', { entries: Array.isArray(body.entries) ? body.entries : [] })
-		res.status(200).json({ entries: Array.isArray(body.entries) ? body.entries : [] })
+		assignShellData(username, 'chat', 'customEmojis', { entries: req.body.entries || [] })
+		res.status(200).json({ entries: req.body.entries || [] })
 	})
 	router.post('/api/parts/shells\\:chat/custom-emojis/save', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		const body = req.body || {}
-		const groupId = String(body.groupId || '').trim()
-		const emojiId = String(body.emojiId || '').trim()
-		const dataUrl = String(body.dataUrl || '').trim()
+		const groupId = String(req.body.groupId || '').trim()
+		const emojiId = String(req.body.emojiId || '').trim()
+		const dataUrl = String(req.body.dataUrl || '').trim()
 		if (!groupId || !emojiId)
 			return res.status(400).json({ error: 'groupId and emojiId required' })
 		if (!dataUrl.startsWith('data:'))
 			return res.status(400).json({ error: 'dataUrl required (data:…)' })
-		const raw = loadShellData(username, 'chat', 'customEmojis')
-		const entries = Array.isArray(raw?.entries) ? [...raw.entries] : []
+		const entries = [...loadShellData(username, 'chat', 'customEmojis').entries || []]
 		const id = `${groupId}/${emojiId}`
 		const next = { id, groupId, emojiId, dataUrl, savedAt: Date.now() }
 		const existingIndex = entries.findIndex(e => e?.id === id)

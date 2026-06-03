@@ -1,4 +1,4 @@
-import { refreshMembersDigest, withGroupId } from './helpers.mjs'
+import { withGroupId } from './helpers.mjs'
 
 /** @type {Record<string, (state: object, event: object) => object>} */
 export const roleReducers = {
@@ -18,7 +18,6 @@ export const roleReducers = {
 			isDefault: false,
 			isHoisted: event.content.isHoisted || false,
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -32,7 +31,6 @@ export const roleReducers = {
 		withGroupId(state, event)
 		if (state.roles[event.content.roleId])
 			Object.assign(state.roles[event.content.roleId], event.content.updates)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -47,7 +45,6 @@ export const roleReducers = {
 		delete state.roles[event.content.roleId]
 		for (const member of Object.values(state.members))
 			member.roles = member.roles.filter(role => role !== event.content.roleId)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -63,7 +60,6 @@ export const roleReducers = {
 		const roleId = event.content?.roleId
 		if (target && state.members[target] && !state.members[target].roles.includes(roleId))
 			state.members[target].roles.push(roleId)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -79,7 +75,6 @@ export const roleReducers = {
 		const roleId = event.content?.roleId
 		if (target && state.members[target])
 			state.members[target].roles = state.members[target].roles.filter(role => role !== roleId)
-		refreshMembersDigest(state)
 		return state
 	},
 }

@@ -164,7 +164,7 @@ function replayReactions(channelMessages, targetEventId) {
 		if (String(message.content?.targetId) !== target) continue
 		const emoji = message.content?.emoji
 		if (!emoji) continue
-		const actor = message.sender || message.content?.sender || message.eventId
+		const actor = message.sender || message.eventId
 		const voter = message.type === 'reaction_remove' && message.content?.targetPubKeyHash
 			? message.content.targetPubKeyHash
 			: actor

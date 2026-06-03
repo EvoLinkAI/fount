@@ -1,16 +1,5 @@
 /**
- * 【文件】governance/branchStore.mjs
- * 【职责】持久化用户在某群上选定的治理 DAG 分支尖 tipId（UI 切换分支 / fork 源）。
- * 【原理】governance_branch.json 存 { tipId, updatedAt }；load/save 经 groupDir 路径。物化与 fork 读取该 tip 计算可见事件闭包。
- * 【数据结构】{ tipId: 64hex, updatedAt: ISO 或 ms }。
- * 【关联】fork.mjs、forkBlockOpposing.mjs、scripts/p2p/governance_branch.mjs、lib/paths.mjs。
- */
-/**
- * 【文件】governance/branchStore.mjs
- * 【职责】持久化用户主观选定的权限 DAG 分支 tip（governance_branch.json）。
- * 【原理】loadGovernanceBranchTip 读 64 hex tipId；saveGovernanceBranchTip 写或 null 恢复自动选支。
- * 【数据结构】磁盘 { tipId }；与物化 authzBranchTip 配合 fork/物化折叠。
- * 【关联】governance/fork、scripts/p2p/governance_branch；materialize 权限事件过滤。
+ * 【文件】governance/branchStore.mjs — 用户主观选定的治理 DAG 分支 tip（governance_branch.json）。
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'

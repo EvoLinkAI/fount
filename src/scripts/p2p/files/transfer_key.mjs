@@ -24,8 +24,8 @@ export async function resolveContentKey(descriptor, manifest, deps = {}) {
 		return null
 
 	if (type === 'gsh-wrap') {
-		const groupId = descriptor.groupId || manifest.meta?.groupId
-		const fileId = descriptor.fileId || manifest.meta?.fileId
+		const groupId = descriptor.groupId
+		const fileId = descriptor.fileId
 		if (!groupId || !fileId || !descriptor.wrappedKey || !deps.getGroupH) return null
 		const groupKey = await deps.getGroupH(String(groupId), descriptor.keyGeneration)
 		if (!groupKey) return null
@@ -33,8 +33,8 @@ export async function resolveContentKey(descriptor, manifest, deps = {}) {
 	}
 
 	if (type === 'vault-wrap') {
-		const entityHash = descriptor.entityHash || manifest.ownerEntityHash
-		const fileId = descriptor.fileId || manifest.meta?.fileId
+		const entityHash = descriptor.entityHash
+		const fileId = descriptor.fileId
 		if (!entityHash || !fileId || !descriptor.wrappedKey || !deps.getVaultH) return null
 		const vaultKey = await deps.getVaultH(String(entityHash))
 		if (!vaultKey) return null

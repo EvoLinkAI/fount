@@ -3,7 +3,7 @@
  * 【职责】定义 timeSlice_t（某时刻的角色/世界/人格/插件上下文）、chatLogEntry_t（单条消息）、chatMetadata_t（会话容器）；提供 JSON/磁盘 toData/fromJSON 与 StartNewAs 默认部件装配。
  * 【原理】timeSlice 运行时持有部件 API 引用，持久化仅存 ID 列表；chatLogEntry 文件 buffer 在 toJSON 中转 base64、在 toData 中落为 file: 句柄；chatMetadata 正文 chatLog 由 DAG 水合，磁盘只保留 greetingLog 与 persistedTimeSlice。
  * 【数据结构】timeSlice_t、chatLogEntry_t（id/role/content/timeSlice/files/extension/is_generating）、chatMetadata_t（username/chatLog/timeLines/LastTimeSlice）。
- * 【关联】parts_loader、files.mjs、runtime.buildTimeSliceFromSession、dag/hydration。
+ * 【关联】parts_loader、entity/files/evfs、runtime.buildTimeSliceFromSession、dag/hydration。
  */
 /** @typedef {import('../../../../../../../decl/charAPI.ts').CharAPI_t} CharAPI_t */
 /** @typedef {import('../../../../../../../decl/worldAPI.ts').WorldAPI_t} WorldAPI_t */

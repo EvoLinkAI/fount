@@ -12,7 +12,7 @@ import { listLocalAgentEntities } from './entityResolve.mjs'
  * @returns {Promise<{ suggestions: object[] }>} @ 提及候选
  */
 export async function suggestMentions(username, query = '', limit = 20) {
-	const normalizedQuery = String(query || '').trim().toLowerCase()
+	const normalizedQuery = query.trim().toLowerCase()
 	/** @type {object[]} */
 	const suggestions = []
 	const seen = new Set()
@@ -23,7 +23,7 @@ export async function suggestMentions(username, query = '', limit = 20) {
 	 * @returns {void}
 	 */
 	function pushSuggestion(suggestion) {
-		const entityHash = String(suggestion.entityHash || '').toLowerCase()
+		const entityHash = suggestion.entityHash.toLowerCase()
 		if (!entityHash || seen.has(entityHash)) return
 		if (normalizedQuery && !entityHash.includes(normalizedQuery)
 			&& !String(suggestion.displayName || '').toLowerCase().includes(normalizedQuery)
@@ -38,7 +38,7 @@ export async function suggestMentions(username, query = '', limit = 20) {
 		const profile = await getEntityProfile(username, selfEntityHash)
 		pushSuggestion({
 			entityHash: selfEntityHash,
-			displayName: profile?.displayName || profile?.name || selfEntityHash.slice(0, 8),
+			displayName: profile?.name || selfEntityHash.slice(0, 8),
 			kind: 'self',
 		})
 	}
@@ -48,7 +48,7 @@ export async function suggestMentions(username, query = '', limit = 20) {
 		const profile = await getEntityProfile(username, entityHash)
 		pushSuggestion({
 			entityHash,
-			displayName: profile?.displayName || profile?.name || `${entityHash.slice(0, 8)}…`,
+			displayName: profile?.name || `${entityHash.slice(0, 8)}…`,
 			kind: 'following',
 		})
 	}
@@ -57,11 +57,11 @@ export async function suggestMentions(username, query = '', limit = 20) {
 		const profile = await getEntityProfile(username, entityHash)
 		pushSuggestion({
 			entityHash,
-			displayName: profile?.displayName || profile?.name || charPartName,
+			displayName: profile?.name || charPartName,
 			charPartName,
 			kind: 'agent',
 		})
 	}
 
-	return { suggestions: suggestions.slice(0, Math.min(Math.max(limit, 1), 50)) }
+	return { suggestions: suggestions.slice(0, Math.min(50, Math.max(1, limit))) }
 }

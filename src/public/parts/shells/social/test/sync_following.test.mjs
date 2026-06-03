@@ -18,4 +18,5 @@ Deno.test('follower index lives in p2p social layer', async () => {
 	assert(text.includes('listReplicaUsernamesFollowing'))
 	assert(text.includes('follower_index'))
 	assert(text.includes('followerEntryCache'))
+	assert(!text.includes('legacyPath'))
 })

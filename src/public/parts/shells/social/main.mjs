@@ -30,7 +30,7 @@ async function handleTimelinePut(username, data) {
 	if (!parseEntityHash(entityHash)) throw new Error('invalid_timeline_put')
 	if (!await ingestRemoteTimelineEvent(username, entityHash, data.event))
 		throw new Error('ingest_failed')
-	return { ok: true }
+	return { result: { ok: true } }
 }
 
 /**
@@ -43,7 +43,7 @@ async function handleSocialRpcInvoke(username, data, ingress) {
 	const { kind, ...rpc } = data
 	const body = await handleSocialRpc(username, rpc, ingress)
 	if (!body) throw new Error('unknown_rpc')
-	return body
+	return { result: body }
 }
 
 /** @type {Record<string, (username: string, data: object, ingress?: object) => Promise<object>>} */
@@ -97,7 +97,7 @@ export default {
 			 * @returns {Promise<object | null>} 响应体
 			 */
 			P2PInvokeHandler: async (username, data, ingress = {}) => {
-				const handler = p2pInvokeHandlers[String(data?.kind || '')]
+				const handler = p2pInvokeHandlers[data.kind]
 				return handler ? handler(username, data, ingress) : null
 			},
 		},

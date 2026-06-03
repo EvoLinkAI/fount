@@ -26,7 +26,7 @@ import { getState } from './materialize.mjs'
  */
 function entryContentToMirrorText(entry) {
 	const { content } = entry
-	return content?.text || content || channelMessageAgentText(content) || ''
+	return content?.text || channelMessageAgentText(content) || ''
 }
 
 /**
@@ -233,7 +233,6 @@ export async function syncChatLogEntryToDag(groupId, entry, username) {
 		if (!text.trim() && !hasFiles) return
 		const { channelIdForDag, sender, timestamp, charId } = await resolveMirrorContext(entry, username, groupId)
 		const content = await buildFinalMessageContent(username, groupId, entry, text, sender)
-		if (charId) content.charId = charId
 		content.sessionSnapshot = await exportSessionSnapshot(username, groupId, channelIdForDag)
 		const event = await appendSignedLocalEvent(username, groupId, {
 			type: 'message',

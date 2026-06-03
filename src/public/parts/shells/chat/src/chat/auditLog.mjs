@@ -1,7 +1,7 @@
 /**
  * 【文件】src/chat/auditLog.mjs
  * 【职责】为群管理 UI 提供「审计日志」分页查询：从本地 DAG 事件中筛选治理/ moderation 类事件并格式化为 i18n 友好条目。
- * 【原理】readJsonl 加载全量事件 → topologicalCanonicalOrder 拓扑排序 → authzFoldOrderIds 只保留当前治理分支（authzBranchTip）
+ * 【原理】readJsonl 加载全量事件 → topologicalCanonicalOrder 拓扑排序 → authzFoldOrderIds 只保留当前治理分支（consensusBranchTip）
  *   → 过滤 AUDIT_LOG_EVENT_TYPES → 逆序（新→旧）分页。auditEventParams 从物化 state 解析频道名、角色名等展示字段。
  * 【数据结构】条目 { id, type, sender, at, channelId, params }；查询 q 支持 before 游标、offset/limit、types 过滤；默认 limit 50、上限 200。
  * 【关联】group 路由或 endpoints 调用 listAuditLogEntries；依赖 dag/materialize、dag/storage、p2p/governance_branch。
@@ -34,34 +34,31 @@ const MAX_LIMIT = 200
  * @returns {Record<string, string | number | boolean>} i18n 插值参数
  */
 function auditEventParams(event, state) {
-	const content = event?.content || {}
-	const channels = state.channels || {}
-	const roles = state.roles || {}
-	const channelId = String(content.channelId || event.channelId || '').trim()
-	const channelName = channelId ? channels[channelId]?.name || channelId : ''
-	const roleId = String(content.roleId || content.updates?.roleId || '').trim()
-	const roleName = roleId ? roles[roleId]?.name || roleId : ''
-	const target = String(
+	const content = event.content || {}
+	const channelId = content.channelId || event.channelId || ''
+	const roleId = content.roleId || ''
+	const target = (
 		content.targetPubKeyHash
-		|| content.pubKeyHash
-		|| content.target
 		|| content.to
-		|| '',
-	).trim().toLowerCase()
-	const fileName = String(content.name || content.fileName || content.fileId || '').trim()
-	const targetEventId = String(content.targetEventId || content.eventId || '').trim()
-	const claim = Number(content.claim)
+		|| content.targetEntityHash
+		|| content.targetId
+		|| ''
+	).toLowerCase()
+	const targetEventId = content.targetId || ''
+	const claim = content.claim
 	return {
 		channelId,
-		channelName,
+		channelName: channelId ? state.channels[channelId]?.name || channelId : '',
 		roleId,
-		roleName,
+		roleName: roleId ? state.roles[roleId]?.name || roleId : '',
 		target,
-		fileName,
-		targetEventId: targetEventId ? targetEventId.slice(0, 12) + '…' : '',
+		fileName: content.name || content.fileId || '',
+		targetEventId: targetEventId ? `${targetEventId.slice(0, 12)}…` : '',
 		claim: Number.isFinite(claim) ? claim : '',
-		name: String(content.name || content.updates?.name || state.groupMeta?.name || '').trim(),
-		joinPolicy: String(content.joinPolicy || content.updates?.joinPolicy || '').trim(),
+		name: event.type === 'channel_update'
+			? content.updates?.name || ''
+			: content.name || state.groupMeta?.name || '',
+		joinPolicy: content.joinPolicy || '',
 	}
 }
 
@@ -74,9 +71,9 @@ function toAuditEntry(event, state) {
 	return {
 		id: event.id,
 		type: event.type,
-		sender: String(event.sender || '').trim().toLowerCase(),
-		at: Number(event.hlc?.wall ?? event.timestamp ?? 0),
-		channelId: event.channelId || event.content?.channelId || null,
+		sender: (event.sender || '').toLowerCase(),
+		at: event.hlc?.wall ?? 0,
+		channelId: event.channelId || null,
 		params: auditEventParams(event, state),
 	}
 }
@@ -99,9 +96,9 @@ async function buildAuditRows(username, groupId, types) {
 		sender: event.sender,
 	})))
 	const byId = new Map(events.map(event => [event.id, event]))
-	const branchTip = state.authzBranchTip ?? null
+	const branchTip = state.consensusBranchTip ?? null
 	const foldedIds = authzFoldOrderIds(order, byId, branchTip)
-	const typeFilter = types?.length ? new Set(types.map(typeName => String(typeName).trim()).filter(Boolean)) : null
+	const typeFilter = types?.length ? new Set(types) : null
 	const rows = foldedIds
 		.map(id => byId.get(id))
 		.filter(event => event && AUDIT_LOG_EVENT_TYPES.has(event.type))
@@ -136,10 +133,10 @@ export async function listAuditLogEntries(username, groupId, q = {}) {
 	}
 
 	let work = rows
-	const before = String(q.before || '').trim().toLowerCase()
+	const before = (q.before || '').toLowerCase()
 	if (before) {
-		const idx = work.findIndex(event => String(event.id).toLowerCase() === before)
-		work = idx === -1 ? [] : work.slice(idx + 1)
+		const index = work.findIndex(event => event.id.toLowerCase() === before)
+		work = index === -1 ? [] : work.slice(index + 1)
 	}
 
 	const limit = Math.min(Math.max(Number(q.limit) || DEFAULT_LIMIT, 1), MAX_LIMIT)

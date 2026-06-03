@@ -267,7 +267,7 @@ export function adminPubKeyHashes(state) {
 	const out = new Set()
 	for (const [key, member] of Object.entries(state.members)) {
 		if (member?.status !== 'active') continue
-		const hash = member.pubKeyHash || key
+		const hash = key
 		for (const roleId of member.roles || [])
 			if (state.roles[roleId]?.permissions?.ADMIN) {
 				out.add(hash)
@@ -286,7 +286,7 @@ export function manageAdminsPubKeyHashes(state) {
 	const out = new Set()
 	for (const [key, member] of Object.entries(state.members)) {
 		if (member?.status !== 'active') continue
-		const hash = String(member.pubKeyHash || key).trim().toLowerCase()
+		const hash = key
 		if (!isHex64(hash)) continue
 		for (const roleId of member.roles || [])
 			if (state.roles[roleId]?.permissions?.MANAGE_ADMINS) {

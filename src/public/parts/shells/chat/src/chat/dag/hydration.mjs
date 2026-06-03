@@ -58,10 +58,10 @@ export async function buildChatLogEntriesFromChannelLines(lines, baseSlice, i18n
 	for (const line of lines) {
 		if (line.type === 'message_delete' && line.content?.targetId)
 			deleted.add(line.content.targetId)
-		if (line.type === 'message_edit' && line.content?.targetId) {
+		if (line.type === 'message_edit' && line.content?.targetId && line.content?.newContent) {
 			const messageEventId = line.content.targetId
 			const editedAt = Number(line.timestamp) || 0
-			const patch = line.content.newContent || line.content
+			const patch = line.content.newContent
 			const previous = edits.get(messageEventId)
 			if (!previous || editedAt >= previous.editedAt)
 				edits.set(messageEventId, {
@@ -177,7 +177,7 @@ async function buildChatLogEntryFromDagMessage(
 		if (edit && edit !== entry.content) entry.content_for_edit = edit
 	}
 	entry.role = content.role || 'user'
-	const charId = line.charId || content.charId
+	const charId = line.charId
 	const snapshot = content.sessionSnapshot
 	const channelForSnapshot = resolveChannelId(sourceChannelId, resolveChannelId(line.channelId))
 	let slice = baseSlice.copy()
@@ -197,7 +197,7 @@ async function buildChatLogEntryFromDagMessage(
 		entry.name = line.sender || entry.role || 'system'
 		entry.timeSlice = slice.copy()
 	}
-	entry.time_stamp = new Date(line.timestamp ?? Date.now()).toISOString()
+	entry.time_stamp = new Date(line.hlc?.wall ?? Date.now()).toISOString()
 	const fileCount = editOverride?.fileCount != null ? editOverride.fileCount : content.fileCount
 	if (fileCount != null) entry.extension = { ...entry.extension, dagFileCount: fileCount }
 	if (content.visibility) entry.visibility = content.visibility

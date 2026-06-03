@@ -29,13 +29,13 @@ import {
  * @param {string} username 所有者
  * @param {string} groupId 群 ID
  * @param {Buffer} buffer 文件字节
- * @param {{ name?: string, mime_type?: string, mimeType?: string }} file 元数据
+ * @param {{ name?: string, mime_type?: string }} file 元数据
  * @returns {Promise<{ fileId: string, uploadMeta: object, inlineImageUrl: string | null }>} 上传结果
  */
 async function uploadPlainFileToGroup(username, groupId, buffer, file) {
 	const fileId = randomUUID()
 	const name = String(file.name || 'file').slice(0, 255)
-	const mimeType = String(file.mime_type || file.mimeType || 'application/octet-stream')
+	const mimeType = String(file.mime_type || 'application/octet-stream')
 	const contentHash = createHash('sha256').update(buffer).digest('hex')
 	const hEntry = await getCurrentH(username, groupId)
 	const keyGen = hEntry?.generation
@@ -144,17 +144,16 @@ function normalizeChannelMessageContent(content, maxBytes) {
 		return normalized
 	}
 	if (normalized.type === 'group_invite') {
-		const groupIdInvite = String(normalized.groupId || '').trim()
-		if (!groupIdInvite) throw new Error('group_invite requires groupId')
+		if (!normalized.groupId) throw new Error('group_invite requires groupId')
 		return {
 			type: 'group_invite',
-			groupId: groupIdInvite,
-			inviteCode: String(normalized.inviteCode || '').trim(),
-			groupName: String(normalized.groupName || '').slice(0, 100),
-			description: String(normalized.description ?? '').slice(0, 200),
-			memberCount: Number.isFinite(normalized.memberCount)
-				? Math.max(0, Math.floor(Number(normalized.memberCount)))
-				: undefined,
+			groupId: normalized.groupId,
+			inviteCode: normalized.inviteCode || '',
+			groupName: (normalized.groupName || '').slice(0, 100),
+			description: (normalized.description ?? '').slice(0, 200),
+			...normalized.memberCount != null && {
+				memberCount: Math.max(0, Math.floor(normalized.memberCount)),
+			},
 		}
 	}
 	return normalized
@@ -181,12 +180,9 @@ export async function postChannelMessage(username, groupId, channelId, payload =
 	const files = Array.isArray(payload.files) ? payload.files : []
 
 	for (const file of files) {
-		if (typeof file.buffer === 'string' && parseEvfsRef(file.buffer))
+		if (parseEvfsRef(file.buffer))
 			continue
-		
-		const buffer = file.buffer instanceof Buffer
-			? file.buffer
-			: Buffer.from(String(file.buffer), 'base64')
+		const buffer = Buffer.isBuffer(file.buffer) ? file.buffer : Buffer.from(file.buffer, 'base64')
 		if (!buffer.byteLength) continue
 		const { fileId, inlineImageUrl } = await uploadPlainFileToGroup(username, groupId, buffer, file)
 		fileIds.push(fileId)
@@ -211,15 +207,13 @@ export async function postChannelMessage(username, groupId, channelId, payload =
 
 	const textParts = [baseText, ...inlineMarkers].filter(Boolean)
 	if (textParts.length) {
-		const joined = textParts.join('\n')
-		const prev = channelMessageContentObject(content)
-		/** @type {Record<string, unknown>} */
-		const extra = { ...prev }
-		for (const k of ['type', 'content', 'content_for_show', 'content_for_edit'])
-			delete extra[k]
-		content = textChannelContent(joined, {
-			content_for_show: prev.content_for_show,
-			content_for_edit: prev.content_for_edit,
+		const previousContent = channelMessageContentObject(content)
+		const extra = { ...previousContent }
+		for (const key of ['type', 'content', 'content_for_show', 'content_for_edit'])
+			delete extra[key]
+		content = textChannelContent(textParts.join('\n'), {
+			content_for_show: previousContent.content_for_show,
+			content_for_edit: previousContent.content_for_edit,
 			...extra,
 		})
 	}
@@ -250,7 +244,7 @@ export async function postChannelMessage(username, groupId, channelId, payload =
 async function maybeDispatchMailboxForOfflinePeer(username, groupId, signedEvent) {
 	const { getState } = await import('../dag/materialize.mjs')
 	const { state } = await getState(username, groupId)
-	const meta = state.groupMeta || {}
+	const meta = state.groupMeta
 	if (meta.dmKind !== 'ecdh') return
 	const peerPub = String(meta.dmPeerPubKeyHex || '').trim().toLowerCase()
 	if (!peerPub) return

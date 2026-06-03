@@ -2,7 +2,7 @@
  * 【文件】src/chat/rpcDispatcher.mjs
  * 【职责】在群 WebSocket RPC 通道上，将远程 memberId 映射到本节点已加载的 Char/World part 并执行对应 interfaces 方法。
  * 【原理】createCharRpcDispatcher 经 getActiveGroupRuntime 与 getCharBind 判定是否本地；支持嵌套路径 method、GetReply 的 serializableRequest 转 triggerCharReply、以及 UpdateInfo/GetPrompt/onMessage 等固定分支；结果统一为 `{ kind: result|not_local|method_not_found|error }` 供 groupWsHub 回写 WS。
- * 【数据结构】memberId（`owner:char` 或 charname）、method/args、chatMetadata.LastTimeSlice.chars、RPC kind 判别联合类型、normalizeRpcErrorCode 错误码表。
+ * 【数据结构】memberId（`owner:charname`）、method/args、chatMetadata.LastTimeSlice.chars、RPC kind 判别联合类型、normalizeRpcErrorCode 错误码表。
  * 【关联】被 session.mjs 导出 tryInvokeLocal*；被 chat/stream/groupWsHub 调用；依赖 session/dagSession、session/runtime、session/generation。
  */
 import { loadPart } from '../../../../../../server/parts_loader.mjs'
@@ -66,7 +66,7 @@ export function createCharRpcDispatcher(getActiveGroupRuntime, getChatRequest) {
 	 * 尝试在本节点群会话上调用指定 `memberId` 对应角色的 Char 方法（用于 WS RPC）。
 	 *
 	 * @param {string} groupId 群组 id
-	 * @param {string} memberId `username:charname` 或纯 `charname`（后者视为群主用户下的角色）
+	 * @param {string} memberId `username:charname`
 	 * @param {string} method 方法名（如 `GetReply`、`GetPrompt`）
 	 * @param {unknown[]} [args] 已 JSON 反序列化的参数表
 	 * @returns {Promise<{ kind: 'result', value: unknown } | { kind: 'not_local' } | { kind: 'method_not_found' } | { kind: 'error', message: string, code: string }>} RPC 分发结果
@@ -88,12 +88,10 @@ export function createCharRpcDispatcher(getActiveGroupRuntime, getChatRequest) {
 		if (!chatMetadata) return { kind: 'not_local' }
 
 		const owner = chatMetadata.username
-		let charname = memberId
-		if (memberId.includes(':')) {
-			const colon = memberId.indexOf(':')
-			if (memberId.slice(0, colon) !== owner) return { kind: 'not_local' }
-			charname = memberId.slice(colon + 1)
-		}
+		const colon = memberId.indexOf(':')
+		if (colon < 0) return { kind: 'not_local' }
+		if (memberId.slice(0, colon) !== owner) return { kind: 'not_local' }
+		const charname = memberId.slice(colon + 1)
 
 		let char = chatMetadata.LastTimeSlice.chars[charname]
 		if (!char) {

@@ -135,12 +135,12 @@ export async function putCiphertextBlob(username, ciphertextHashHex, raw) {
 /**
  * 读取密文块。
  * @param {string} username 用户
- * @param {string} locator `blob:{hash}` 或裸 hash
+ * @param {string} locator `blob:{hash}`
  * @returns {Promise<Buffer>} 密文原始字节
  */
 export async function getCiphertextBlob(username, locator) {
-	const m = String(locator || '').match(BLOB_STORAGE_LOCATOR_RE) || [null, locator]
-	const h = String(m[1] || '').trim().toLowerCase()
+	const m = String(locator || '').match(BLOB_STORAGE_LOCATOR_RE)
+	const h = String(m?.[1] || '').trim().toLowerCase()
 	if (!isHex64(h)) throw new Error('invalid blob locator')
 	return Buffer.from(await readFile(blobPath(username, h)))
 }
@@ -179,12 +179,12 @@ export async function getPlaintextCache(username, contentHashHex) {
 /**
  * 释放密文块引用；归零时物理删除（§10.4，仅本节点）。
  * @param {string} username 用户
- * @param {string} locator `blob:{hash}` 或裸 hash
+ * @param {string} locator `blob:{hash}`
  * @returns {Promise<boolean>} 是否已物理删除
  */
 export async function releaseCiphertextBlob(username, locator) {
-	const m = String(locator || '').match(BLOB_STORAGE_LOCATOR_RE) || [null, locator]
-	const h = String(m[1] || '').trim().toLowerCase()
+	const m = String(locator || '').match(BLOB_STORAGE_LOCATOR_RE)
+	const h = String(m?.[1] || '').trim().toLowerCase()
 	if (!isHex64(h)) return false
 	const refs = await loadBlobRefcounts(username)
 	const next = Math.max(0, (refs[h] || 0) - 1)

@@ -1,5 +1,6 @@
 import { MEMBERS_PAGE_SIZE } from '../../constants.mjs'
 import { merkleRoot } from '../../dag/index.mjs'
+import { isEntityHash128 } from '../../entity_id.mjs'
 import { isHex64 } from '../../hexIds.mjs'
 import { sanitizeIceServersForSettings } from '../../ice_servers.mjs'
 
@@ -8,7 +9,7 @@ import { sanitizeIceServersForSettings } from '../../ice_servers.mjs'
  * @returns {void}
  */
 export function refreshMembersDigest(state) {
-	const activeKeys = Object.entries(state.members || {})
+	const activeKeys = Object.entries(state.members)
 		.filter(([, member]) => member?.status === 'active')
 		.map(([memberKey]) => memberKey)
 		.sort()
@@ -53,13 +54,10 @@ export function recordGshRotation(state, event, rotationType, extra = {}) {
  * @returns {boolean} 是否应拒绝该成员加入
  */
 export function isJoinBanned(state, sender, joinContent = {}) {
-	if (state.bannedMembers?.has?.(sender)) return true
-	const home = joinContent.homeNodeHash || state.members?.[sender]?.homeNodeHash
-	if (home && isHex64(home)) {
-		if (state.bannedNodes?.has?.(home)) return true
-		if (state.bannedEntities?.has?.(`${home}${sender}`)) return true
-	}
-	return false
+	if (state.bannedMembers.has(sender)) return true
+	const home = joinContent.homeNodeHash
+	if (!isHex64(home)) return false
+	return state.bannedNodes.has(home) || state.bannedEntities.has(`${home}${sender}`)
 }
 
 /**
@@ -68,11 +66,10 @@ export function isJoinBanned(state, sender, joinContent = {}) {
  * @returns {void}
  */
 export function applyBanContent(state, content) {
-	if (content?.targetPubKeyHash) state.bannedMembers.add(content.targetPubKeyHash)
-	const entity = content?.targetEntityHash
-	if (entity && /^[\da-f]{128}$/u.test(entity)) state.bannedEntities.add(entity)
-	const node = content?.targetNodeHash
-	if (node && isHex64(node)) state.bannedNodes.add(node)
+	if (content.targetPubKeyHash) state.bannedMembers.add(content.targetPubKeyHash)
+	const entityHash = content.targetEntityHash?.toLowerCase()
+	if (isEntityHash128(entityHash)) state.bannedEntities.add(entityHash)
+	if (isHex64(content.targetNodeHash)) state.bannedNodes.add(content.targetNodeHash)
 }
 
 /**
@@ -81,10 +78,9 @@ export function applyBanContent(state, content) {
  * @returns {void}
  */
 export function clearBanForMember(state, targetPubKeyHash) {
-	if (!targetPubKeyHash) return
 	state.bannedMembers.delete(targetPubKeyHash)
-	const home = state.members?.[targetPubKeyHash]?.homeNodeHash
-	if (home && isHex64(home)) {
+	const home = state.members[targetPubKeyHash]?.homeNodeHash
+	if (isHex64(home)) {
 		state.bannedNodes.delete(home)
 		state.bannedEntities.delete(`${home}${targetPubKeyHash}`)
 	}

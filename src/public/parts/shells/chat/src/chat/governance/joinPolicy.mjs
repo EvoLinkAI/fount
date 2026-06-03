@@ -18,12 +18,12 @@ export function validateJoinPolicy(state, event, replicaUsername) {
 	if (event?.type !== 'member_join') return
 	const joinPolicy = state.groupSettings?.joinPolicy || 'invite-only'
 	const content = event.content || {}
-	const activeBefore = Object.values(state.members || {}).filter(member => member?.status === 'active').length
+	const activeBefore = Object.values(state.members).filter(groupMember => groupMember?.status === 'active').length
 	if (Array.isArray(content.roles)) {
 		if (activeBefore > 0) throw new Error('member_join roles only allowed for genesis join')
 		for (const roleId of content.roles) {
 			if (roleId === '@everyone') continue
-			if (!state.roles?.[roleId]) throw new Error(`member_join unknown role: ${roleId}`)
+			if (!state.roles[roleId]) throw new Error(`member_join unknown role: ${roleId}`)
 		}
 	}
 	if (joinPolicy === 'invite-only' && !content.inviteCode && activeBefore > 0)

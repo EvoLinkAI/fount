@@ -26,7 +26,7 @@ import { getTimelineMaterialized } from './timeline/materialize.mjs'
  * @returns {Promise<{ query: string, items: object[] }>} 搜索结果
  */
 export async function searchPosts(username, options = {}) {
-	const query = String(options.q || '').trim()
+	const query = (options.q || '').trim()
 	const limit = Math.min(Math.max(Number(options.limit) || 30, 1), 100)
 	if (query.length < 2)
 		return { query, items: [] }
@@ -36,7 +36,7 @@ export async function searchPosts(username, options = {}) {
 	const viewerLiked = await buildViewerLikedSet(username)
 	const authorProfile = createAuthorProfileLoader(username)
 	const engagementForPost = createEngagementForPost(engagement, viewerLiked)
-	const itemCtx = { authorProfile, engagementForPost }
+	const feedItemBuildContext = { authorProfile, engagementForPost }
 
 	/** @type {object[]} */
 	const items = []
@@ -47,12 +47,10 @@ export async function searchPosts(username, options = {}) {
 		if (!view.posts?.length) continue
 		for (const post of view.posts) {
 			if (!postMatchesQuery(post, query)) continue
-			const enriched = { ...post, entityHash, senderEntityHash: entityHash }
+			const enriched = { ...post, entityHash }
 			if (!canViewPost(enriched, viewerContext.viewerEntityHash, viewerContext.blocked, viewerContext.following))
 				continue
-			const item = await buildPostFeedItem(username, entityHash, post, itemCtx)
-			if (!postMatchesQuery({ ...item.post, entityHash }, query)) continue
-			items.push(item)
+			items.push(await buildPostFeedItem(username, entityHash, post, feedItemBuildContext))
 		}
 	}
 

@@ -35,11 +35,8 @@ function pruneBucket(bucket, windowMs, now = Date.now()) {
 function groupBucket(username, groupId) {
 	const key = `${username}:${groupId}`
 	let bucket = bucketsByGroup.get(key)
-	if (!bucket) {
-		bucket = new Map()
-		bucketsByGroup.touch(key, bucket)
-	}
-	else bucketsByGroup.touch(key, bucket)
+	bucket ??= new Map()
+	bucketsByGroup.touch(key, bucket)
 	return bucket
 }
 
@@ -53,7 +50,7 @@ export function recordMessageRate(username, groupId, event) {
 	if (event?.type !== 'message') return
 	const entityKey = messageRateEntityKey(event)
 	if (!entityKey) return
-	const wall = Number(event.hlc?.wall ?? event.timestamp ?? Date.now())
+	const wall = Number(event.hlc?.wall ?? Date.now())
 	const bucket = groupBucket(username, groupId)
 	const times = bucket.get(entityKey) || []
 	times.push(wall)
@@ -73,7 +70,7 @@ export function checkMessageRateLimitMemory(username, groupId, state, event) {
 	const entityKey = messageRateEntityKey(event)
 	if (!entityKey) return { ok: false, reason: 'missing sender' }
 
-	const { perMin, windowMs } = resolveMessageRateLimits(state.groupSettings || {})
+	const { perMin, windowMs } = resolveMessageRateLimits(state.groupSettings)
 	const now = Date.now()
 	const bucket = groupBucket(username, groupId)
 	const times = (bucket.get(entityKey) || []).filter(t => now - t <= windowMs)

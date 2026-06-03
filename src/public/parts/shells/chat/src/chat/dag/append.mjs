@@ -46,6 +46,7 @@ const BATTERY_SAVER_BLOCKED_LOCAL_TYPES = new Set([
  * @returns {Promise<object>} 写入后的完整签名载荷对象
  */
 export async function appendEvent(username, groupId, event, secretKey) {
+	if (!secretKey) throw new Error('appendEvent requires secretKey')
 	const { state } = await getState(username, groupId)
 
 	if (BATTERY_SAVER_BLOCKED_LOCAL_TYPES.has(event.type) && state.groupSettings?.batterySaver)
@@ -68,22 +69,19 @@ export async function appendEvent(username, groupId, event, secretKey) {
 	}
 	const body = unsignedEventFields(base)
 	const id = computeEventId(body)
-	const signPayload = { ...body, id, signature: '' }
-	if (secretKey) {
-		const signature = await sign(signPayloadBytes(body), secretKey)
-		signPayload.signature = Buffer.from(signature).toString('hex')
-		signPayload.senderPubKey = Buffer.from(publicKeyFromSeed(secretKey)).toString('hex')
-	}
-	else {
-		signPayload.signature = event.signature || ''
-		if (event.senderPubKey) signPayload.senderPubKey = event.senderPubKey
+	const signature = await sign(signPayloadBytes(body), secretKey)
+	const signPayload = {
+		...body,
+		id,
+		signature: Buffer.from(signature).toString('hex'),
+		senderPubKey: Buffer.from(publicKeyFromSeed(secretKey)).toString('hex'),
 	}
 
 	const maxSkewMs = resolveHlcMaxSkewMs(state)
 	const hlcAction = classifyHlcSkewAction(signPayload, maxSkewMs, { source: 'local' })
 	if (hlcAction !== 'allow')
 		throw new Error(`event HLC skew too large (${signPayload.type}, max ${maxSkewMs}ms)`)
-	await validateSignature(username, groupId, body, signPayload, event, secretKey, state)
+	await validateSignature(body, signPayload, event, secretKey, state)
 
 	const wirePayload = canonicalizeSignedChatEvent(signPayload)
 	await commitSignedChatEvent(username, groupId, wirePayload, {

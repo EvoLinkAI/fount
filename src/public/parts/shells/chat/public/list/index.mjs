@@ -246,7 +246,7 @@ async function hydrateChatListItem(chatElement, chat) {
 				a.click()
 				URL.revokeObjectURL(url)
 			}
-			else showToast('error', data.error || data.message)
+			else showToast('error', data.error)
 		} catch (error) {
 			console.error('Error exporting chat:', error)
 			showToastI18n('error', 'chat_history.alerts.exportError')

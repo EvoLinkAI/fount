@@ -1,4 +1,4 @@
-import { refreshMembersDigest, withGroupId } from './helpers.mjs'
+import { withGroupId } from './helpers.mjs'
 
 /** @type {Record<string, (state: object, event: object) => object>} */
 export const channelReducers = {
@@ -22,7 +22,6 @@ export const channelReducers = {
 			subRoomId: event.content.subRoomId || null,
 			createdAt: event.timestamp,
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -36,7 +35,6 @@ export const channelReducers = {
 		withGroupId(state, event)
 		if (state.channels[event.content.channelId])
 			Object.assign(state.channels[event.content.channelId], event.content.updates)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -53,7 +51,6 @@ export const channelReducers = {
 		for (const [id, channel] of Object.entries(state.channels))
 			if (channel.parentChannelId === channelId)
 				delete state.channels[id]
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -67,7 +64,6 @@ export const channelReducers = {
 		withGroupId(state, event)
 		if (state.channels[event.channelId])
 			state.channels[event.channelId].manualItems = event.content.items
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -83,10 +79,9 @@ export const channelReducers = {
 		if (!state.channelPermissions[channelId])
 			state.channelPermissions[channelId] = {}
 		state.channelPermissions[channelId][event.content.roleId] = {
-			allow: event.content.allow || {},
-			deny: event.content.deny || {},
+			allow: event.content.allow,
+			deny: event.content.deny,
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 }

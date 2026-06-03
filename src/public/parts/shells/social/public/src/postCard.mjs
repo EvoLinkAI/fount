@@ -40,7 +40,7 @@ export function createPostCardBuilder(deps) {
 		const originalAuthor = isRepost ? item.targetEntityHash : item.entityHash
 		const protectedLabel = geti18n('social.profile.protectedPost')
 		const text = item.post?.content?.text || (item.post?.content?.protected ? protectedLabel : '')
-		const contentAuthor = isRepost ? originalAuthor : item.post?.sender || item.entityHash
+		const contentAuthor = isRepost ? originalAuthor : item.entityHash
 		const html = item.post?.content?.protected
 			? `<em>${protectedLabel}</em>`
 			: await renderMarkdown(text, contentAuthor)

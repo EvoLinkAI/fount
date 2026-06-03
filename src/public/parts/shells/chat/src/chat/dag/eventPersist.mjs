@@ -51,44 +51,36 @@ function slashTargetPubKeyHash(signPayload) {
  * @returns {Promise<void>}
  */
 async function applyReputationHooks(username, groupId, signPayload) {
-	if (!signPayload?.type) return
+	if (!signPayload.type) return
+
+	/**
+	 *
+	 */
+	const decayAfterSlash = async () => {
+		const target = slashTargetPubKeyHash(signPayload)
+		if (!target) return
+		const { state } = await getState(username, groupId)
+		await applyDecayCollusionAfterSlash(username, target, state.inviteEdges)
+	}
 
 	if (signPayload.type === 'reputation_slash') {
 		await applySubjectiveSlashFromEvent(username, groupId, signPayload, async (u, g) => readJsonl(eventsPath(u, g), { sanitize: sanitizeFederatedEvent }))
-		const target = slashTargetPubKeyHash(signPayload)
-		if (target) {
-			const { state } = await getState(username, groupId)
-			await applyDecayCollusionAfterSlash(username, target, state.inviteEdges || [])
-		}
+		await decayAfterSlash()
 	}
-	if (signPayload.type === 'member_kick' || signPayload.type === 'member_ban') {
-		const target = slashTargetPubKeyHash(signPayload)
-		if (target) {
-			const { state } = await getState(username, groupId)
-			await applyDecayCollusionAfterSlash(username, target, state.inviteEdges || [])
-		}
-	}
-	if (signPayload.type === 'reputation_reset') {
+	else if (['member_kick', 'member_ban'].includes(signPayload.type))
+		await decayAfterSlash()
+	else if (signPayload.type === 'reputation_reset') {
 		const target = slashTargetPubKeyHash(signPayload)
 		if (target) await applyReputationResetToScores(username, target)
 	}
 	if (signPayload.type === 'member_join') {
 		const sender = signPayload.sender.trim().toLowerCase()
 		const { state } = await getState(username, groupId)
-		const joinContent = signPayload.content || {}
-		let introducer = joinContent.introducerPubKeyHash?.trim().toLowerCase() || ''
-		let repEdge = 1
-		for (const edge of [...state.inviteEdges || []].reverse())
-			if (edge.to?.trim().toLowerCase() === sender) {
-				introducer = edge.from?.trim().toLowerCase() || ''
-				if (Number.isFinite(edge.reputationEdge)) repEdge = edge.reputationEdge
-				break
-			}
-
-		const fromMember = state.members?.[sender]
-		const edgeFromJoin = Number.isFinite(fromMember?.repEdgeFromIntroducer)
-			? fromMember.repEdgeFromIntroducer
-			: repEdge
+		const inviteEdge = [...state.inviteEdges].reverse()
+			.find(edge => edge.to.trim().toLowerCase() === sender)
+		const introducer = signPayload.content?.introducerPubKeyHash?.trim().toLowerCase() || ''
+		const repEdge = Number.isFinite(inviteEdge?.reputationEdge) ? inviteEdge.reputationEdge : 1
+		const edgeFromJoin = state.members[sender]?.repEdgeFromIntroducer ?? repEdge
 		await seedMemberReputationFromIntroducer(username, sender, introducer, edgeFromJoin)
 	}
 }
@@ -102,40 +94,21 @@ async function applyReputationHooks(username, groupId, signPayload) {
  * @returns {Promise<void>}
  */
 export async function broadcastAndPersist(username, groupId, signPayload, persistOpts = {}) {
-	if (signPayload.type === 'file_delete' && signPayload.content?.fileId)
-		try {
-			const { state } = await getState(username, groupId)
-			await releaseFileChunksAfterDelete(username, groupId, String(signPayload.content.fileId), state)
-		}
-		catch (error) {
-			console.error('file_delete gc failed', error)
-		}
+	if (signPayload.type === 'file_delete' && signPayload.content?.fileId) {
+		const { state } = await getState(username, groupId)
+		await releaseFileChunksAfterDelete(username, groupId, String(signPayload.content.fileId), state)
+	}
 
 	const roomKey = groupWsRoomKeyForReplica(username, groupId)
 	broadcastEvent(roomKey, { type: 'dag_event', event: signPayload })
-	try {
-		await applyReputationHooks(username, groupId, signPayload)
-	}
-	catch (error) {
-		console.error('reputation hooks failed', error)
-	}
-	try {
-		await applyGshRotationFromEvent(username, groupId, signPayload)
-	}
-	catch (error) {
-		console.error('gsh rotation hook failed', error)
-	}
-	try {
-		await tryImportHFromPeerInvite(username, groupId, signPayload)
-	}
-	catch (error) {
-		console.error('peer_invite GSH import failed', error)
-	}
+	await applyReputationHooks(username, groupId, signPayload)
+	await applyGshRotationFromEvent(username, groupId, signPayload)
+	await tryImportHFromPeerInvite(username, groupId, signPayload)
 	if (!PERSIST_MESSAGE_TYPES.has(signPayload.type)) {
 		await rebuildAndSaveCheckpoint(username, groupId, { ...persistOpts, skipChannelGc: true })
 		return
 	}
-	const channelId = signPayload.channelId || signPayload.content?.channelId || 'default'
+	const channelId = signPayload.channelId || 'default'
 	const storedContent = signPayload.content
 	let displayContent = storedContent
 	let sidecarContent = storedContent

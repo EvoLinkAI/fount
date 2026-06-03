@@ -88,7 +88,7 @@ export async function resolveGroupMqttCredentials(username, groupId, partitionId
 			password: override.mqttRoomSecret,
 			roomId,
 			source,
-			partitionId: partitionId || '',
+			partitionId,
 		}
 	}
 
@@ -100,7 +100,7 @@ export async function resolveGroupMqttCredentials(username, groupId, partitionId
 			password: fromDag.mqttRoomSecret,
 			roomId,
 			source: 'dag',
-			partitionId: partitionId || '',
+			partitionId,
 		}
 	}
 
@@ -111,7 +111,7 @@ export async function resolveGroupMqttCredentials(username, groupId, partitionId
 			password: bootstrap.mqttRoomSecret,
 			roomId,
 			source: 'bootstrap',
-			partitionId: partitionId || '',
+			partitionId,
 		}
 
 	throw new Error(`group ${groupId} has no mqttRoomSecret in settings; use a fresh invite link or rotate room secret`)

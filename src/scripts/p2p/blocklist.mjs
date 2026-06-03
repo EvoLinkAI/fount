@@ -112,28 +112,16 @@ export function normalizeBlocklist(raw) {
 	/** @type {Array<{ scope: BlockScope, value: string, groupId?: string }>} */
 	const blocked = []
 	for (const entry of entries) {
-		const scope = String(entry?.scope || 'subject').trim().toLowerCase()
+		const scope = String(entry?.scope || '').trim().toLowerCase()
+		const value = String(entry?.value || '').trim().toLowerCase()
 		const groupId = String(entry.groupId || '').trim()
-		/**
-		 * @param {BlockScope} s 拉黑范围
-		 * @param {string} value 键值
-		 */
-		const wrap = (s, value) => {
-			if (!value) return
-			blocked.push({ scope: s, value, ...groupId ? { groupId } : {} })
-		}
-		if (scope === 'entity') {
-			const v = String(entry?.entityHash || entry?.value || '').trim().toLowerCase()
-			if (isEntityHash128(v)) wrap('entity', v)
-			continue
-		}
-		if (scope === 'node') {
-			const v = normalizeHex64(entry?.nodeHash || entry?.value)
-			if (isHex64(v)) wrap('node', v)
-			continue
-		}
-		const hash = normalizeHex64(entry?.pubKeyHash || entry?.value)
-		if (isHex64(hash)) wrap('subject', hash)
+		if (!scope || !value) continue
+		if (scope === 'entity' && isEntityHash128(value))
+			blocked.push({ scope: 'entity', value, ...groupId ? { groupId } : {} })
+		else if (scope === 'node' && isHex64(normalizeHex64(value)))
+			blocked.push({ scope: 'node', value: normalizeHex64(value), ...groupId ? { groupId } : {} })
+		else if (scope === 'subject' && isHex64(normalizeHex64(value)))
+			blocked.push({ scope: 'subject', value: normalizeHex64(value), ...groupId ? { groupId } : {} })
 	}
 	return { blocked }
 }

@@ -36,12 +36,12 @@ export async function forkGroupFromBranch(username, sourceGroupId, opts = {}) {
 		throw new Error('source group has no events')
 
 	const branchTip = opts.tipId?.trim().toLowerCase()
-		|| state.authzBranchTip
+		|| state.consensusBranchTip
 		|| order[order.length - 1]
 	if (!isHex64(branchTip))
 		throw new Error('invalid or missing branch tip for fork')
 
-	const byId = new Map(events.map(e => [e.id, e]))
+	const byId = new Map(events.map(event => [event.id, event]))
 	if (!byId.has(branchTip))
 		throw new Error('branch tip not found in source DAG')
 
@@ -100,7 +100,7 @@ export async function forkGroupFromBranch(username, sourceGroupId, opts = {}) {
 		...state,
 		groupId: forkGroupId,
 		dagTips: tips,
-		authzBranchTip: branchTip,
+		consensusBranchTip: branchTip,
 		governanceFork: false,
 	}
 	const pins = Object.fromEntries(forkState.messageOverlay?.pins ?? new Map())
@@ -110,7 +110,7 @@ export async function forkGroupFromBranch(username, sourceGroupId, opts = {}) {
 		materialized: forkState,
 		epoch_id: 1,
 		checkpoint_event_id: last?.id || '',
-		eventIdsInEpoch: newEvents.map(e => e.id),
+		eventIdsInEpoch: newEvents.map(event => event.id),
 		dag_tip_ids: tips,
 		local_tips_hash: computeLocalTipsHash(tips),
 		overlay: {

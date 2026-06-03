@@ -2,7 +2,6 @@ import {
 	clampRepEdge,
 	isHex64,
 	recordGshRotation,
-	refreshMembersDigest,
 	sanitizeIceServersForSettings,
 	withGroupId,
 } from './helpers.mjs'
@@ -18,7 +17,6 @@ export const governanceReducers = {
 	group_meta_update(state, event) {
 		withGroupId(state, event)
 		Object.assign(state.groupMeta, event.content)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -38,8 +36,7 @@ export const governanceReducers = {
 		if (Object.keys(content).length)
 			Object.assign(state.groupSettings, content)
 		if (ownerHash !== undefined)
-			state.delegatedOwnerPubKeyHash = ownerHash && isHex64(ownerHash) ? ownerHash : null
-		refreshMembersDigest(state)
+			state.delegatedOwnerPubKeyHash = isHex64(ownerHash) ? ownerHash : null
 		return state
 	},
 
@@ -61,7 +58,6 @@ export const governanceReducers = {
 				payloadRef: event.id,
 			})
 
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -85,7 +81,6 @@ export const governanceReducers = {
 				kind: 'reset',
 			})
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -109,7 +104,6 @@ export const governanceReducers = {
 	key_rotate(state, event) {
 		withGroupId(state, event)
 		recordGshRotation(state, event, 'rotate')
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -130,7 +124,6 @@ export const governanceReducers = {
 			if (content.gshGrant) edge.gshGrant = true
 			state.inviteEdges.push(edge)
 		}
-		refreshMembersDigest(state)
 		return state
 	},
 }

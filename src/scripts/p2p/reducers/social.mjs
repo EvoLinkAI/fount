@@ -25,7 +25,7 @@ export function createSocialTimelineState() {
  * @returns {object} 更新后状态
  */
 function reduceSocialMeta(state, event) {
-	Object.assign(state.socialMeta, event.content || {})
+	Object.assign(state.socialMeta, event.content)
 	return state
 }
 
@@ -45,8 +45,7 @@ function reducePost(state, event) {
  * @returns {object} 更新后状态
  */
 function reducePostDelete(state, event) {
-	if (event.content?.targetPostId)
-		state.deletedPostIds.add(String(event.content.targetPostId))
+	state.deletedPostIds.add(event.content.targetPostId)
 	return state
 }
 
@@ -56,10 +55,7 @@ function reducePostDelete(state, event) {
  * @returns {object} 更新后状态
  */
 function reduceLike(state, event) {
-	state.likes.set(
-		socialPostKey(event.content?.targetEntityHash || '', event.content?.targetPostId || ''),
-		event,
-	)
+	state.likes.set(socialPostKey(event.content.targetEntityHash, event.content.targetPostId), event)
 	return state
 }
 
@@ -69,9 +65,7 @@ function reduceLike(state, event) {
  * @returns {object} 更新后状态
  */
 function reduceUnlike(state, event) {
-	state.likes.delete(
-		socialPostKey(event.content?.targetEntityHash || '', event.content?.targetPostId || ''),
-	)
+	state.likes.delete(socialPostKey(event.content.targetEntityHash, event.content.targetPostId))
 	return state
 }
 
@@ -91,10 +85,8 @@ function reduceRepost(state, event) {
  * @returns {object} 更新后状态
  */
 function reduceFollow(state, event) {
-	if (event.content?.targetEntityHash) {
-		state.following.add(String(event.content.targetEntityHash).toLowerCase())
-		state.followEvents.push(event)
-	}
+	state.following.add(event.content.targetEntityHash.toLowerCase())
+	state.followEvents.push(event)
 	return state
 }
 
@@ -104,8 +96,7 @@ function reduceFollow(state, event) {
  * @returns {object} 更新后状态
  */
 function reduceUnfollow(state, event) {
-	if (event.content?.targetEntityHash)
-		state.following.delete(String(event.content.targetEntityHash).toLowerCase())
+	state.following.delete(event.content.targetEntityHash.toLowerCase())
 	return state
 }
 
@@ -131,11 +122,11 @@ export function finalizeSocialTimelineView(state, order) {
 		state.posts.delete(deletedId)
 
 	const visiblePosts = [...state.posts.values()]
-		.sort((left, right) => {
-			const lw = Number(left.hlc?.wall) || 0
-			const rw = Number(right.hlc?.wall) || 0
-			if (lw !== rw) return rw - lw
-			return String(right.id).localeCompare(String(left.id))
+		.sort((earlierPost, laterPost) => {
+			const earlierWall = earlierPost.hlc?.wall || 0
+			const laterWall = laterPost.hlc?.wall || 0
+			if (earlierWall !== laterWall) return laterWall - earlierWall
+			return laterPost.id.localeCompare(earlierPost.id)
 		})
 
 	return {

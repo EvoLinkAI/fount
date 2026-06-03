@@ -14,17 +14,12 @@ import { resolvePowForJoin } from './powJoin.mjs'
 export const PENDING_INVITE_STORAGE_KEY = 'fount_chat_pending_invite'
 
 /**
- * 从当前页 query 解析 `fount://run/…` 深链（`url` 或 `run` 参数）。
+ * 从当前页 query 解析 `fount://run/…` 深链（`run` 参数）。
  * @returns {string | null} 规范化后的 run URI，无则 `null`
  */
 export function runUriFromPageLocation() {
-	const query = new URLSearchParams(window.location.search)
-	const urlParam = query.get('url')
-	if (urlParam?.trim().startsWith('fount://')) return urlParam.trim()
-	const runParam = query.get('run')
-	if (!runParam?.trim()) return null
-	const raw = runParam.trim()
-	return raw.startsWith('fount://') ? raw : `fount://${raw}`
+	const runUri = new URLSearchParams(window.location.search).get('run')?.trim()
+	return runUri?.startsWith('fount://') ? runUri : null
 }
 
 /**
@@ -51,23 +46,21 @@ export async function applyChatRunUri(raw) {
 		return {
 			kind: 'dm',
 			groupId: data.groupId,
-			channelId: data.defaultChannelId || data.channelId || 'default',
+			channelId: data.defaultChannelId || 'default',
 		}
 	}
 
 	const join = parseJoinRunUri(raw)
 	if (join) {
-		let state = null
-		try { state = await getGroupState(join.groupId) }
-		catch { /* non-member may still read policy from partial state */ }
-		const pow = await resolvePowForJoin(join.groupId, state)
-		const fedBootstrap = join.mqttRoomSecret || join.introducerPubKeyHex
-			? {
-				...join.mqttRoomSecret ? { mqttRoomSecret: join.mqttRoomSecret } : {},
-				...join.introducerPubKeyHex ? { introducerPubKeyHash: join.introducerPubKeyHex } : {},
-			}
-			: null
-		await joinGroup(join.groupId, join.inviteCode, null, pow, fedBootstrap)
+		const groupState = await getGroupState(join.groupId).catch(() => null)
+		const pow = await resolvePowForJoin(join.groupId, groupState)
+		await joinGroup(join.groupId, join.inviteCode, null, pow,
+			join.mqttRoomSecret || join.introducerPubKeyHash
+				? {
+					...join.mqttRoomSecret && { mqttRoomSecret: join.mqttRoomSecret },
+					...join.introducerPubKeyHash && { introducerPubKeyHash: join.introducerPubKeyHash },
+				}
+				: null)
 		sessionStorage.removeItem(PENDING_INVITE_STORAGE_KEY)
 		return { kind: 'join', groupId: join.groupId, channelId: 'default' }
 	}

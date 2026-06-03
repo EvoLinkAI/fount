@@ -16,7 +16,7 @@ import { buildFederatedTimelinePullResponse } from './timeline/sync.mjs'
  */
 export async function discoverAccounts(username, options = {}) {
 	const accountLimit = Math.min(Math.max(Number(options.n) || 20, 1), 100)
-	const cursor = String(options.cursor || '').toLowerCase()
+	const cursor = (options.cursor || '').toLowerCase()
 	const owners = await listLocalTimelineOwners(username)
 	const start = cursor ? Math.max(0, owners.indexOf(cursor) + 1) : 0
 	const slice = owners.slice(start, start + accountLimit)
@@ -25,19 +25,13 @@ export async function discoverAccounts(username, options = {}) {
 	for (const entityHash of slice) {
 		const view = await getTimelineMaterialized(username, entityHash)
 		if (view.socialMeta?.isProtected) continue
-		let profile = null
-		try {
-			await ensureLocalEntityProfile(username, entityHash)
-			profile = await getProfile(entityHash, username)
-		}
-		catch {
-			continue
-		}
+		await ensureLocalEntityProfile(username, entityHash)
+		const profile = await getProfile(entityHash, username)
 		accounts.push({
 			entityHash,
-			name: profile?.displayName || profile?.name || entityHash.slice(0, 8),
-			exploreBlurb: view.socialMeta?.exploreBlurb || profile?.bio || '',
-			avatarUrl: profile?.avatarUrl || null,
+			name: profile?.name || entityHash.slice(0, 8),
+			exploreBlurb: view.socialMeta?.exploreBlurb || '',
+			avatarUrl: profile?.avatar || null,
 		})
 	}
 	const nextIndex = start + slice.length
@@ -98,12 +92,12 @@ export async function discoverPosts(username, options = {}) {
  * @returns {Promise<string[]>} 本地可见 following 列表
  */
 export async function discoverFollowGraph(username, entityHash, ingress = {}) {
-	const id = String(entityHash).toLowerCase()
+	const id = entityHash.toLowerCase()
 	const view = await getTimelineMaterialized(username, id)
 	if (view.socialMeta?.isProtected) {
 		const { getNodeHash } = await import('../../../../../scripts/p2p/node_context.mjs')
 		const { resolveOperatorEntityHash } = await import('../../../../../scripts/p2p/entity/replica.mjs')
-		const requesterNode = String(ingress.requesterNodeHash || '').trim().toLowerCase()
+		const requesterNode = (ingress.requesterNodeHash || '').trim().toLowerCase()
 		const operator = resolveOperatorEntityHash(username)
 		const isOwnerRequest = requesterNode === getNodeHash(username) || operator?.toLowerCase() === id
 		if (!isOwnerRequest) return []
@@ -148,7 +142,7 @@ export async function discoverWithNetwork(username, rpc) {
  * @returns {Promise<object | null>} RPC 响应体
  */
 export async function handleSocialRpc(username, rpc, ingress = {}) {
-	if (!SOCIAL_RPC_TYPES.has(String(rpc?.type || ''))) return null
+	if (!SOCIAL_RPC_TYPES.has(rpc?.type)) return null
 	switch (rpc?.type) {
 		case 'social_discover_request':
 			return { type: 'social_discover_response', ...await discoverAccounts(username, rpc) }
@@ -161,7 +155,7 @@ export async function handleSocialRpc(username, rpc, ingress = {}) {
 				following: await discoverFollowGraph(username, String(rpc.entityHash), ingress),
 			}
 		case 'social_timeline_pull_request': {
-			const entityHash = String(rpc.entityHash || '').toLowerCase()
+			const entityHash = (rpc.entityHash || '').toLowerCase()
 			const events = await buildFederatedTimelinePullResponse(
 				username,
 				entityHash,

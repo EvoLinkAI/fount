@@ -2,14 +2,14 @@ import { attachPartWire } from './part_wire.mjs'
 import { isPlainObject } from './wire_ingress.mjs'
 
 /**
- * @param {object} data part_invoke 载荷
+ * @param {unknown} data part_invoke 载荷
  * @param {string} groupId 群 ID
- * @returns {object} 注入 groupId 后的载荷
+ * @returns {object | null} 校验通过后的载荷
  */
-function injectGroupContext(data, groupId) {
-	const withTop = data.groupId ? data : { ...data, groupId }
-	if (!isPlainObject(withTop.invoke) || withTop.invoke.groupId) return withTop
-	return { ...withTop, invoke: { ...withTop.invoke, groupId } }
+function assertGroupContext(data, groupId) {
+	if (!isPlainObject(data)) return null
+	if (data.groupId !== groupId) return null
+	return data
 }
 
 /**
@@ -20,14 +20,15 @@ function injectGroupContext(data, groupId) {
 function wrapWireOn(wire, groupId) {
 	return (name, handler) => {
 		wire.on(name, (data, peerId) => {
-			if (!isPlainObject(data)) return
-			handler(injectGroupContext(data, groupId), peerId)
+			const payload = assertGroupContext(data, groupId)
+			if (!payload) return
+			handler(payload, peerId)
 		})
 	}
 }
 
 /**
- * 群联邦房间挂载 part_wire（Adapter 层注入 groupId）。
+ * 群联邦房间挂载 part_wire（要求线载荷带 `groupId`）。
  * @param {string} username replica 登录名
  * @param {string} groupId 群 ID
  * @param {import('./part_wire.mjs').PartWireAdapter} wire Trystero 适配器

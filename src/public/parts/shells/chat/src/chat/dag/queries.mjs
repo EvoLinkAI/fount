@@ -67,7 +67,7 @@ export const JOIN_CHANNEL_HISTORY_LIMIT = 2000
  * @returns {number} 用于保留策略的时间戳（毫秒）
  */
 function messageLineWallMs(line) {
-	return Number(line?.hlc?.wall ?? line?.timestamp ?? 0)
+	return Number(line?.hlc?.wall ?? 0)
 }
 
 /**
@@ -179,7 +179,7 @@ export async function pruneAllChannelMessagesByRetention(username, groupId, grou
 	if (ms <= 0) return
 	const cutoffWall = Date.now() - ms
 	const { state } = await getState(username, groupId)
-	for (const channelId of Object.keys(state.channels || {}))
+	for (const channelId of Object.keys(state.channels))
 		await pruneChannelMessagesJsonlByTime(username, groupId, channelId, cutoffWall)
 	await gcLogContextSidecars(username, groupId)
 }
@@ -194,7 +194,7 @@ export async function compactGroup(username, groupId) {
 	const { state } = await getState(username, groupId)
 	const savedCheckpoint = await rebuildAndSaveCheckpoint(username, groupId)
 	const eventsPruned = await pruneEventsJsonlAfterCheckpoint(username, groupId, savedCheckpoint)
-	await pruneAllChannelMessagesByRetention(username, groupId, state.groupSettings || {})
+	await pruneAllChannelMessagesByRetention(username, groupId, state.groupSettings)
 	return {
 		eventsPruned,
 		messageRetentionApplied: (Number(state.groupSettings?.message_content_retention_ms) || 0) > 0,
@@ -222,7 +222,7 @@ export async function computeLastGroupActivityMs(username, groupId) {
 	let max = 0
 	for (const ev of events) {
 		if (!GROUP_LIST_ACTIVITY_TYPES.has(ev.type)) continue
-		const t = Number(ev.hlc?.wall ?? ev.timestamp ?? 0)
+		const t = Number(ev.hlc?.wall ?? 0)
 		if (Number.isFinite(t) && t > max) max = t
 	}
 	return max

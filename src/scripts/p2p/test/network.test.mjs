@@ -29,9 +29,9 @@ Deno.test('normalizeNetwork dedupes peers and trims hints', () => {
 Deno.test('normalizeBlocklist entity scope requires 128 hex', () => {
 	const list = normalizeBlocklist({
 		blocked: [
-			{ scope: 'entity', entityHash: ENTITY },
-			{ scope: 'entity', entityHash: 'not-valid' },
-			{ scope: 'node', nodeHash: NODE_A },
+			{ scope: 'entity', value: ENTITY },
+			{ scope: 'entity', value: 'not-valid' },
+			{ scope: 'node', value: NODE_A },
 		],
 	})
 	assertEquals(list.blocked.length, 2)

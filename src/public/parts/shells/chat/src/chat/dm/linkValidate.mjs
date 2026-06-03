@@ -20,7 +20,7 @@ import { verifyDmLinkSignature } from './linkVerify.mjs'
 export function findMemberIdByPubKeyHex(state, pubKeyHex) {
 	const want = normalizePubKeyHex(pubKeyHex)
 	if (!PUB_KEY_HEX_64.test(want)) return null
-	for (const [memberId, row] of Object.entries(state?.members || {}))
+	for (const [memberId, row] of Object.entries(state.members))
 		if (normalizePubKeyHex(row?.pubKeyHex) === want) return memberId
 
 	return null

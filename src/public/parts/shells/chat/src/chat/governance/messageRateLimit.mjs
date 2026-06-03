@@ -50,7 +50,7 @@ export async function checkMessageRateLimit(username, groupId, state, event) {
 	if (event?.type !== 'message') return { ok: true }
 	const entityKey = messageRateEntityKey(event)
 	if (!entityKey) return { ok: false, reason: 'missing sender' }
-	const channelId = event.channelId || event.content?.channelId || 'default'
+	const channelId = event.channelId || 'default'
 	const senderHash = String(event.sender || '').trim().toLowerCase()
 	if (hasBypassRateLimit(state, senderHash, channelId)) return { ok: true }
 

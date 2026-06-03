@@ -26,7 +26,7 @@ export async function activateGroupFederation(username, groupId) {
 	const existing = mqttCredentialsFromGroupSettings(state.groupSettings)
 	if (existing) return existing
 
-	const gs = state.groupSettings || {}
+	const gs = state.groupSettings
 	await appendSignedLocalEvent(username, groupId, {
 		type: 'group_settings_update',
 		timestamp: Date.now(),

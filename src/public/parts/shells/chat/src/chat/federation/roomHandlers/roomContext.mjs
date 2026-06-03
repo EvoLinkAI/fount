@@ -67,78 +67,78 @@
  */
 
 /**
- * @param {FederationRoomWireContext} ctx 房间 join 期 wire 绑定
+ * @param {FederationRoomWireContext} wireContext 房间 join 期 wire 绑定
  * @returns {FederationRoomWireContext} Trystero wire 最小子集
  */
-export function pickWireContext(ctx) {
+export function pickWireContext(wireContext) {
 	return {
-		username: ctx.username,
-		groupId: ctx.groupId,
-		room: ctx.room,
-		wireActions: ctx.wireActions,
-		senderRegistry: ctx.senderRegistry,
-		getActionSender: ctx.getActionSender,
-		getActionReceiver: ctx.getActionReceiver,
+		username: wireContext.username,
+		groupId: wireContext.groupId,
+		room: wireContext.room,
+		wireActions: wireContext.wireActions,
+		senderRegistry: wireContext.senderRegistry,
+		getActionSender: wireContext.getActionSender,
+		getActionReceiver: wireContext.getActionReceiver,
 	}
 }
 
 /**
- * @param {FederationIdentityContext} ctx 完整 identity 依赖
+ * @param {FederationIdentityContext} identityContext 完整 identity 依赖
  * @returns {FederationIdentityContext} identity handler 依赖
  */
-export function pickIdentityContext(ctx) {
+export function pickIdentityContext(identityContext) {
 	return {
-		...pickWireContext(ctx),
-		key: ctx.key,
-		nodeHash: ctx.nodeHash,
-		groupSettings: ctx.groupSettings,
-		fedOut: ctx.fedOut,
-		rtcLimits: ctx.rtcLimits,
-		peerToNode: ctx.peerToNode,
-		nodeToPeer: ctx.nodeToPeer,
-		ensureFederationPartitionRoom: ctx.ensureFederationPartitionRoom,
-		getSlot: ctx.getSlot,
+		...pickWireContext(identityContext),
+		key: identityContext.key,
+		nodeHash: identityContext.nodeHash,
+		groupSettings: identityContext.groupSettings,
+		fedOut: identityContext.fedOut,
+		rtcLimits: identityContext.rtcLimits,
+		peerToNode: identityContext.peerToNode,
+		nodeToPeer: identityContext.nodeToPeer,
+		ensureFederationPartitionRoom: identityContext.ensureFederationPartitionRoom,
+		getSlot: identityContext.getSlot,
 	}
 }
 
 /**
- * @param {FederationRelayContext} ctx 完整 relay 依赖
+ * @param {FederationRelayContext} relayContext 完整 relay 依赖
  * @returns {FederationRelayContext} relay handler 依赖
  */
-export function pickRelayContext(ctx) {
+export function pickRelayContext(relayContext) {
 	return {
-		...pickWireContext(ctx),
-		nodeHash: ctx.nodeHash,
-		fedOut: ctx.fedOut,
-		isBlockedPeer: ctx.isBlockedPeer,
+		...pickWireContext(relayContext),
+		nodeHash: relayContext.nodeHash,
+		fedOut: relayContext.fedOut,
+		isBlockedPeer: relayContext.isBlockedPeer,
 	}
 }
 
 /**
- * @param {FederationSyncContext} ctx 完整 sync 依赖
+ * @param {FederationSyncContext} syncContext 完整 sync 依赖
  * @returns {FederationSyncContext} sync handler 依赖
  */
-export function pickSyncContext(ctx) {
+export function pickSyncContext(syncContext) {
 	return {
-		...pickWireContext(ctx),
-		nodeHash: ctx.nodeHash,
-		groupSettings: ctx.groupSettings,
-		fedOut: ctx.fedOut,
-		peerToNode: ctx.peerToNode,
-		isBlockedPeer: ctx.isBlockedPeer,
+		...pickWireContext(syncContext),
+		nodeHash: syncContext.nodeHash,
+		groupSettings: syncContext.groupSettings,
+		fedOut: syncContext.fedOut,
+		peerToNode: syncContext.peerToNode,
+		isBlockedPeer: syncContext.isBlockedPeer,
 	}
 }
 
 /**
- * @param {FederationRpcContext} ctx 完整 rpc 依赖
+ * @param {FederationRpcContext} rpcContext 完整 rpc 依赖
  * @returns {FederationRpcContext} rpc handler 依赖
  */
-export function pickRpcContext(ctx) {
+export function pickRpcContext(rpcContext) {
 	return {
-		...pickWireContext(ctx),
-		key: ctx.key,
-		fedOut: ctx.fedOut,
-		rtcLimits: ctx.rtcLimits,
+		...pickWireContext(rpcContext),
+		key: rpcContext.key,
+		fedOut: rpcContext.fedOut,
+		rtcLimits: rpcContext.rtcLimits,
 	}
 }
 

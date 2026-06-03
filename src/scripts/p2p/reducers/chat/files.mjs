@@ -1,4 +1,4 @@
-import { isHex64, refreshMembersDigest, withGroupId } from './helpers.mjs'
+import { isHex64, withGroupId } from './helpers.mjs'
 
 /** @type {Record<string, (state: object, event: object) => object>} */
 export const fileReducers = {
@@ -25,7 +25,6 @@ export const fileReducers = {
 			parts: Array.isArray(event.content.parts) ? event.content.parts : null,
 			uploaderPubKeyHash: isHex64(sender) ? sender : null,
 		})
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -38,7 +37,6 @@ export const fileReducers = {
 	file_delete(state, event) {
 		withGroupId(state, event)
 		state.messageOverlay.fileIndex.delete(event.content.fileId)
-		refreshMembersDigest(state)
 		return state
 	},
 
@@ -50,7 +48,7 @@ export const fileReducers = {
 	 */
 	file_system_update(state, event) {
 		withGroupId(state, event)
-		const { operation, folderId } = event.content || {}
+		const { operation, folderId } = event.content
 		const fid = folderId ? String(folderId).trim() : ''
 		if (fid)
 			switch (operation) {
@@ -75,7 +73,6 @@ export const fileReducers = {
 					break
 			}
 
-		refreshMembersDigest(state)
 		return state
 	},
 }

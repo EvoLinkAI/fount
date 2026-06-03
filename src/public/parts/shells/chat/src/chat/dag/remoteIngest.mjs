@@ -79,7 +79,7 @@ export async function appendValidatedRemoteEvent(username, groupId, signPayload,
 
 	const { state } = await getState(username, groupId)
 	try {
-		await validateSignature(username, groupId, bodyForId, wirePayload, wirePayload, undefined, state)
+		await validateSignature(bodyForId, wirePayload, wirePayload, undefined, state)
 	}
 	catch (error) {
 		if (logFailures) {
@@ -158,7 +158,7 @@ export async function appendValidatedRemoteEvent(username, groupId, signPayload,
 /**
  * @param {string} username 用户名
  * @param {string} groupId 群组 ID
- * @param {unknown} payload Trystero 载荷或 `{ event }` 包装
+ * @param {unknown} payload Trystero 载荷（完整签名事件）
  * @returns {Promise<'ok' | 'dup' | 'invalid' | 'quarantined' | undefined>} 写入结果；无法解析为 undefined
  */
 export async function ingestRemoteEvent(username, groupId, payload) {

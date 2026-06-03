@@ -24,7 +24,6 @@ const CHAT_CONTENT_HEX_KEYS = new Set([
 const CHAT_ROW_OPTS = {
 	prepare: sanitizeFederatedEvent,
 	contentHexKeys: CHAT_CONTENT_HEX_KEYS,
-	includeSenderHomeNodeHash: true,
 }
 
 /**

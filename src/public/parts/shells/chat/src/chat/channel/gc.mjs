@@ -61,9 +61,9 @@ function lastActivityByChannel(events) {
 	for (const ev of events) {
 		if (CHANNEL_GC_EXCLUDED_EVENT_TYPES.has(ev.type)) continue
 		if (!CHANNEL_ACTIVITY_TYPES.has(ev.type)) continue
-		const activityChannelId = ev.channelId || ev.content?.channelId
+		const activityChannelId = ev.channelId
 		if (!activityChannelId) continue
-		const t = Number(ev.hlc?.wall ?? ev.timestamp ?? 0)
+		const t = Number(ev.hlc?.wall ?? 0)
 		if (!Number.isFinite(t)) continue
 		const prev = map.get(activityChannelId) ?? 0
 		if (t > prev) map.set(activityChannelId, t)
@@ -79,7 +79,7 @@ function lastActivityByChannel(events) {
  * @returns {string[]} 待 GC 频道 id
  */
 export function findStaleUnreachableChannels(state, events, nowMs = Date.now()) {
-	const channels = state.channels || {}
+	const channels = state.channels
 	const defaultId = state.groupSettings?.defaultChannelId || 'default'
 	const reachable = reachableFromDefault(channels, defaultId)
 	const lastAct = lastActivityByChannel(events)

@@ -33,7 +33,7 @@ async function resolveVisiblePost(username, entityHash, postId, viewerContext) {
 	if (!view.posts?.length && !view.postById) return null
 	const post = view.postById?.[postId]
 	if (!post) return null
-	const enriched = { ...post, entityHash, senderEntityHash: entityHash }
+	const enriched = { ...post, entityHash }
 	if (!canViewPost(enriched, viewerContext.viewerEntityHash, viewerContext.blocked, viewerContext.following))
 		return null
 	return withDecryptedPostContent(username, entityHash, post)
@@ -60,7 +60,7 @@ export async function buildHomeFeed(username, options = {}) {
 	const viewerLiked = await buildViewerLikedSet(username)
 	const authorProfile = createAuthorProfileLoader(username)
 	const engagementForPost = createEngagementForPost(engagement, viewerLiked)
-	const itemCtx = { authorProfile, engagementForPost }
+	const feedItemBuildContext = { authorProfile, engagementForPost }
 
 	/** @type {{ candidates: object[], index: number }[]} */
 	const streams = []
@@ -72,7 +72,7 @@ export async function buildHomeFeed(username, options = {}) {
 		/** @type {object[]} */
 		const candidates = []
 		for (const post of view.posts) {
-			const enriched = { ...post, entityHash, senderEntityHash: entityHash }
+			const enriched = { ...post, entityHash }
 			if (!canViewPost(enriched, viewerContext.viewerEntityHash, viewerContext.blocked, viewerContext.following))
 				continue
 			candidates.push({
@@ -84,8 +84,8 @@ export async function buildHomeFeed(username, options = {}) {
 			})
 		}
 		for (const repost of view.reposts) {
-			const originalEntityHash = String(repost.content?.targetEntityHash || '').toLowerCase()
-			const originalPostId = String(repost.content?.targetPostId || '')
+			const originalEntityHash = (repost.content?.targetEntityHash || '').toLowerCase()
+			const originalPostId = repost.content?.targetPostId || ''
 			if (!isEntityHash128(originalEntityHash) || !originalPostId) continue
 			candidates.push({
 				kind: 'repost',
@@ -111,18 +111,18 @@ export async function buildHomeFeed(username, options = {}) {
 		if (best < 0) break
 
 		const stream = streams[best]
-		const head = stream.candidates[stream.index]
+		const candidate = stream.candidates[stream.index]
 		stream.index++
 
 		/** @type {object | null} */
 		let item = null
-		if (head.kind === 'repost') {
-			const originalPost = await resolveVisiblePost(username, head.originalEntityHash, head.originalPostId, viewerContext)
+		if (candidate.kind === 'repost') {
+			const originalPost = await resolveVisiblePost(username, candidate.originalEntityHash, candidate.originalPostId, viewerContext)
 			if (originalPost)
-				item = await buildRepostFeedItem(head, originalPost, itemCtx)
+				item = await buildRepostFeedItem(candidate, originalPost, feedItemBuildContext)
 		}
 		else
-			item = await buildPostFeedItem(username, head.entityHash, head.post, itemCtx)
+			item = await buildPostFeedItem(username, candidate.entityHash, candidate.post, feedItemBuildContext)
 
 		if (!item) continue
 		const key = `${item.entityHash}:${item.postId}`
@@ -151,7 +151,7 @@ export async function buildHomeFeed(username, options = {}) {
  * @returns {Promise<{ entityHash: string, items: object[] }>} 与首页 feed 同构的帖子列表
  */
 export async function buildProfileFeedItems(username, entityHash) {
-	entityHash = String(entityHash || '').toLowerCase()
+	entityHash = entityHash.trim().toLowerCase()
 	if (!isEntityHash128(entityHash))
 		return { entityHash, items: [] }
 
@@ -160,7 +160,7 @@ export async function buildProfileFeedItems(username, entityHash) {
 	const viewerLiked = await buildViewerLikedSet(username)
 	const authorProfile = createAuthorProfileLoader(username)
 	const engagementForPost = createEngagementForPost(engagement, viewerLiked)
-	const itemCtx = { authorProfile, engagementForPost }
+	const feedItemBuildContext = { authorProfile, engagementForPost }
 
 	const view = await getTimelineMaterialized(username, entityHash)
 	if (!view.posts?.length)
@@ -170,10 +170,10 @@ export async function buildProfileFeedItems(username, entityHash) {
 	const items = []
 
 	for (const post of view.posts) {
-		const enriched = { ...post, entityHash, senderEntityHash: entityHash }
+		const enriched = { ...post, entityHash }
 		if (!canViewPost(enriched, viewerContext.viewerEntityHash, viewerContext.blocked, viewerContext.following))
 			continue
-		items.push(await buildPostFeedItem(username, entityHash, post, itemCtx))
+		items.push(await buildPostFeedItem(username, entityHash, post, feedItemBuildContext))
 	}
 
 	items.sort((left, right) => compareFeedItems(left, right) * -1)
@@ -201,7 +201,7 @@ export async function listReplies(username, entityHash, postId) {
 			if (!replyTo) continue
 			if (String(replyTo.entityHash).toLowerCase() !== entityHash.toLowerCase()) continue
 			if (String(replyTo.postId) !== postId) continue
-			if (!canViewPost({ ...post, entityHash: author, senderEntityHash: author }, viewerContext.viewerEntityHash, viewerContext.blocked, viewerContext.following))
+			if (!canViewPost({ ...post, entityHash: author }, viewerContext.viewerEntityHash, viewerContext.blocked, viewerContext.following))
 				continue
 			replies.push({ entityHash: author, post })
 		}

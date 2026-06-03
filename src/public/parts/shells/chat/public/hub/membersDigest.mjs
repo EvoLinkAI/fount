@@ -23,8 +23,8 @@ async function sha256Pair(left, right) {
 	buf.set(right, left.length)
 	const hex = await sha256Hex(buf)
 	const out = new Uint8Array(32)
-	for (let i = 0; i < 32; i++)
-		out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+	for (let byteIndex = 0; byteIndex < 32; byteIndex++)
+		out[byteIndex] = Number.parseInt(hex.slice(byteIndex * 2, byteIndex * 2 + 2), 16)
 	return out
 }
 
@@ -48,8 +48,8 @@ export async function computeMembersMerkleRoot(ids) {
 	let level = await Promise.all(sorted.map(async id => {
 		const hex = await sha256Hex(new TextEncoder().encode(id))
 		const out = new Uint8Array(32)
-		for (let i = 0; i < 32; i++)
-			out[i] = Number.parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+		for (let byteIndex = 0; byteIndex < 32; byteIndex++)
+			out[byteIndex] = Number.parseInt(hex.slice(byteIndex * 2, byteIndex * 2 + 2), 16)
 		return out
 	}))
 	while (level.length > 1) {
@@ -67,34 +67,21 @@ export async function computeMembersMerkleRoot(ids) {
 
 /**
  * 从群 state 的 `members` 数组提取与物化层一致的活跃成员键。
- * @param {Array<{ pubKeyHash?: string, username?: string }>} members 活跃成员
+ * @param {Array<{ pubKeyHash?: string }>} members 活跃成员
  * @returns {string[]} 64 位 hex pubKeyHash，已排序
  */
 export function activeMemberPubKeyHashes(members) {
-	return [...new Set((members || [])
-		.map(member => String(member.pubKeyHash || member.memberId || '').trim().toLowerCase())
+	return [...new Set(members
+		.map(member => member.pubKeyHash.trim().toLowerCase())
 		.filter(isHex64))]
 		.sort()
 }
 
 /**
- * 从 state 或分页 API 汇总活跃成员 pubKeyHash（多页时拉全部分页）。
- * @param {string} groupId 群 ID
- * @param {{ members?: object[], membersPagesCount?: number | null }} state 群 state
- * @param {(groupId: string, pageIdx: number) => Promise<{ members: object[] }>} fetchPage 分页拉取
- * @returns {Promise<string[]>} 已排序的 64 hex 哈希列表
+ * 从 `/groups/:id/state` 的 `members` 汇总活跃成员 pubKeyHash。
+ * @param {{ members: object[] }} state 群 state（含完整活跃成员列表）
+ * @returns {string[]} 已排序的 64 hex 哈希列表
  */
-export async function collectActiveMemberHashes(groupId, state, fetchPage) {
-	const pages = Math.max(1, Number(state?.membersPagesCount) || 1)
-	if (pages <= 1)
-		return activeMemberPubKeyHashes(state?.members)
-
-	/** @type {object[]} */
-	const merged = [...state?.members || []]
-	for (let pageIndex = 0; pageIndex < pages; pageIndex++) {
-		const page = await fetchPage(groupId, pageIndex)
-		for (const member of page.members || [])
-			merged.push(member)
-	}
-	return activeMemberPubKeyHashes(merged)
+export function collectActiveMemberHashes(state) {
+	return activeMemberPubKeyHashes(state.members)
 }

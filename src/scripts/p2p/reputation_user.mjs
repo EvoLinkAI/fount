@@ -30,7 +30,6 @@ const MAX_RELAY_BUMP_SEEN = 2000
 
 /**
  * @typedef {{
- *   schema: number
  *   byNodeHash: Record<string, { score: number, scopes?: Record<string, number> }>
  *   wantUnknownHits: Array<{ peerNodeHash: string, t: number }>
  *   relayBumpSeen: Array<{ peerNodeHash: string, key: string, t: number }>
@@ -65,10 +64,9 @@ function repRow(data, nodeId) {
  */
 function adjustNodeReputation(data, nodeId, groupId, delta) {
 	const row = repRow(data, nodeId)
-	const gid = String(groupId || '').trim()
-	if (gid) {
-		const prev = Number(row.scopes[gid] ?? row.score ?? 0)
-		row.scopes[gid] = clampReputationScore(prev + delta)
+	if (groupId) {
+		const prev = row.scopes[groupId] ?? 0
+		row.scopes[groupId] = clampReputationScore(prev + delta)
 	}
 	else
 		row.score = clampReputationScore(row.score + delta)
@@ -76,32 +74,29 @@ function adjustNodeReputation(data, nodeId, groupId, delta) {
 }
 
 /**
- * @param {unknown} raw 磁盘 JSON
- * @returns {ReputationFile} 规范化后的信誉文件对象
+ * 新用户 `loadData` 返回 `{}` 时补齐信誉表字段。
+ * @param {ReputationFile} data 磁盘 JSON（可信）
+ * @returns {ReputationFile} 补齐字段后的同一对象
  */
-function normalizeRepFile(raw) {
-	const file = raw || {}
-	/** @type {Record<string, { score: number, scopes?: Record<string, number> }>} */
-	const byNodeHash = { ...file.byNodeHash || {} }
-	for (const nodeId of Object.keys(byNodeHash)) {
-		const row = byNodeHash[nodeId] || {}
-		const score = Number(row.score)
-		byNodeHash[nodeId] = {
-			score: clampReputationScore(Number.isFinite(score) ? score : 0),
-			...row.scopes ? { scopes: { ...row.scopes } } : {},
-		}
-	}
-	const wantUnknownHits = (file.wantUnknownHits || [])
-		.filter(hit => hit?.peerNodeHash && Number.isFinite(hit.t))
-		.map(hit => ({ peerNodeHash: String(hit.peerNodeHash), t: Number(hit.t) }))
-	const relayBumpSeen = (file.relayBumpSeen || [])
-		.filter(hit => hit?.peerNodeHash && hit?.key && Number.isFinite(hit.t))
-		.map(hit => ({
-			peerNodeHash: String(hit.peerNodeHash),
-			key: String(hit.key),
-			t: Number(hit.t),
-		}))
-	return { schema: 1, byNodeHash, wantUnknownHits, relayBumpSeen }
+function ensureReputationShape(data) {
+	data.byNodeHash ??= {}
+	data.wantUnknownHits ??= []
+	data.relayBumpSeen ??= []
+	return data
+}
+
+/**
+ * 保存前裁剪 TTL 窗口与 relay 去重表长度。
+ * @param {ReputationFile} data 信誉表
+ * @returns {ReputationFile} 裁剪后的同一对象
+ */
+function pruneReputationFile(data) {
+	const now = Date.now()
+	data.wantUnknownHits = data.wantUnknownHits.filter(hit => now - hit.t <= WANT_UNKNOWN_WINDOW_MS)
+	data.relayBumpSeen = data.relayBumpSeen.filter(hit => now - hit.t <= RELAY_BUMP_DEDUPE_MS)
+	if (data.relayBumpSeen.length > MAX_RELAY_BUMP_SEEN)
+		data.relayBumpSeen = data.relayBumpSeen.slice(-MAX_RELAY_BUMP_SEEN)
+	return data
 }
 
 const REPUTATION_BY_USER_MAX = 256
@@ -143,7 +138,7 @@ export function loadReputation(username) {
 		reputationByUser.touch(username, cached)
 		return cached
 	}
-	cached = normalizeRepFile(loadData(username, DATA_NAME))
+	cached = ensureReputationShape(loadData(username, DATA_NAME))
 	reputationByUser.touch(username, cached)
 	return cached
 }
@@ -154,16 +149,11 @@ export function loadReputation(username) {
  * @returns {void}
  */
 export function saveReputation(username, data) {
-	const clean = normalizeRepFile(data)
-	const now = Date.now()
-	clean.wantUnknownHits = clean.wantUnknownHits.filter(h => now - h.t <= WANT_UNKNOWN_WINDOW_MS)
-	clean.relayBumpSeen = clean.relayBumpSeen.filter(h => now - h.t <= RELAY_BUMP_DEDUPE_MS)
-	if (clean.relayBumpSeen.length > MAX_RELAY_BUMP_SEEN)
-		clean.relayBumpSeen = clean.relayBumpSeen.slice(-MAX_RELAY_BUMP_SEEN)
+	pruneReputationFile(data)
 	const store = loadData(username, DATA_NAME)
-	Object.assign(store, clean)
+	Object.assign(store, data)
 	saveData(username, DATA_NAME)
-	reputationByUser.touch(username, clean)
+	reputationByUser.touch(username, data)
 	invalidateTrustGraphCache(username)
 }
 
@@ -179,7 +169,7 @@ export function bumpReputationOnRelay(username, peerNodeHash, dedupeKey) {
 	const key = String(dedupeKey || `conn:${id}`).trim()
 	void mutateReputation(username, data => {
 		const now = Date.now()
-		data.relayBumpSeen = (data.relayBumpSeen || []).filter(h => now - h.t <= RELAY_BUMP_DEDUPE_MS)
+		data.relayBumpSeen = data.relayBumpSeen.filter(hit => now - hit.t <= RELAY_BUMP_DEDUPE_MS)
 		if (relayBumpIsDuplicate(data.relayBumpSeen, id, key, now)) return
 		data.relayBumpSeen.push({ peerNodeHash: id, key, t: now })
 		const prev = Number(data.byNodeHash[id]?.score ?? 0)
@@ -308,17 +298,16 @@ export function buildAndApplyUnverifiedSlashAlert(senderPubKeyHash, content, gro
  * @returns {Promise<void>}
  */
 export async function applySubjectiveSlashFromEvent(username, groupId, event, readEvents) {
-	if (event?.type !== 'reputation_slash') return
-	const content = event.content || {}
+	if (event.type !== 'reputation_slash') return
+	const { content } = event
 	const target = content.targetPubKeyHash.trim().toLowerCase()
 	const sender = event.sender.trim().toLowerCase()
 
 	await mutateReputation(username, async data => {
 		const repMaxEff = computeRepMaxEff(data)
 		const repSender = Number(data.byNodeHash[sender]?.score ?? 0)
-		const verified = !!content.verified && await verifySlashProof(username, groupId, content, readEvents)
-		const rawClaim = Number(content.claim ?? content.unverifiedClaim ?? (verified ? 0.35 : 0.2))
-		const claim = Number.isFinite(rawClaim) ? rawClaim : 0.2
+		const verified = content.verified && await verifySlashProof(username, groupId, content, readEvents)
+		const claim = Number(content.claim ?? (verified ? 0.35 : 0.2))
 		const penalty = subjectiveSlashPenalty(claim, repSender, repMaxEff, verified)
 		adjustNodeReputation(data, target, groupId, -penalty)
 	})
@@ -335,7 +324,7 @@ async function verifySlashProof(username, groupId, content, readEvents) {
 	const eventId = content?.proof?.eventId?.trim().toLowerCase()
 	if (!eventId) return false
 	const events = await readEvents(username, groupId)
-	return events.some(e => e?.id === eventId)
+	return events.some(event => event.id === eventId)
 }
 
 /**
@@ -345,19 +334,16 @@ async function verifySlashProof(username, groupId, content, readEvents) {
  * @returns {void}
  */
 export function applyDecayCollusionAfterSlash(username, targetPubKeyHash, inviteEdges) {
-	const t = targetPubKeyHash.trim().toLowerCase()
-	const edges = inviteEdges ?? []
+	const target = targetPubKeyHash.trim().toLowerCase()
 	const lambda = 0.07
 	const delta = 0.62
 	void mutateReputation(username, data => {
-		let frontier = new Set([t])
+		let frontier = new Set([target])
 		for (let hop = 1; hop <= 6; hop++) {
 			const upstream = new Set()
-			for (const edge of edges) {
-				const from = String(edge?.from || '').trim().toLowerCase()
-				const to = String(edge?.to || '').trim().toLowerCase()
-				if (from && to && frontier.has(to)) upstream.add(from)
-			}
+			for (const edge of inviteEdges) 
+				if (frontier.has(edge.to)) upstream.add(edge.from)
+			
 			if (!upstream.size) break
 			const dRep = lambda * delta ** hop
 			for (const node of upstream) {

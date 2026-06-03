@@ -1,7 +1,7 @@
 /**
  * 【文件】`dag/validator.mjs` — DAG 事件签名域与验签。
  * 【职责】抽取 unsigned 签名字段、校验 pubKeyHash 发件人是否附带有效 Ed25519 签名。
- * 【原理】`unsignedEventFields` 固定参与 `computeEventId` 的 canonical 字段；sender 为 64 位 hex pubKeyHash 时必须验签，本地别名路径可免签；公钥来自成员表或载荷 `senderPubKey`。
+ * 【原理】`unsignedEventFields` 固定参与 `computeEventId` 的 canonical 字段；sender 须为 64 位 hex pubKeyHash 且带有效 Ed25519 签名；公钥来自成员表或载荷 `senderPubKey`。
  * 【数据结构】`body`（无 id/signature）、`signPayload`（含 `id`、`signature`、`senderPubKey`）；`PUB_KEY_HASH_HEX` 为发件人哈希正则。
  * 【关联】`append.mjs`、`remoteIngest.mjs`、`localSigner.mjs`、`scripts/p2p/dag`。
  */
@@ -50,16 +50,13 @@ function memberRecord(materializedState, sender) {
  * @returns {Uint8Array | null} 32 字节公钥
  */
 function publicKeyBytesFromHex(hex) {
-	const normalized = String(hex || '').replace(/^0x/iu, '')
+	const normalized = hex?.replace(/^0x/iu, '') || ''
 	if (!isHex64(normalized)) return null
-	const buffer = Buffer.from(normalized, 'hex')
-	return buffer.length === 32 ? new Uint8Array(buffer) : null
+	return new Uint8Array(Buffer.from(normalized, 'hex'))
 }
 
 /**
- * 校验事件签名：发件人为成员公钥哈希时必须带有效签名；本地别名可免签。
- * @param {string} username 用户名（与调用方签名对齐，当前未参与校验逻辑）
- * @param {string} groupId 群组 ID（与调用方签名对齐，当前未参与校验逻辑）
+ * 校验事件签名：发件人须为 pubKeyHash 且带有效签名。
  * @param {object} body `unsignedEventFields` 得到的 unsigned 体
  * @param {{ id: string, signature?: string, senderPubKey?: string }} signPayload 含签名与可选发件人公钥的载荷
  * @param {{ senderPubKey?: string, content?: object }} eventLike 与原始事件类似的元数据来源
@@ -67,28 +64,20 @@ function publicKeyBytesFromHex(hex) {
  * @param {object} [materializedState] 物化群状态，用于从成员表解析发件人公钥
  * @returns {Promise<void>} 校验通过则正常返回；失败抛出 `Error`
  */
-export async function validateSignature(username, groupId, body, signPayload, eventLike, secretKey, materializedState) {
-	void username
-	void groupId
-	const sender = String(body.sender || '')
-	const signatureHex = String(signPayload.signature || '').trim()
+export async function validateSignature(body, signPayload, eventLike, secretKey, materializedState) {
+	const sender = body.sender?.trim().toLowerCase() || ''
+	const signatureHex = signPayload.signature?.trim() || ''
 	const signatureBytes = signatureHex ? Buffer.from(signatureHex, 'hex') : null
-	const hasSignature = signatureBytes?.length === 64
 
-	if (!PUB_KEY_HASH_HEX.test(sender)) {
-		if (hasSignature)
-			throw new Error('signed events require sender to be pubKeyHash')
-		return
-	}
-
-	if (!hasSignature) throw new Error('signed events require signature (sender is pubKeyHash)')
+	if (!PUB_KEY_HASH_HEX.test(sender))
+		throw new Error('signed events require sender to be pubKeyHash')
+	if (signatureBytes?.length !== 64) throw new Error('signed events require signature')
 
 	let publicKeyBytes = null
 	if (secretKey)
 		publicKeyBytes = publicKeyFromSeed(secretKey)
 	else
-		publicKeyBytes = publicKeyBytesFromHex(eventLike.senderPubKey || signPayload.senderPubKey)
-			|| publicKeyBytesFromHex(eventLike.content?.pubKeyHex || eventLike.content?.pubKey)
+		publicKeyBytes = publicKeyBytesFromHex(signPayload.senderPubKey)
 			|| publicKeyBytesFromHex(memberRecord(materializedState, sender)?.pubKeyHex)
 
 	if (!publicKeyBytes) throw new Error('cannot verify: missing public key for sender hash')

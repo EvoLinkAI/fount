@@ -1,14 +1,4 @@
 /**
- * 【文件】src/group/routes/groups.mjs
- * 【职责】注册联邦群生命周期 HTTP 路由：列出已加入群、创建普通群/DM、删除群副本或本地会话。
- * 【原理】GET /groups 通过 enumerateJoinedFederatedGroups 汇总本地 replica，按 lastMessageTime 排序。
- *   POST 分 template=dm（ECDH 双公钥 + 可选 dmIntro 链接证明）与普通群（randomUUID groupId、localSigner、createGroup、registerGroupRuntime）。
- *   DELETE 区分联邦群（removeLocalGroupReplica + 权限）与 shells:chat/sessions（角色私聊目录）。
- * 【数据结构】请求体含 template、myPubKeyHex/peerPubKeyHex、dmIntroNonce/Signature、name、friendBinding 等；
- *   响应 201 含 groupId、defaultChannelId、dmSessionTag 等。
- * 【关联】由 src/group/endpoints.mjs 挂载；调用 dag/lifecycle、dm、session/runtime、queries。
- */
-/**
  * 【文件】group/routes/groups.mjs
  * 【职责】群生命周期 HTTP：列表、创建（含 DM 模板）、时间线切换与管理员删除本地 replica。
  * 【原理】GET 列表经 enumerateJoinedFederatedGroups；POST 普通群走 createGroup+initGroupH，DM 走 createEcdhDmGroup；timeline 委托 session/generation；DELETE 需 ADMIN/MANAGE_ADMINS。
@@ -43,7 +33,7 @@ import { requireGroupMember } from './middleware.mjs'
 export function registerGroupLifecycleRoutes(router, authenticate) {
 	router.get(/^\/api\/parts\/shells:chat\/groups\/?$/, authenticate, async (req, res) => {
 		const { username } = await getUserByReq(req)
-		const rows = await enumerateJoinedFederatedGroups(username).catch(() => [])
+		const rows = await enumerateJoinedFederatedGroups(username)
 		rows.sort((left, right) => new Date(right.lastMessageTime || 0) - new Date(left.lastMessageTime || 0))
 		res.status(200).json(rows)
 	})
@@ -70,14 +60,13 @@ export function registerGroupLifecycleRoutes(router, authenticate) {
 			if (hasDmNonce) {
 				const dmCheck = await validateDmIntroLinkProof(username, { members: {} }, peerPubKeyHex, dmNonce, dmIntroSignatureHex)
 				if (!dmCheck.ok)
-					return res.status(400).json({ error: dmCheck.error || 'invalid dm intro link' })
+					return res.status(400).json({ error: dmCheck.error })
 			}
 
 			const directMessage = await createEcdhDmGroup(username, myPubKeyHex, peerPubKeyHex)
 			return res.status(201).json({
 				groupId: directMessage.groupId,
 				defaultChannelId: directMessage.defaultChannelId,
-				channelId: directMessage.defaultChannelId,
 				dmSessionTag: directMessage.dmSessionTag,
 				dmRoomLabelPrefix: directMessage.dmSessionTag.slice(0, 16),
 			})
@@ -103,7 +92,6 @@ export function registerGroupLifecycleRoutes(router, authenticate) {
 		res.status(201).json({
 			groupId: result.groupId,
 			defaultChannelId: result.defaultChannelId,
-			channelId: result.defaultChannelId,
 		})
 	})
 
@@ -133,12 +121,7 @@ export function registerGroupLifecycleRoutes(router, authenticate) {
 	router.delete(/^\/api\/parts\/shells:chat\/groups\/([^/]+)$/, authenticate, requireGroupMember(), async (req, res) => {
 		const { username, groupId, state, member } = req.groupContext
 		const permissionsChannelId = governanceChannelId(state)
-		const perms = calculateMemberPermissions(
-			member,
-			state.roles,
-			permissionsChannelId,
-			state.channelPermissions || {},
-		)
+		const perms = calculateMemberPermissions(member, state.roles, permissionsChannelId, state.channelPermissions)
 		if (!perms[PERMISSIONS.ADMIN] && !perms[PERMISSIONS.MANAGE_ADMINS])
 			return res.status(403).json({ error: 'Only admins can delete the group' })
 

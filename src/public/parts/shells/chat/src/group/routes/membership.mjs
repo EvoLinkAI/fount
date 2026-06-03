@@ -60,11 +60,11 @@ export function registerMembershipRoutes(router, authenticate) {
 		const { groupId, state } = req.groupContext
 		const pageIndex = Math.max(0, Number(req.params[1]) || 0)
 
-		const activeMembers = Object.entries(state.members || {}).filter(([, member]) => member?.status === 'active')
+		const activeMembers = Object.entries(state.members).filter(([, member]) => member?.status === 'active')
 		const pageCount = Math.max(1, Math.ceil(activeMembers.length / MEMBERS_PAGE_SIZE))
 		const pageSlice = activeMembers.slice(pageIndex * MEMBERS_PAGE_SIZE, (pageIndex + 1) * MEMBERS_PAGE_SIZE)
 		const members = pageSlice.map(([memberKey, member]) => {
-			const pubKeyHash = member.pubKeyHash || memberKey
+			const pubKeyHash = memberKey
 			const entityHash = memberEntityHash(member) || null
 			return {
 				pubKeyHash,
@@ -100,12 +100,7 @@ export function registerMembershipRoutes(router, authenticate) {
 		if (!membership) return
 		const { username, state, member } = membership
 		const permissionsChannelId = governanceChannelId(state)
-		const perms = calculateMemberPermissions(
-			member,
-			state.roles,
-			permissionsChannelId,
-			state.channelPermissions || {},
-		)
+		const perms = calculateMemberPermissions(member, state.roles, permissionsChannelId, state.channelPermissions)
 		if (!perms[PERMISSIONS.INVITE_MEMBERS] && !perms[PERMISSIONS.ADMIN] && !perms[PERMISSIONS.MANAGE_ADMINS])
 			return res.status(403).json({ error: 'INVITE_MEMBERS denied' })
 		const ttlMs = Number(req.body?.ttlMs)
@@ -135,7 +130,7 @@ export function registerMembershipRoutes(router, authenticate) {
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/join$/, authenticate, async (req, res) => {
 		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
-		const { inviteCode, pow, introducerPubKeyHash, reputationEdge, dmIntroPubKeyHex, dmIntroNonce, dmIntroSignatureHex, mqttRoomSecret, mqttAppId } = req.body
+		const { inviteCode, pow, introducerPubKeyHash, reputationEdge, dmIntroNonce, dmIntroSignatureHex, mqttRoomSecret, mqttAppId } = req.body
 		const dmNonce = dmIntroNonce?.trim()
 		const dmSignatureHex = dmIntroSignatureHex?.trim().replace(/^0x/iu, '')
 		if (!!dmNonce !== !!dmSignatureHex)
@@ -145,12 +140,12 @@ export function registerMembershipRoutes(router, authenticate) {
 			const dmCheck = await validateDmIntroLinkProof(
 				username,
 				state,
-				normalizePubKeyHex(dmIntroPubKeyHex || introducerPubKeyHash),
+				normalizePubKeyHex(introducerPubKeyHash),
 				dmNonce,
 				dmSignatureHex,
 			)
 			if (!dmCheck.ok)
-				return res.status(400).json({ error: dmCheck.error || 'invalid dm intro link' })
+				return res.status(400).json({ error: dmCheck.error })
 		}
 		if (inviteCode) {
 			const accepted = await consumeGroupInviteTicket(username, groupId, inviteCode)

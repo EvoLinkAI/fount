@@ -1,14 +1,13 @@
-import { loadBlocklist } from '../../../../../../scripts/p2p/blocklist.mjs'
 import { getReplicaFromReq, resolveOperatorEntityHash } from '../../../../../../scripts/p2p/entity/replica.mjs'
 import { authenticate, getUserByReq } from '../../../../../../server/auth.mjs'
 import { discoverWithNetwork } from '../discovery.mjs'
 import { getEntityProfile } from '../feed.mjs'
-import { buildTrendingHashtags } from '../hashtags.mjs'
 import { ensureOperatorSocialReady } from '../lib/bootstrap.mjs'
 import { listLocalAgentEntities } from '../lib/entityResolve.mjs'
 import { suggestMentions } from '../lib/mentionSuggest.mjs'
 import { buildNotifications } from '../notifications.mjs'
 import { searchPosts } from '../search.mjs'
+import { buildTrendingHashtags } from '../trending/hashtags.mjs'
 
 /**
  * 注册探索、搜索、通知与 @ 建议路由。
@@ -53,14 +52,6 @@ export function registerDiscoverRoutes(router) {
 		res.status(200).json(await suggestMentions(username, String(req.query.q || ''), Number(req.query.limit) || 20))
 	})
 
-	router.get('/api/parts/shells\\:social/blocklist', authenticate, async (req, res) => {
-		const { username } = getUserByReq(req)
-		const blocked = loadBlocklist(username).blocked
-			.filter(entry => entry.scope === 'entity')
-			.map(entry => entry.value)
-		res.status(200).json({ blocked })
-	})
-
 	router.get('/api/parts/shells\\:social/viewer', authenticate, async (req, res) => {
 		const { replicaUsername, operatorEntityHash } = await getReplicaFromReq(req)
 		const entityHash = operatorEntityHash
@@ -85,7 +76,7 @@ export function registerDiscoverRoutes(router) {
 			const profile = await getEntityProfile(username, selfEntityHash)
 			entities.push({
 				entityHash: selfEntityHash,
-				displayName: profile?.displayName || profile?.name || selfEntityHash.slice(0, 8),
+				displayName: profile?.name || selfEntityHash.slice(0, 8),
 				kind: 'self',
 			})
 		}
@@ -93,7 +84,7 @@ export function registerDiscoverRoutes(router) {
 			const profile = await getEntityProfile(username, entityHash)
 			entities.push({
 				entityHash,
-				displayName: profile?.displayName || profile?.name || charPartName,
+				displayName: profile?.name || charPartName,
 				charPartName,
 				kind: 'agent',
 			})

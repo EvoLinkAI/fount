@@ -74,9 +74,9 @@ const GOVERNANCE_DENY_ADMIN_IMMUNE = new Set([
  */
 export function encodePermissions(permissions) {
 	let bits = 0n
-	for (let i = 0; i < PERMISSION_ORDER.length; i++)
-		if (permissions[PERMISSION_ORDER[i]])
-			bits |= 1n << BigInt(i)
+	for (let index = 0; index < PERMISSION_ORDER.length; index++)
+		if (permissions[PERMISSION_ORDER[index]])
+			bits |= 1n << BigInt(index)
 	return bits
 }
 
@@ -88,8 +88,8 @@ export function encodePermissions(permissions) {
 export function decodePermissions(bits) {
 	/** @type {Record<string, boolean>} */
 	const permissions = {}
-	for (let i = 0; i < PERMISSION_ORDER.length; i++)
-		permissions[PERMISSION_ORDER[i]] = Boolean(bits & (1n << BigInt(i)))
+	for (let index = 0; index < PERMISSION_ORDER.length; index++)
+		permissions[PERMISSION_ORDER[index]] = Boolean(bits & (1n << BigInt(index)))
 	return permissions
 }
 
@@ -121,7 +121,7 @@ function mergedChannelDeny(roleIds, channelOverride) {
  * @returns {Record<string, boolean>} 最终权限 Record
  */
 export function calculateMemberPermissions(member, roles, channelId, channelPermissions) {
-	const roleIds = member.roles || []
+	const roleIds = member.roles
 	let roleBits = 0n
 	for (const roleId of roleIds) {
 		const role = roles[roleId]
@@ -134,8 +134,8 @@ export function calculateMemberPermissions(member, roles, channelId, channelPerm
 		for (const roleId of roleIds) {
 			const override = channelOverride[roleId]
 			if (override) {
-				const allowBits = encodePermissions(override.allow || {})
-				const denyBits = encodePermissions(override.deny || {})
+				const allowBits = encodePermissions(override.allow)
+				const denyBits = encodePermissions(override.deny)
 				roleBits = (roleBits | allowBits) & ~denyBits
 			}
 		}

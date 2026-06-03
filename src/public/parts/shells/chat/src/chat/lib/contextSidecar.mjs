@@ -1,24 +1,6 @@
 /**
- * 【文件】lib/contextSidecar.mjs
- * 【职责】角色回复的 logContextBefore/After 本地 sidecar 读写与 mark-sweep GC（不上 DAG、不入主 chat JSON）。
- * 【原理】路径 context_cache/{channelId}/{messageId}.json；可达性从 messages.jsonl、events.jsonl 与可选内存 chatLog 推导 delete 目标；周期 gcLogContextSidecars。与联邦/P2P 无关，仅本机隐私上下文缓存。
- * 【数据结构】sidecar JSON 任意可序列化对象；reachable Map<channelId, Set<messageId>>。
- * 【关联】session/generation、channel/messageMutations delete、paths.mjs、channelId.mjs。
- */
-/**
- * 角色回复的 logContextBefore / logContextAfter 本地 sidecar（不上 DAG / 不入主 chat JSON）。
- * 路径：{userDict}/shells/chat/groups/{groupId}/context_cache/{channelId}/{messageId}.json
- *
- * ─── Sidecar 可达性根（mark–sweep GC；无单独 ledger 文件，每次从根重新推导）────────
- * 1. 物化消息索引 `groups/{groupId}/messages/{channelId}.jsonl`：按行解析，先收集
- *    `message_delete` 的 `content.chatLogEntryId`，再对 `type === 'message'` 的行保留
- *    `content.chatLogEntryId`（或 `eventId`）且未被 delete 集合标记的 id。
- * 2. DAG 事件流 `groups/{groupId}/events.jsonl`：同上规则；频道取事件的 `channelId` 或
- *    `content.channelId`，缺省 `default`。checkpoint.json 仅锚定重放位置，不枚举侧车键；
- *    与索引一致时与 (1) 重叠，并集可避免 messages 与 events 短暂不一致时的误删。
- * 3. 可选调用方传入的内存 `chatLog`（与磁盘并集），避免仅内存有正文而物化索引尚未写回时误删。
- *
- * 周期：任意时刻可调用 `gcLogContextSidecars`；`deleteMessage`、DAG 裁剪后、会话 reconcile 等路径会触发。
+ * 【文件】lib/contextSidecar.mjs — 角色回复 logContext 本地 sidecar（不上 DAG）。
+ * 可达性 mark-sweep：messages.jsonl + events.jsonl + 可选内存 chatLog。
  */
 import fs from 'node:fs'
 import { mkdir, readdir, stat } from 'node:fs/promises'
@@ -115,7 +97,7 @@ async function collectReachableSidecarRefsFromDisk(username, groupId) {
 	for (const name of messageIndexFilenames) {
 		if (!name.endsWith('.jsonl')) continue
 		const channelId = name.slice(0, -6)
-		const lines = await readJsonl(join(messagesDir, name, { sanitize: sanitizeFederatedEvent }))
+		const lines = await readJsonl(join(messagesDir, name), { sanitize: sanitizeFederatedEvent })
 		mergeReachableFromMessageIndexLines(lines, channelId, reachable)
 	}
 
@@ -132,7 +114,7 @@ async function collectReachableSidecarRefsFromDisk(username, groupId) {
 		if (!messageId) continue
 		const sid = String(messageId)
 		if (deleted.has(sid)) continue
-		addReachable(reachable, resolveChannelId(line.channelId || line.content?.channelId), sid)
+		addReachable(reachable, resolveChannelId(line.channelId), sid)
 	}
 
 	return reachable

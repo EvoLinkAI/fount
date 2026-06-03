@@ -58,6 +58,6 @@ Deno.test('materialize unlike removes like by target key', () => {
 
 Deno.test('blocklist entity scope from p2p normalizeBlocklist', () => {
 	const entity = `${'e'.repeat(128)}`
-	const list = normalizeBlocklist({ blocked: [{ scope: 'entity', entityHash: entity }] })
+	const list = normalizeBlocklist({ blocked: [{ scope: 'entity', value: entity }] })
 	assertEquals(list.blocked[0].value, entity)
 })

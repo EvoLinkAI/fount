@@ -27,7 +27,7 @@ export async function buildNotifications(username, limit = 30) {
 		const normalizedEntityHash = entityHash.toLowerCase()
 		if (authorNameCache.has(normalizedEntityHash)) return authorNameCache.get(normalizedEntityHash)
 		const profile = await getEntityProfile(username, normalizedEntityHash)
-		const displayName = profile?.displayName || profile?.name
+		const displayName = profile?.name
 			|| `${normalizedEntityHash.slice(0, 8)}…${normalizedEntityHash.slice(-4)}`
 		authorNameCache.set(normalizedEntityHash, displayName)
 		return displayName

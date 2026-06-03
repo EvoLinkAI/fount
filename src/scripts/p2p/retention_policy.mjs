@@ -50,7 +50,7 @@ export function retentionStartIndex(order, byId, opts) {
 	let startIdx = 0
 	for (let index = 0; index < order.length; index++) {
 		const ev = byId.get(order[index])
-		const wall = Number(ev?.hlc?.wall ?? ev?.timestamp ?? 0)
+		const wall = Number(ev?.hlc?.wall ?? 0)
 		if (wall >= cutoffWall) {
 			startIdx = index
 			break

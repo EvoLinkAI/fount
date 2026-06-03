@@ -14,14 +14,13 @@ import { vaultStatePath } from '../paths.mjs'
  */
 export async function loadVaultGsh(username, entityHash) {
 	try {
-		const storedState = JSON.parse(await readFile(vaultStatePath(username, entityHash), 'utf8'))
-		if (storedState?.H) return { H: String(storedState.H), generation: Number(storedState.generation) || 0 }
+		return JSON.parse(await readFile(vaultStatePath(username, entityHash), 'utf8'))
 	}
-	catch { /* init below */ }
-	const vaultSecret = generateH()
-	const state = { H: vaultSecret, generation: 0 }
-	await saveVaultGsh(username, entityHash, state)
-	return state
+	catch {
+		const state = { H: generateH(), generation: 0 }
+		await saveVaultGsh(username, entityHash, state)
+		return state
+	}
 }
 
 /**
@@ -100,16 +99,10 @@ export async function maybeEncryptPostContent(username, entityHash, postKeyId, c
  * @returns {object | null} 解密后 content；无法解密返回 null
  */
 export async function maybeDecryptPostContent(username, entityHash, content) {
-	if (!content || content.scheme !== 'gsh-social') return content
-	try {
-		const { H } = await loadVaultGsh(username, entityHash)
-		const key = deriveSocialPostKey(H, String(content.postKeyId || ''))
-		const plaintext = decryptAesGcm(content, key)
-		return JSON.parse(plaintext)
-	}
-	catch {
-		return null
-	}
+	if (content.scheme !== 'gsh-social') return null
+	const { H } = await loadVaultGsh(username, entityHash)
+	const key = deriveSocialPostKey(H, content.postKeyId)
+	return JSON.parse(decryptAesGcm(content, key))
 }
 
 /**

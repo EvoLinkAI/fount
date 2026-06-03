@@ -8,7 +8,9 @@ const CACHE_DATANAME = 'socialTranslateCache'
  * @returns {Record<string, string>} 缓存条目表
  */
 function loadTranslateCache(username) {
-	return loadData(username, CACHE_DATANAME).entries || {}
+	const store = loadData(username, CACHE_DATANAME)
+	store.entries ??= {}
+	return store.entries
 }
 
 /**
@@ -43,19 +45,18 @@ export function getCachedTranslation(username, cacheKey) {
  * @returns {Promise<string>} 译文（失败时返回原文）
  */
 export async function translatePostText(text, targetLang) {
-	const sourceText = String(text || '')
-	if (!sourceText) return ''
+	if (!text) return ''
 	try {
 		const { getPartList, loadPart } = await import('../../../../../server/parts_loader.mjs')
 		const generators = await getPartList('serviceGenerators/translate')
-		if (!generators.length) return sourceText
+		if (!generators.length) return text
 		const generatorPart = await loadPart(generators[0].partpath)
 		const generator = await generatorPart.Get?.('default', {})
-		if (!generator?.Translate) return sourceText
-		const translated = await generator.Translate(sourceText, targetLang)
-		return String(translated?.text ?? translated ?? sourceText)
+		if (!generator?.Translate) return text
+		const translated = await generator.Translate(text, targetLang)
+		return String(translated?.text ?? text)
 	}
 	catch {
-		return sourceText
+		return text
 	}
 }

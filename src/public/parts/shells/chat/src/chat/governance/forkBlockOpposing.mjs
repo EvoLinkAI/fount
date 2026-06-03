@@ -1,17 +1,10 @@
 /**
  * 【文件】governance/forkBlockOpposing.mjs
- * 【职责】当用户 fork 对立 DAG 分支时，自动拉黑该分支上治理授权类事件（owner 继任等）的签发者 pubKeyHash。
- * 【原理】blockOpposingForkBranch 从 tip 反向闭包，筛选 GOVERNANCE_AUTHZ_TYPES 事件发送者，写入 blocklist。减少 fork 后继续接收对立阵营联邦垃圾事件。
- * 【数据结构】返回 { blocked: pubKeyHash[] }。
- * 【关联】fork.mjs、branchStore、governance_branch.mjs、blocklist.mjs。
- */
-/**
- * 【文件】governance/forkBlockOpposing.mjs
- * 【职责】采纳某 DAG tip 后，对立分支上治理事件签发者批量写入 blocklist（§0.5 不可接触）。
+ * 【职责】采纳某 DAG tip 后，对立分支上治理授权类事件签发者批量写入 blocklist。
  * 【原理】computeDagTipIdsFromEvents 枚举 tips；ancestorClosureFromTip 收集 GOVERNANCE_AUTHZ_TYPES 发送者 pubKeyHash。
- * 【数据结构】返回 { blocked: pubKeyHash[] }；acceptedTipId 须为当前 tip。
  * 【关联】blocklist addBlocklistEntry、governance_branch；fork 后用户确认选支。
  */
+import { addBlocklistEntry } from '../../../../../../../scripts/p2p/blocklist.mjs'
 import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { GOVERNANCE_AUTHZ_TYPES } from '../../../../../../../scripts/p2p/event_types.mjs'
 import {
@@ -22,11 +15,8 @@ import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { eventsPath } from '../lib/paths.mjs'
 
-
-import { addBlocklistEntry } from './blocklist.mjs'
-
 /**
- * 从对立 DAG 分支收集治理事件签发者（§0.5 不可接触）。
+ * 从对立 DAG 分支收集治理事件签发者并拉黑。
  * @param {string} username 本节点用户
  * @param {string} groupId 群 ID
  * @param {string} acceptedTipId 本节点采纳的叶 id
@@ -37,9 +27,7 @@ export async function blockOpposingForkBranch(username, groupId, acceptedTipId) 
 	if (!isHex64(tip)) throw new Error('acceptedTipId must be 64 hex chars')
 
 	const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
-	const byId = new Map()
-	for (const event of events)
-		if (event?.id) byId.set(String(event.id), event)
+	const byId = new Map(events.filter(event => event?.id).map(event => [String(event.id), event]))
 
 	const tips = computeDagTipIdsFromEvents(events)
 	if (!tips.includes(tip)) throw new Error('acceptedTipId is not a current DAG tip')
@@ -49,20 +37,18 @@ export async function blockOpposingForkBranch(username, groupId, acceptedTipId) 
 
 	for (const otherTip of tips) {
 		if (otherTip === tip) continue
-		const closure = ancestorClosureFromTip(otherTip, byId)
-		for (const eventId of closure) {
+		for (const eventId of ancestorClosureFromTip(otherTip, byId)) {
 			const event = byId.get(eventId)
 			if (!event || !GOVERNANCE_AUTHZ_TYPES.has(event.type)) continue
 			const sender = String(event.sender || '').trim().toLowerCase()
-			if (!sender || sender === self) continue
-			if (isHex64(sender)) targets.add(sender)
-			const targetHash = String(event.content?.targetPubKeyHash || event.content?.pubKeyHash || '').trim().toLowerCase()
+			if (sender && sender !== self && isHex64(sender)) targets.add(sender)
+			const targetHash = String(event.content?.targetPubKeyHash || '').trim().toLowerCase()
 			if (isHex64(targetHash) && targetHash !== self) targets.add(targetHash)
 		}
 	}
 
 	for (const pubKeyHash of targets)
-		await addBlocklistEntry(username, pubKeyHash, groupId)
+		await addBlocklistEntry(username, { scope: 'subject', value: pubKeyHash, groupId })
 
 	return { blocked: [...targets] }
 }

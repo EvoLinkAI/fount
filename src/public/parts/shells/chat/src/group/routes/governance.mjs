@@ -45,8 +45,8 @@ export function registerGovernanceRoutes(router, authenticate) {
 	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/permissions$/, authenticate, async (req, res) => {
 		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
-		const subject = String(req.query.pubKeyHash || '').trim()
-		const channelId = String(req.query.channelId || '').trim() || 'default'
+		const subject = (req.query.pubKeyHash || '').trim()
+		const channelId = (req.query.channelId || '').trim() || 'default'
 
 		const { state } = await getState(username, groupId)
 		let resolvedKey = subject ? resolveActiveMemberKey(state, subject) : null
@@ -58,12 +58,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 		if (!state.channels[channelId])
 			return res.status(404).json({ error: 'Channel not found' })
 
-		const flat = calculateMemberPermissions(
-			member,
-			state.roles || {},
-			channelId,
-			state.channelPermissions || {},
-		)
+		const flat = calculateMemberPermissions(member, state.roles, channelId, state.channelPermissions)
 		res.status(200).json(flat)
 	})
 
@@ -119,10 +114,10 @@ export function registerGovernanceRoutes(router, authenticate) {
 		if (!canManageRoles)
 			return res.status(403).json({ error: 'No permission to manage roles' })
 
-		const roleId = (name || 'role').trim().toLowerCase().replaceAll(/\s+/g, '_') + '_' + Date.now()
-		const roleName = (name || '').trim()
+		const roleName = name?.trim()
 		if (!roleName)
 			return res.status(400).json({ error: 'Role name is required' })
+		const roleId = roleName.toLowerCase().replaceAll(/\s+/g, '_') + '_' + Date.now()
 
 		await appendSignedLocalEvent(username, groupId, {
 			type: 'role_create',
@@ -157,9 +152,9 @@ export function registerGovernanceRoutes(router, authenticate) {
 		if (!role) return res.status(404).json({ error: 'Role not found' })
 
 		const updates = {}
-		const roleName = String(name || '').trim()
+		const roleName = name?.trim()
 		if (roleName) updates.name = roleName
-		const roleColor = String(color || '').trim()
+		const roleColor = color?.trim()
 		if (roleColor) updates.color = roleColor
 		if (Number.isFinite(position)) updates.position = position
 		if (isHoisted != null) updates.isHoisted = !!isHoisted
@@ -241,15 +236,15 @@ export function registerGovernanceRoutes(router, authenticate) {
 		if (!membership) return
 		const { username, state, member, memberKey } = membership
 
-		const govCh = governanceChannelId(state)
+		const governanceChannel = governanceChannelId(state)
 		if (action === 'unban') {
-			const canUnban = hasPermission(member, PERMISSIONS.BAN_MEMBERS, state.roles, govCh, state.channelPermissions)
+			const canUnban = hasPermission(member, PERMISSIONS.BAN_MEMBERS, state.roles, governanceChannel, state.channelPermissions)
 			if (!canUnban)
 				return res.status(403).json({ error: 'No permission to unban members' })
 			const resolvedTargetKey = resolveMemberKey(state, targetMemberKey)
 			if (!resolvedTargetKey)
 				return res.status(404).json({ error: 'Member not found' })
-			const unbanPubKeyHash = state.members[resolvedTargetKey]?.pubKeyHash || resolvedTargetKey
+			const unbanPubKeyHash = resolvedTargetKey
 			await appendSignedLocalEvent(username, groupId, {
 				type: 'member_unban',
 				timestamp: Date.now(),
@@ -268,7 +263,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 		}
 
 		const requiredPermission = action === 'ban' ? PERMISSIONS.BAN_MEMBERS : PERMISSIONS.KICK_MEMBERS
-		const canModerate = hasPermission(member, requiredPermission, state.roles, govCh, state.channelPermissions)
+		const canModerate = hasPermission(member, requiredPermission, state.roles, governanceChannel, state.channelPermissions)
 		if (!canModerate)
 			return res.status(403).json({ error: 'No permission to moderate members' })
 
@@ -278,11 +273,11 @@ export function registerGovernanceRoutes(router, authenticate) {
 		if (resolvedTargetKey === memberKey)
 			return res.status(400).json({ error: 'Cannot moderate yourself' })
 
-		const targetMember = state.members[resolvedTargetKey] || { pubKeyHash: resolvedTargetKey }
-		const targetPubKeyHash = targetMember.pubKeyHash || resolvedTargetKey
+		const targetMember = state.members[resolvedTargetKey]
+		const targetPubKeyHash = resolvedTargetKey
 
 		if (action === 'ban') {
-			const banScope = String(req.body?.banScope || '').trim().toLowerCase()
+			const banScope = req.body?.banScope?.trim().toLowerCase()
 			if (!isBanScope(banScope))
 				return res.status(400).json({ error: 'banScope must be entity or node' })
 			let banContent
@@ -337,14 +332,9 @@ export function registerGovernanceRoutes(router, authenticate) {
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/key-rotate$/, authenticate, requireGroupMember(), async (req, res) => {
 		const { username, state, member, groupId } = req.groupContext
 
-		const activeCount = Object.values(state.members || {}).filter(m => m?.status === 'active').length
+		const activeCount = Object.values(state.members).filter(groupMember => groupMember?.status === 'active').length
 		const governanceChannel = governanceChannelId(state)
-		const perms = calculateMemberPermissions(
-			member,
-			state.roles,
-			governanceChannel,
-			state.channelPermissions || {},
-		)
+		const perms = calculateMemberPermissions(member, state.roles, governanceChannel, state.channelPermissions)
 		const isDmPair = activeCount === 2
 		if (!isDmPair && !perms[PERMISSIONS.ADMIN] && !perms[PERMISSIONS.MANAGE_ROLES])
 			return res.status(403).json({ error: 'key_rotate requires ADMIN or MANAGE_ROLES' })
@@ -382,9 +372,9 @@ export function registerGovernanceRoutes(router, authenticate) {
 
 		const { proposedOwnerPubKeyHash, ballotId, adminSignatures, thresholdRatio: thresholdRaw } = req.body || {}
 
-		if (!String(proposedOwnerPubKeyHash || '').trim())
+		if (!proposedOwnerPubKeyHash?.trim())
 			return res.status(400).json({ error: 'proposedOwnerPubKeyHash required' })
-		if (!String(ballotId || '').trim())
+		if (!ballotId?.trim())
 			return res.status(400).json({ error: 'ballotId required' })
 
 		const targetHash = proposedOwnerPubKeyHash.trim().toLowerCase()
@@ -395,16 +385,16 @@ export function registerGovernanceRoutes(router, authenticate) {
 		if (adminHashes.size === 0)
 			return res.status(400).json({ error: 'group has no admins to vote' })
 
-		const ballot = { proposedOwnerPubKeyHash: targetHash, groupId, ballotId: String(ballotId).trim() }
+		const ballot = { proposedOwnerPubKeyHash: targetHash, groupId, ballotId: ballotId.trim() }
 		const mergedSignatures = Array.isArray(adminSignatures) ? [...adminSignatures] : []
 		const seenAdminHashes = new Set(
 			mergedSignatures
-				.map(entry => String(entry?.pubKeyHex || '').trim().toLowerCase())
+				.map(entry => entry?.pubKeyHex?.trim().toLowerCase())
 				.filter(isHex64)
 				.map(hex => pubKeyHash(Buffer.from(hex, 'hex'))),
 		)
 
-		const callerAdminHash = String(callerMember?.pubKeyHash || callerKey).trim().toLowerCase()
+		const callerAdminHash = callerKey
 		if (adminHashes.has(callerAdminHash) && !seenAdminHashes.has(callerAdminHash))
 			try {
 				const local = await signOwnerSuccessionAsLocalAdmin(username, groupId, ballot)
@@ -437,7 +427,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 			})
 
 		// 找出所有带 MANAGE_ADMINS 权限的角色
-		const manageAdminsRoleIds = Object.entries(state.roles || {})
+		const manageAdminsRoleIds = Object.entries(state.roles)
 			.filter(([, role]) => role.permissions?.MANAGE_ADMINS)
 			.map(([id]) => id)
 
@@ -450,7 +440,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 		// 撤销当前所有 MANAGE_ADMINS 持有者的对应角色（新群主除外）
 		for (const [key, member] of Object.entries(state.members)) {
 			if (member.status !== 'active') continue
-			const hash = member.pubKeyHash || key
+			const hash = key
 			if (hash === targetHash) continue
 			for (const roleId of member.roles || [])
 				if (state.roles[roleId]?.permissions?.MANAGE_ADMINS)

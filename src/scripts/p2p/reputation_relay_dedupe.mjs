@@ -11,10 +11,11 @@ export const RELAY_BUMP_DEDUPE_MS = 24 * 3600 * 1000
  * @returns {boolean} 24h 内已计过分则为 true
  */
 export function relayBumpIsDuplicate(relayBumpSeen, peerNodeHash, dedupeKey, now = Date.now()) {
-	const id = String(peerNodeHash || '').trim()
-	if (!id) return true
-	const key = String(dedupeKey || `conn:${id}`).trim()
-	return (relayBumpSeen || []).some(
-		h => h.peerNodeHash === id && h.key === key && now - h.t <= RELAY_BUMP_DEDUPE_MS,
+	if (!peerNodeHash) return true
+	const dedupe = dedupeKey || `conn:${peerNodeHash}`
+	return relayBumpSeen.some(
+		entry => entry.peerNodeHash === peerNodeHash
+			&& entry.key === dedupe
+			&& now - entry.t <= RELAY_BUMP_DEDUPE_MS,
 	)
 }

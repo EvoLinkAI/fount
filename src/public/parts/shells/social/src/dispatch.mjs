@@ -1,6 +1,6 @@
 /**
  * Social 事件分发：@ 任意 P2P 实体；本地 agent 通过 char.interfaces.social 响应。
- * 无 social 面板的老角色在加载时注入 default_interface（见 lib/charSocial.mjs）。
+ * 本地 agent 须实现 interfaces.social（见 lib/charSocial.mjs）。
  * Social 账号 = Chat 账号 = fount P2P 实体，无需单独注册。
  */
 import { applyMentionNetworkHint } from '../../../../../scripts/p2p/social/network_hints.mjs'
@@ -24,12 +24,8 @@ export { mentionSourceText, postTextForNotification } from './lib/postMentionTex
  * @returns {Promise<string>} 展示名或 hash 缩写
  */
 async function displayNameForEntity(entityHash, replicaUsername) {
-	if (replicaUsername) {
-		const profile = await getEntityProfile(replicaUsername, entityHash)
-		if (profile?.displayName || profile?.name)
-			return profile.displayName || profile.name
-	}
-	return `${entityHash.slice(0, 8)}…${entityHash.slice(-4)}`
+	const profile = replicaUsername ? await getEntityProfile(replicaUsername, entityHash) : null
+	return profile?.name || `${entityHash.slice(0, 8)}…${entityHash.slice(-4)}`
 }
 
 /**
@@ -56,9 +52,9 @@ async function invokeCharSocialInterface(username, charPartName, method, event) 
  * @returns {{ text?: string, skip?: boolean }} 统一结果
  */
 function normalizeSocialHandlerResult(result) {
-	if (result == null) return { skip: true }
-	if (typeof result === 'string') return { text: result }
-	return result?.text != null || result?.skip != null ? result : { skip: true }
+	if (!result || result.skip) return { skip: true }
+	if (result.text) return result
+	return { skip: true }
 }
 
 /**
@@ -128,7 +124,7 @@ export async function processSocialOnMentionRpc(hostingUsername, rpc) {
 }
 
 /**
- * 帖子 @ 提及分发：目标为任意 P2P 实体；本机托管 agent 经 social 接口（含默认面板）自动回复。
+ * 帖子 @ 提及分发：目标为任意 P2P 实体；本机托管 agent 经 social 接口自动回复。
  * @param {string} posterUsername 发帖 replica
  * @param {string} authorEntityHash 作者 entityHash
  * @param {object} post 签名 post

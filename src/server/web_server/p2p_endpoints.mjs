@@ -1,7 +1,6 @@
 import {
 	addBlocklistEntry,
 	loadBlocklist,
-	setEntityBlocked,
 } from '../../scripts/p2p/blocklist.mjs'
 import { localesFromRequest } from '../../scripts/p2p/entity/localized.mjs'
 import {
@@ -84,19 +83,16 @@ export function registerP2pEndpoints(router) {
 	router.post('/api/p2p/blocklist', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
 		const body = req.body || {}
-		if (body.entityHash != null) {
-			const entityHash = String(body.entityHash).toLowerCase()
-			const blocked = await setEntityBlocked(username, entityHash, body.block !== false)
-			return res.status(200).json({ entityHash, blocked })
-		}
-		if (body.scope && body.value) 
-			await addBlocklistEntry(username, {
-				scope: body.scope,
-				value: body.value,
-				groupId: body.groupId,
-			})
-		
-		res.status(200).json({ ok: true })
+		const scope = String(body.scope || '').trim().toLowerCase()
+		const value = String(body.value || '').trim()
+		if (!scope || !value)
+			return res.status(400).json({ error: 'scope and value required' })
+		await addBlocklistEntry(username, {
+			scope,
+			value,
+			groupId: body.groupId,
+		})
+		res.status(200).json(loadBlocklist(username))
 	})
 
 	router.get('/api/p2p/viewer', authenticate, async (req, res) => {

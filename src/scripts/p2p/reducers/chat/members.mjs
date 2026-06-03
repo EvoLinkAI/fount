@@ -20,14 +20,14 @@ export const memberReducers = {
 	member_join(state, event) {
 		withGroupId(state, event)
 		if (!isJoinBanned(state, event.sender, event.content)) {
-			const activeBefore = Object.values(state.members).filter(m => m?.status === 'active').length
+			const activeBefore = Object.values(state.members).filter(member => member?.status === 'active').length
 			const extraRoles = activeBefore === 0 && Array.isArray(event.content?.roles)
-				? event.content.roles.filter(roleId => typeof roleId === 'string' && roleId && roleId !== '@everyone' && state.roles[roleId])
+				? event.content.roles.filter(roleId => roleId && roleId !== '@everyone' && state.roles[roleId])
 				: []
-			const homeNodeHash = event.content?.homeNodeHash || event.senderHomeNodeHash
+			const homeNodeHash = event.content?.homeNodeHash
 			state.members[event.sender] = {
 				pubKeyHash: event.sender,
-				pubKeyHex: event.senderPubKey || event.content?.pubKeyHex || null,
+				pubKeyHex: event.senderPubKey || null,
 				homeNodeHash: homeNodeHash && isHex64(homeNodeHash) ? homeNodeHash : null,
 				roles: ['@everyone', ...extraRoles],
 				joinedAt: event.timestamp,
@@ -36,14 +36,12 @@ export const memberReducers = {
 			}
 			const introducer = event.content?.introducerPubKeyHash
 			const joiner = event.sender
-			if (introducer && isHex64(introducer) && isHex64(joiner) && introducer !== joiner) {
-				const dup = state.inviteEdges.some(edge => edge.from === introducer && edge.to === joiner)
-				if (!dup) {
-					const edge = { from: introducer, to: joiner, at: event.timestamp }
-					if (event.content?.reputationEdge !== undefined)
-						edge.reputationEdge = clampRepEdge(event.content.reputationEdge)
-					state.inviteEdges.push(edge)
-				}
+			if (introducer && isHex64(introducer) && isHex64(joiner) && introducer !== joiner
+				&& !state.inviteEdges.some(edge => edge.from === introducer && edge.to === joiner)) {
+				const edge = { from: introducer, to: joiner, at: event.timestamp }
+				if (event.content?.reputationEdge !== undefined)
+					edge.reputationEdge = clampRepEdge(event.content.reputationEdge)
+				state.inviteEdges.push(edge)
 			}
 		}
 		refreshMembersDigest(state)
@@ -88,7 +86,7 @@ export const memberReducers = {
 	 */
 	member_ban(state, event) {
 		withGroupId(state, event)
-		applyBanContent(state, event.content ?? {})
+		applyBanContent(state, event.content)
 		const target = event.content?.targetPubKeyHash
 		if (target && state.members[target])
 			state.members[target].status = 'banned'

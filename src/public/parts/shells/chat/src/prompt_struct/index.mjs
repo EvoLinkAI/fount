@@ -206,7 +206,7 @@ function entryVisibleForPrompt(entry, prompt) {
 	if (!vis) return true
 	const viewer = {
 		memberId: prompt.extension?.memberId || (prompt.char_id ? `${prompt.username}:${prompt.char_id}` : prompt.username),
-		roles: prompt.member_roles || prompt.extension?.member_roles || [],
+		roles: prompt.member_roles || [],
 		charId: prompt.char_id,
 	}
 	if (!vis.roles?.length && !vis.members?.length) return true

@@ -86,7 +86,7 @@ function isOwnViewerMessage(message, renderOpts) {
 	if (message.charId) return false
 	if (message.isRemote) return false
 	const viewer = String(renderOpts.viewerPubKeyHash || '').trim().toLowerCase()
-	const author = String(message.authorPubKeyHash || message.sender || '').trim().toLowerCase()
+	const author = String(message.authorPubKeyHash || '').trim().toLowerCase()
 	if (viewer && author) return viewer === author
 	return !message.charId
 }
@@ -524,7 +524,7 @@ export async function renderChannelMessageBlock(message, prevSender, prevTime, a
 		bodyHtml = `${refHtml}${truncBanner}${bodyCore}${filesHtml}${failedBanner}`
 
 		if (usePlainMd)
-			bubbleAttrs = ` data-md-raw="${escapeHtml(plainText)}" data-md-author="${escapeHtml(String(message.authorPubKeyHash || message.sender || ''))}"`
+			bubbleAttrs = ` data-md-raw="${escapeHtml(plainText)}" data-md-author="${escapeHtml(String(message.authorPubKeyHash || ''))}"`
 	}
 
 	const reactionsHtml = generating ? '' : await renderMessageReactionsHtml(

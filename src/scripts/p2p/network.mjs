@@ -44,7 +44,7 @@ function scheduleNetworkSave(username) {
 
 /**
  * @param {unknown} raw 磁盘 JSON
- * @returns {{ schema: number, trustedPeers: string[], explorePeers: string[], hints: NetworkHint[], lastRosterAt: number }} 规范化网络表
+ * @returns {{ trustedPeers: string[], explorePeers: string[], hints: NetworkHint[], lastRosterAt: number }} 规范化网络表
  */
 export function normalizeNetwork(raw) {
 	const file = raw ?? {}
@@ -68,7 +68,6 @@ export function normalizeNetwork(raw) {
 		}))
 		.filter(hint => isHex64(hint.nodeHash))
 	return {
-		schema: 1,
 		trustedPeers: pickIds('trustedPeers'),
 		explorePeers: pickIds('explorePeers'),
 		hints,
@@ -78,7 +77,7 @@ export function normalizeNetwork(raw) {
 
 /**
  * @param {string} username replica 登录名
- * @returns {{ schema: number, trustedPeers: string[], explorePeers: string[], hints: NetworkHint[], lastRosterAt: number }} 用户级 P2P 网络
+ * @returns {{ trustedPeers: string[], explorePeers: string[], hints: NetworkHint[], lastRosterAt: number }} 用户级 P2P 网络
  */
 export function loadNetwork(username) {
 	return normalizeNetwork(loadData(username, DATA_NAME))

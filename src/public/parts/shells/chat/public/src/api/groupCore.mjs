@@ -32,7 +32,6 @@ export async function createGroup(name, description) {
  */
 export async function getGroupList() {
 	const data = await groupFetch('', { method: 'GET' })
-	if (!Array.isArray(data)) throw new Error('Failed to fetch groups')
 	return data.map(row => ({
 		groupId: row.groupId,
 		name: row.name,
@@ -50,7 +49,7 @@ export async function getGroupList() {
  * 加入群组（可选邀请码或 DM 引荐证明）。
  * @param {string} groupId 群 ID
  * @param {string | null} [inviteCode] 邀请码
- * @param {{ dmIntroNonce?: string, dmIntroSignatureHex?: string, dmIntroPubKeyHex?: string, introducerPubKeyHash?: string }} [dmLinkProof] DM 深链引荐字段
+ * @param {{ dmIntroNonce?: string, dmIntroSignatureHex?: string, introducerPubKeyHash?: string }} [dmLinkProof] DM 深链引荐字段
  * @param {{ challenge: string, nonce: string } | null} [pow] PoW 入群证明
  * @param {{ mqttAppId?: string, mqttRoomSecret?: string, introducerPubKeyHash?: string } | null} [fedBootstrap] 首次联邦 MQTT 口令与邀请人
  * @returns {Promise<void>}
@@ -135,7 +134,7 @@ export async function fetchGroupAuditLog(groupId, opts = {}) {
 export async function getMembersPage(groupId, pageIdx) {
 	const data = await groupFetch(groupPath(groupId, 'members', 'page', Math.max(0, pageIdx)), { method: 'GET' })
 	return {
-		members: Array.isArray(data.members) ? data.members : [],
+		members: data.members,
 		membersRoot: data.membersRoot ?? null,
 		membersPagesCount: Number(data.membersPagesCount) || 1,
 	}

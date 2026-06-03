@@ -47,14 +47,12 @@ export function isSignedDagEventRow(event) {
 
 /**
  * 从联邦 `dag_event` 载荷取出已签名事件行。
- * @param {unknown} payload Trystero 载荷或 `{ event }` 包装
+ * @param {unknown} payload Trystero 载荷（完整签名事件）
  * @param {string} groupId 本群 ID
  * @returns {object | null} 验形通过的事件；否则 null
  */
 export function extractInboundSignedEvent(payload, groupId) {
-	if (!isPlainObject(payload)) return null
-	const event = isPlainObject(payload.event) ? payload.event : payload
-	if (!isSignedDagEventRow(event)) return null
-	if (event.groupId && String(event.groupId) !== groupId) return null
-	return event
+	if (!isSignedDagEventRow(payload)) return null
+	if (payload.groupId && String(payload.groupId) !== groupId) return null
+	return payload
 }

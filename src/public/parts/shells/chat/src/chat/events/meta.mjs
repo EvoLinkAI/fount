@@ -2,7 +2,7 @@
  * 【文件】`events/meta.mjs` — DAG 事件本地验收时间侧车。
  * 【职责】记录本节点收到各 `eventId` 的 `receivedAt`（毫秒），供频道消息行与 UI 展示；不进入 DAG canonical。
  * 【原理】与联邦 wire 剥离字段一致：`receivedAt` 仅存 `event_meta.json` 侧车，避免污染跨节点复制的 events.jsonl。
- * 【数据结构】`EventMetaFile`: `{ schema: 1, receivedAt: Record<eventId, number> }`；超 5 万条时裁剪最旧条目。
+ * 【数据结构】`EventMetaFile`: `{ receivedAt: Record<eventId, number> }`；超 5 万条时裁剪最旧条目。
  * 【关联】`append.mjs`、`remoteIngest.mjs`、`eventPersist.mjs`、`events/wire.mjs`、`../lib/paths.mjs`。
  */
 import { mkdir, readFile } from 'node:fs/promises'
@@ -12,7 +12,7 @@ import { writeJsonAtomic } from '../../../../../../../scripts/p2p/dag/storage.mj
 import { eventMetaPath } from '../lib/paths.mjs'
 
 /**
- * @typedef {{ schema: number, receivedAt: Record<string, number> }} EventMetaFile
+ * @typedef {{ receivedAt: Record<string, number> }} EventMetaFile
  */
 
 /**
@@ -20,7 +20,7 @@ import { eventMetaPath } from '../lib/paths.mjs'
  * @returns {EventMetaFile} 规范化后的元数据对象
  */
 function normalizeMeta(raw) {
-	return { schema: 1, receivedAt: raw?.receivedAt ?? {} }
+	return { receivedAt: raw?.receivedAt ?? {} }
 }
 
 /**

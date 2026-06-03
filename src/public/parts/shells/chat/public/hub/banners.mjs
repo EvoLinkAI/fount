@@ -71,14 +71,14 @@ export async function refreshDagForkBanner() {
 	if (mergeButton) mergeButton.disabled = tips.length < 2
 	refreshLocalViewBanner()
 	if (tipSelect) {
-		const preferred = data.consensusBranchTip || data.authzBranchTip || hubStore.currentState?.consensusBranchTip || ''
-		const tipScores = data.tipConsensusScores || data.tipScores || {}
+		const preferred = data.consensusBranchTip || hubStore.currentState?.consensusBranchTip || ''
+		const tipConsensusScores = data.tipConsensusScores || {}
 		if (!tips.length)
 			tipSelect.innerHTML = ''
 		else {
 			const tipRows = tips.map(id => {
 				const short = id.length > 12 ? `${id.slice(0, 10)}…` : id
-				const score = Number(tipScores[id])
+				const score = Number(tipConsensusScores[id])
 				return {
 					id: escapeHtml(id),
 					short: escapeHtml(short),

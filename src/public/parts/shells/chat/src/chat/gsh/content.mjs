@@ -1,16 +1,7 @@
 /**
- * 【文件】src/chat/gsh/content.mjs
- * 【职责】GSH 内容编解码：压缩物化快照片段为可存储 blob。
- * 【原理】JSON patch + optional zstd；校验 checksum 后写入用户目录。
- * 【数据结构】GshBlob：version、patch、checksum。
- * 【关联】gsh/store、gsh/buffer、lib/jsonBoundary。
- */
-/**
  * 【文件】gsh/content.mjs
- * 【职责】DAG 消息体 GSH 加解密（§11）：message/message_edit 的 content 加密后入联邦线，读盘/频道列表时按 generation 解密展示。
- * 【原理】encryptEventContent 用 getCurrentH；decryptEventContent 查 getHByGeneration，失败且代数超前则 buffer。密文信封 { gsh: { scheme, generation, iv, ciphertext, authTag } }。联邦中继的是密文，明文仅本机/授权成员可见。
- * 【数据结构】GSH_ENCRYPT_EVENT_TYPES Set；解密后的明文 content 对象。
- * 【关联】gsh/store.mjs、buffer.mjs、channel/postMessage、dag 物化、stream/auth 派生观看密钥。
+ * 【职责】DAG 消息体 GSH 加解密：message/message_edit 密文入联邦线，读盘/频道列表按 generation 解密。
+ * 【关联】gsh/store.mjs、buffer.mjs、channel/postMessage、dag 物化、stream/auth。
  */
 import { decryptMessage, encryptMessage } from '../../../../../../../scripts/p2p/gsh.mjs'
 
@@ -29,7 +20,7 @@ export function isGshEncryptedContent(content) {
 }
 
 /**
- * 联邦入站：消息类事件 content 必须为 GSH 密文（§11，禁明文降级）。
+ * 联邦入站：消息类事件 content 必须为 GSH 密文。
  * @param {string} type 事件类型
  * @param {unknown} content 载荷
  * @returns {void}
@@ -41,18 +32,7 @@ export function assertFederatedGshContent(type, content) {
 }
 
 /**
- * @param {string} username 本地用户
- * @param {string} groupId 群 ID
- * @returns {Promise<{ h: string, generation: number }>} 当前群 H 与代数
- */
-async function ensureGroupH(username, groupId) {
-	const cur = await getCurrentH(username, groupId)
-	if (cur) return cur
-	return initGroupH(username, groupId)
-}
-
-/**
- * 将明文 content 对象加密为 `{ gsh: { scheme, generation, iv, ciphertext, authTag } }`。
+ * 将明文 content 加密为 GSH 信封。
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID（KDF 盐）
@@ -60,15 +40,10 @@ async function ensureGroupH(username, groupId) {
  * @returns {Promise<object>} 密文 content
  */
 export async function encryptEventContent(username, groupId, channelId, plaintextContent) {
-	if (!plaintextContent) return plaintextContent
-	if (isGshEncryptedContent(plaintextContent)) return plaintextContent
-	const { h, generation } = await ensureGroupH(username, groupId)
-	const gsh = encryptMessage(JSON.stringify(plaintextContent), h, channelId, generation)
-	return { gsh }
+	if (isGshEncryptedContent(plaintextContent) || !plaintextContent) return plaintextContent
+	const { h, generation } = await getCurrentH(username, groupId) || initGroupH(username, groupId)
+	return { gsh: encryptMessage(JSON.stringify(plaintextContent), h, channelId, generation) }
 }
-
-/** @alias encryptEventContent */
-export const encryptForWire = encryptEventContent
 
 /**
  * 出站联邦前：本地明文 content → GSH wire 形态。
@@ -80,8 +55,8 @@ export const encryptForWire = encryptEventContent
 export async function encryptSignedEventForWire(username, groupId, signPayload) {
 	if (!signPayload || !GSH_ENCRYPT_EVENT_TYPES.has(signPayload.type)) return signPayload
 	if (isGshEncryptedContent(signPayload.content)) return signPayload
-	const channelId = signPayload.channelId || signPayload.content?.channelId || 'default'
-	const content = await encryptEventContent(username, groupId, channelId, signPayload.content || {})
+	const channelId = signPayload.channelId || 'default'
+	const content = await encryptEventContent(username, groupId, channelId, signPayload.content)
 	return { ...signPayload, content }
 }
 
@@ -100,7 +75,7 @@ export async function encryptMessageLineForWire(username, groupId, channelId, li
 }
 
 /**
- * 解密 GSH 信封为明文 content 对象；失败时保留信封并标注 `gshDecryptFailed`。
+ * 解密 GSH 信封为明文 content；失败时保留信封并标注 `gshDecryptFailed`。
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID
@@ -108,32 +83,21 @@ export async function encryptMessageLineForWire(username, groupId, channelId, li
  * @returns {Promise<object>} 明文 content（或带失败标记的对象）
  */
 export async function decryptEventContent(username, groupId, channelId, content) {
-	if (!content) return {}
-	if (!isGshEncryptedContent(content)) return /** @type {object} */ content
+	if (!isGshEncryptedContent(content)) return content
 
-	const encryptedEnvelope = /** @type {{ gsh: { scheme: string, generation?: number } }} */ content
-	const keyGeneration = encryptedEnvelope.gsh.generation ?? null
+	const keyGeneration = content.gsh.generation ?? null
 	let groupKey = keyGeneration != null ? await getHByGeneration(username, groupId, keyGeneration) : null
-	if (!groupKey) 
-		groupKey = (await getCurrentH(username, groupId))?.h ?? null
-	
+	groupKey ??= (await getCurrentH(username, groupId))?.h ?? null
+
 	if (!groupKey) {
 		recordGshPendingDecrypt(username, groupId, keyGeneration)
-		return {
-			.../** @type {object} */ content,
-			gshDecryptFailed: true,
-			gshPendingGeneration: keyGeneration,
-		}
+		return { ...content, gshDecryptFailed: true, gshPendingGeneration: keyGeneration }
 	}
 
-	const decryptedText = decryptMessage(encryptedEnvelope.gsh, groupKey, channelId)
+	const decryptedText = decryptMessage(content.gsh, groupKey, channelId)
 	if (decryptedText == null) {
 		recordGshPendingDecrypt(username, groupId, keyGeneration)
-		return {
-			.../** @type {object} */ content,
-			gshDecryptFailed: true,
-			gshPendingGeneration: keyGeneration,
-		}
+		return { ...content, gshDecryptFailed: true, gshPendingGeneration: keyGeneration }
 	}
 
 	try {

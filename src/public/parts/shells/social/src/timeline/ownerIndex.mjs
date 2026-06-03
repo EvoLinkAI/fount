@@ -82,7 +82,7 @@ export async function getTimelineOwnerIndex(username) {
  * @returns {Promise<string[]>} 该节点在本 replica 托管的 entityHash
  */
 export async function listLocalEntitiesForNode(username, nodeHash) {
-	const key = String(nodeHash || '').trim().toLowerCase()
+	const key = nodeHash?.toLowerCase()
 	if (!key) return []
 	return [...(await getTimelineOwnerIndex(username)).byNode.get(key) || []]
 }

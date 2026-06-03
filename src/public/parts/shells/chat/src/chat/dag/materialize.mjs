@@ -112,16 +112,15 @@ export async function getState(username, groupId, opts = {}) {
 		loadGovernanceBranchTip(username, groupId),
 	])
 	/** @type {Record<string, number>} */
-	const reputationBySender = {}
-	for (const [senderKey, entry] of Object.entries(reputationFile.byNodeHash || {}))
-		reputationBySender[senderKey] = Number(entry?.score ?? 0)
+	const reputationBySender = Object.fromEntries(
+		Object.entries(reputationFile.byNodeHash).map(([senderKey, entry]) => [senderKey, entry.score ?? 0]),
+	)
 
 	const consensusBranchTip = selectConsensusBranchTip(dagTips, byId)
-	const authzBranchTip = consensusBranchTip
 	const localViewBranchTip = preferredBranchTip && dagTips.includes(preferredBranchTip)
 		? preferredBranchTip
 		: selectAuthzBranchTip(dagTips, byId, reputationBySender, preferredBranchTip)
-	const foldOrder = authzFoldOrderIds(order, byId, authzBranchTip)
+	const foldOrder = authzFoldOrderIds(order, byId, consensusBranchTip)
 
 	let state = emptyMaterializedState()
 	const tipId = checkpoint?.checkpoint_event_id
@@ -147,10 +146,9 @@ export async function getState(username, groupId, opts = {}) {
 		}
 
 	state.dagTips = dagTips
-	state.authzBranchTip = authzBranchTip
 	state.consensusBranchTip = consensusBranchTip
 	state.localViewBranchTip = localViewBranchTip
-	state.governanceFork = hasGovernanceFork(dagTips, authzBranchTip)
+	state.governanceFork = hasGovernanceFork(dagTips, consensusBranchTip)
 	state.walOk = wal.ok
 	if (!wal.ok) state.walReason = wal.reason
 
@@ -180,8 +178,8 @@ function serializeMessageOverlayForCheckpoint(messageOverlay) {
  * @returns {string | null} checkpoint 锚点事件 id
  */
 function resolveCheckpointEventId(state, dagTipIds, foldOrder) {
-	const authzTip = state.authzBranchTip
-	if (authzTip && dagTipIds.includes(authzTip)) return authzTip
+	const consensusTip = state.consensusBranchTip
+	if (consensusTip && dagTipIds.includes(consensusTip)) return consensusTip
 	if (dagTipIds.length === 1) return dagTipIds[0]
 	return foldOrder.length ? foldOrder[foldOrder.length - 1] : null
 }
@@ -246,7 +244,7 @@ export async function buildAndSaveCheckpoint(username, groupId, opts = {}) {
 	}
 
 	state.channelMergedMessages = {}
-	for (const channelId of Object.keys(state.channels || {})) {
+	for (const channelId of Object.keys(state.channels)) {
 		const lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
 		state.channelMergedMessages[channelId] = mergeChannelMessagesForDisplay(lines)
 	}
@@ -260,7 +258,7 @@ export async function buildAndSaveCheckpoint(username, groupId, opts = {}) {
 		dag_tip_ids: dagTipIds,
 		local_tips_hash: computeLocalTipsHash(dagTipIds),
 		overlay: serializeMessageOverlayForCheckpoint(state.messageOverlay),
-		fileFolders: { ...state.fileFolders || {} },
+		fileFolders: { ...state.fileFolders },
 		epoch_chain,
 	})
 	if (opts.checkpointOwnerSecretKey && await canUseSecretKeyForCheckpointSignature(state, opts.checkpointOwnerSecretKey))
@@ -309,13 +307,13 @@ export async function runPostCheckpointMaintenance(username, groupId, checkpoint
 		}
 
 	try {
-		await enforceEventRetention(username, groupId, checkpointPayload, state.groupSettings || {})
+		await enforceEventRetention(username, groupId, checkpointPayload, state.groupSettings)
 	}
 	catch (error) {
 		console.error('event_retention:', error)
 	}
 
-	const groupSettings = state.groupSettings || {}
+	const groupSettings = state.groupSettings
 	const compactTrigger = Math.max(256, Number(groupSettings.compactTriggerEventDepth) || 100_000)
 	if (events.length > compactTrigger)
 		try {

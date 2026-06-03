@@ -31,9 +31,9 @@ export async function hydrateTimeSlice(json, username) {
 		...json,
 		chars,
 		plugins,
-		world_id: worldFields.world_id ?? json.world,
+		world_id: worldFields.world_id,
 		world: worldFields.world,
-		player_id: playerFields.player_id ?? json.player,
+		player_id: playerFields.player_id,
 		player: playerFields.player,
 	}
 }

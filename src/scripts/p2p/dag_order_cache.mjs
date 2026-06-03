@@ -69,7 +69,7 @@ export function resolveEventTopologicalOrder(events, cache, opts = {}) {
 	const tipsHash = computeLocalTipsHash(tips)
 	const eventCount = events.length
 
-	if (cache?.version === 1 && Array.isArray(cache.order) && cache.order.length) {
+	if (cache && Array.isArray(cache.order) && cache.order.length) {
 		if (cache.tipsHash === tipsHash && cache.eventCount === eventCount) {
 			const ok = cache.order.length === eventCount && cache.order.every(id => byId.has(id))
 			if (ok) return cache.order
@@ -86,12 +86,11 @@ export function resolveEventTopologicalOrder(events, cache, opts = {}) {
 /**
  * @param {string[]} order 拓扑序
  * @param {object[]} events 全量事件
- * @returns {{ version: number, order: string[], tipsHash: string, eventCount: number }} 可写入 events.order.json
+ * @returns {{ order: string[], tipsHash: string, eventCount: number }} 可写入 events.order.json
  */
 export function buildOrderCachePayload(order, events) {
 	const tips = computeDagTipIdsFromEvents(events)
 	return {
-		version: 1,
 		order,
 		tipsHash: computeLocalTipsHash(tips),
 		eventCount: events.length,

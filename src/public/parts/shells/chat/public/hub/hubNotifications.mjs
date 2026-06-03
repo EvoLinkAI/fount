@@ -54,8 +54,8 @@ export function maybeNotifyHubMessage(opts = {}) {
 	const { groupName, channelName, message, viewerPubKeyHash } = opts
 	if (!message) return
 
-	const sender = String(message.authorPubKeyHash || message.sender || message.charId || '').toLowerCase()
-	const viewer = String(viewerPubKeyHash || '').toLowerCase()
+	const sender = (message.authorPubKeyHash || message.charId || '').toLowerCase()
+	const viewer = (viewerPubKeyHash || '').toLowerCase()
 	if (viewer && sender && viewer === sender) return
 
 	const preview = getMessageText(message).trim().slice(0, 120)

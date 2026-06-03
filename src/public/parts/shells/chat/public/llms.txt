@@ -57,7 +57,7 @@ WebSocket：`/ws/parts/shells:chat/groups/:ownerNodeHash/:groupId`（Hub、群�
 写入 `dag_tip_merge` 合并全部叶；需 `MANAGE_CHANNELS`。
 
 ### `GET /api/parts/shells:chat/groups/:groupId/peers`
-Trystero roster + 本地 `peers.json`（`trustedPeers`、`explorePeers`、`blockedPeers`）。
+Trystero roster + 用户级 `network.json`（`trustedPeers`、`explorePeers`）与 `blocklist.json`（`blockedPeers` 视图）。
 
 ### `GET /api/parts/shells:chat/groups/:groupId/reputation`
 本地主观信誉表。
@@ -81,10 +81,10 @@ Trystero roster + 本地 `peers.json`（`trustedPeers`、`explorePeers`、`block
 签发短时群邀请码（默认 TTL 1h）；响应含 `mqttAppId`、`mqttRoomSecret`、`introducerPubKeyHash` 与 `clipboardText` 深链；需 `INVITE_MEMBERS` 或 `ADMIN`/`MANAGE_ADMINS`。无 `mqttRoomSecret` 时 `409`。
 
 ### `POST /api/parts/shells:chat/groups/:groupId/join`
-Body：`inviteCode?`、`mqttAppId?`、`mqttRoomSecret?`（首次联邦 bootstrap）、`pow?`、`introducerPubKeyHash?`、`reputationEdge?`、`dmIntroPubKeyHex?`、`dmIntroNonce?`、`dmIntroSignatureHex?`。
+Body：`inviteCode?`、`mqttAppId?`、`mqttRoomSecret?`（首次联邦 bootstrap）、`pow?`、`introducerPubKeyHash?`、`reputationEdge?`、`dmIntroNonce?`、`dmIntroSignatureHex?`（DM 引荐时 `introducerPubKeyHash` 与 nonce/签名配套）。
 
 ### `POST /api/parts/shells:chat/groups/:groupId/fork/block-opposing`
-body: `{ "acceptedTipId": "<64 hex DAG tip>" }` — 将**非**该叶的其他分支上治理类事件签发者写入用户 `blocklist` 并同步群内 `blockedPeers`（§0.5）。
+body: `{ "acceptedTipId": "<64 hex DAG tip>" }` — 将**非**该叶的其他分支上治理类事件签发者写入用户 `blocklist.json`（§0.5）。
 
 ### `POST /api/parts/shells:chat/groups/:groupId/fork`
 治理分叉：复制分支为新 `groupId`。
@@ -101,7 +101,6 @@ PoW 入群挑战（若群启用）。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET/POST | `/blocklist` | 兼容别名 → 用户级 `/api/p2p/blocklist`（`settings/blocklist.json`） |
 | GET/PUT | `/trusted-authors` | 不安全渲染可信作者 `pubKeyHash[]` |
 | GET/PUT | `/bookmarks` | `{ entries: [{ groupId, channelId, eventId, title?, href? }] }` |
 | GET/PUT | `/group-folders` | Hub 侧栏文件夹 `{ folders: [...] }` |
@@ -126,7 +125,7 @@ PoW 入群挑战（若群启用）。
 | POST | `/attachments` | multipart 聊天附件入库，响应 `{ hashes: string[] }` |
 | GET | `/attachments/:hash` | 按 BLAKE2b hash 取附件字节 |
 
-**深链（§16）**：canonical `fount://run/shells:chat/dm;<pubKeyHex>;<nonce>;<introSignatureHex>[;nodeUrl]` 与 `…/join;<groupId>;<inviteCode>[;<mqttRoomSecret>[;<introducerPubKeyHex>]]`。`member_join.content.introducerPubKeyHash` 物化进 `inviteEdges` 供信誉连坐。`peer_invite` 的 `encrypted_H` 入群后导入 GSH。`public/src/lib/runUri.mjs`（服务端 re-export）+ `dmLinkSignature.mjs`。站外分享：`https://steve02081504.github.io/fount/protocol?url=` + encodeURIComponent(runUri)。
+**深链（§16）**：canonical `fount://run/shells:chat/dm;<pubKeyHex>;<nonce>;<introSignatureHex>[;nodeUrl]` 与 `…/join;<groupId>;<inviteCode>[;<mqttRoomSecret>[;<introducerPubKeyHash>]]`。`member_join.content.introducerPubKeyHash` 物化进 `inviteEdges` 供信誉连坐。`peer_invite` 的 `encrypted_H` 入群后导入 GSH。`public/src/lib/runUri.mjs`（服务端 re-export）+ `dmLinkSignature.mjs`。站外分享：`https://steve02081504.github.io/fount/protocol?url=` + encodeURIComponent(runUri)。
 
 ---
 

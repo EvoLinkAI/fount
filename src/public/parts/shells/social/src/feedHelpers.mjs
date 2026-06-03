@@ -11,7 +11,7 @@ import { getTimelineOwnerIndex, listLocalEntitiesForNode } from './timeline/owne
  * @returns {Promise<string[]>} 本地 timelines 目录下的 entityHash
  */
 export async function listLocalTimelineOwners(username, options = {}) {
-	const prefix = String(options.nodeHashPrefix || '').trim().toLowerCase() || null
+	const prefix = (options.nodeHashPrefix || '').trim().toLowerCase() || null
 	if (prefix) return listLocalEntitiesForNode(username, prefix)
 	return [...(await getTimelineOwnerIndex(username)).all]
 }
@@ -25,7 +25,7 @@ export async function listKnownTimelineOwners(username) {
 	const operator = resolveOperatorEntityHash(username)
 	if (!operator) return []
 	const view = await getTimelineMaterialized(username, operator)
-	const set = new Set(view.following.map(id => String(id).toLowerCase()))
+	const set = new Set(view.following.map(id => id.toLowerCase()))
 	set.add(operator.toLowerCase())
 	return [...set]
 }
@@ -50,7 +50,7 @@ export async function listTimelineOwners(username, scope = 'known') {
  * @returns {boolean} 是否可见
  */
 export function canViewPost(post, viewerEntityHash, blocked, following) {
-	const authorEntity = String(post.senderEntityHash || post.entityHash || '').toLowerCase()
+	const authorEntity = (post.entityHash || '').toLowerCase()
 	if (blocked.has(authorEntity)) return false
 	if (viewerEntityHash && authorEntity === viewerEntityHash.toLowerCase()) return true
 	const visibility = post.content?.visibility || 'public'
@@ -77,14 +77,14 @@ export async function buildEngagementIndex(username, owners = null) {
 	for (const owner of ownerList) {
 		const view = await getTimelineMaterialized(username, owner)
 		for (const like of view.likes) {
-			const target = String(like.content?.targetEntityHash || '').toLowerCase()
+			const target = (like.content?.targetEntityHash || '').toLowerCase()
 			const postId = like.content?.targetPostId
 			if (!target || postId == null) continue
 			const key = socialPostKey(target, postId)
 			likes.set(key, (likes.get(key) || 0) + 1)
 		}
 		for (const repost of view.reposts) {
-			const target = String(repost.content?.targetEntityHash || '').toLowerCase()
+			const target = (repost.content?.targetEntityHash || '').toLowerCase()
 			const postId = repost.content?.targetPostId
 			if (!target || postId == null) continue
 			const key = socialPostKey(target, postId)
@@ -128,7 +128,7 @@ export async function loadViewerContext(username) {
 	)
 	const following = new Set(
 		viewerEntityHash
-			? (await getTimelineMaterialized(username, viewerEntityHash)).following.map(id => String(id).toLowerCase())
+			? (await getTimelineMaterialized(username, viewerEntityHash)).following.map(id => id.toLowerCase())
 			: [],
 	)
 	return {

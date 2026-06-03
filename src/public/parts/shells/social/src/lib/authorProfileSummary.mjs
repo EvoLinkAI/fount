@@ -9,14 +9,13 @@ import { isEntityHash128 } from '../../../../../../scripts/p2p/entity_id.mjs'
  */
 export function createAuthorProfileLoader(username) {
 	return memoizePromise(
-		k => k,
+		entityHash => entityHash,
 		async entityHash => {
 			if (!isEntityHash128(entityHash)) return null
 			await ensureLocalEntityProfile(username, entityHash)
 			const profile = await getProfile(entityHash, username)
-			return profile
-				? { displayName: profile.displayName || profile.name, avatarUrl: profile.avatarUrl || null }
-				: null
+			if (!profile) return null
+			return { name: profile.name, avatar: profile.avatar || null }
 		},
 		{ max: 256 },
 	)

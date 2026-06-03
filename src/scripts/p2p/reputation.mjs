@@ -27,7 +27,7 @@ export function clampReputationScore(x) {
  */
 export function computeRepMaxEff(data) {
 	let maxScore = /** @type {number | null} */ null
-	for (const nodeId of Object.keys(data.byNodeHash || {})) {
+	for (const nodeId of Object.keys(data.byNodeHash)) {
 		const score = Number(data.byNodeHash[nodeId]?.score)
 		if (Number.isFinite(score)) maxScore = maxScore === null ? score : Math.max(maxScore, score)
 	}

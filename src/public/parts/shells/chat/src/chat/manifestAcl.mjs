@@ -15,12 +15,12 @@ const OWNER_ID = 'chat'
  * @returns {void}
  */
 export function registerChatManifestAcl() {
-	registerManifestAcl('group-entity', OWNER_ID, async (ctx, logicalPath) => {
-		const groupId = ctx.manifest?.meta?.groupId
-			|| await groupIdFromGroupEntity(ctx.ownerEntityHash, ctx.replicaUsername)
+	registerManifestAcl('group-entity', OWNER_ID, async (manifestContext, logicalPath) => {
+		const groupId = manifestContext.manifest?.meta?.groupId
+			|| await groupIdFromGroupEntity(manifestContext.ownerEntityHash, manifestContext.replicaUsername)
 		if (!groupId) return false
-		const { state } = await getState(ctx.replicaUsername, groupId)
-		const memberKey = await resolveActiveMemberKeyForLocalUser(ctx.replicaUsername, groupId, state)
+		const { state } = await getState(manifestContext.replicaUsername, groupId)
+		const memberKey = await resolveActiveMemberKeyForLocalUser(manifestContext.replicaUsername, groupId, state)
 		if (!memberKey) return false
 		if (logicalPath != null) {
 			const member = state.members[memberKey]

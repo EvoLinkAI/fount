@@ -71,7 +71,7 @@ export function buildCheckpointPayload({
 		inviteEdges: JSON.parse(JSON.stringify(materializedState.inviteEdges || [])),
 		gshRotations: JSON.parse(JSON.stringify(materializedState.gshRotations || [])),
 		pexHints: [...materializedState.pexHints || []].filter(hint => String(hint).trim()),
-		messageSenderIndex: JSON.parse(JSON.stringify(materializedState.messageSenderIndex || {})),
+		messageSenderIndex: JSON.parse(JSON.stringify(materializedState.messageSenderIndex)),
 		session: JSON.parse(JSON.stringify(materializedState.session || {})),
 	}
 

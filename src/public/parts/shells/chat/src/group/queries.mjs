@@ -7,7 +7,6 @@
  */
 import { DEFAULT_STREAM_GENERATING_IDLE_MS } from '../../../../../../scripts/p2p/constants.mjs'
 import { readJsonl } from '../../../../../../scripts/p2p/dag/storage.mjs'
-import { isHex64 } from '../../../../../../scripts/p2p/hexIds.mjs'
 import { getState } from '../chat/dag/materialize.mjs'
 import { computeLastGroupActivityMs } from '../chat/dag/queries.mjs'
 import { sanitizeFederatedEvent } from '../chat/events/wire.mjs'
@@ -28,8 +27,7 @@ import { resolveActiveMemberKeyForLocalUser } from './access.mjs'
 function enrichChannelMessagesForViewer(lines, viewerPubKeyHash) {
 	const localMemberKey = viewerPubKeyHash.trim().toLowerCase()
 	return lines.map(line => {
-		const senderKey = line.sender.trim().toLowerCase()
-		const authorPubKeyHash = isHex64(senderKey) ? senderKey : null
+		const authorPubKeyHash = line.sender.trim().toLowerCase()
 		return {
 			...line,
 			charId: line.charId || null,
@@ -48,8 +46,8 @@ function enrichChannelMessagesForViewer(lines, viewerPubKeyHash) {
  */
 function markStaleGeneratingMessages(lines, idleMs = DEFAULT_STREAM_GENERATING_IDLE_MS) {
 	if (!lines.length) return lines
-	const thresholdMs = idleMs > 0 ? idleMs : DEFAULT_STREAM_GENERATING_IDLE_MS
 	const now = Date.now()
+	const thresholdMs = idleMs > 0 ? idleMs : DEFAULT_STREAM_GENERATING_IDLE_MS
 	return lines.map(line => {
 		if (line.type !== 'message' || !line.content?.is_generating) return line
 		if (line.timestamp && now - line.timestamp > thresholdMs)
@@ -64,26 +62,21 @@ function markStaleGeneratingMessages(lines, idleMs = DEFAULT_STREAM_GENERATING_I
  */
 export async function enumerateJoinedFederatedGroups(username) {
 	const rows = []
-	for (const groupId of await listUserGroups(username))
-		try {
-			const { state } = await getState(username, groupId)
-			if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state)) continue
-			const activeMembers = Object.values(state.members).filter(member => member.status === 'active')
-			rows.push({
-				groupId,
-				name: state.groupMeta?.name || groupId,
-				description: state.groupMeta?.description ?? '',
-				avatar: state.groupMeta?.avatar ?? null,
-				defaultChannelId: state.groupSettings?.defaultChannelId ?? null,
-				memberCount: activeMembers.length,
-				channelCount: Object.keys(state.channels).length,
-				lastMessageTime: await computeLastGroupActivityMs(username, groupId),
-				friendBinding: state.groupMeta?.friendBinding || null,
-			})
-		}
-		catch {
-			// 新建群物化尚未就绪时跳过该条，避免整表 GET /groups 失败导致侧栏空白
-		}
+	for (const groupId of await listUserGroups(username)) {
+		const { state } = await getState(username, groupId)
+		if (!await resolveActiveMemberKeyForLocalUser(username, groupId, state)) continue
+		rows.push({
+			groupId,
+			name: state.groupMeta?.name || groupId,
+			description: state.groupMeta?.description ?? '',
+			avatar: state.groupMeta?.avatar ?? null,
+			defaultChannelId: state.groupSettings?.defaultChannelId ?? null,
+			memberCount: Object.values(state.members).filter(member => member?.status === 'active').length,
+			channelCount: Object.keys(state.channels).length,
+			lastMessageTime: await computeLastGroupActivityMs(username, groupId),
+			friendBinding: state.groupMeta?.friendBinding || null,
+		})
+	}
 
 	return rows
 }
@@ -104,7 +97,7 @@ export async function readChannelReactionEvents(username, groupId, channelId) {
 			sender: event.sender,
 			content: event.content,
 			eventId: event.id,
-			timestamp: event.timestamp ?? event.hlc?.wall,
+			timestamp: event.hlc?.wall,
 		}))
 }
 
@@ -113,10 +106,10 @@ export async function readChannelReactionEvents(username, groupId, channelId) {
  * @param {string} username 用户
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID
- * @param {{ since?: string, before?: string, limit?: string | number }} q 分页参数
+ * @param {{ since?: string, before?: string, limit?: string | number }} [pagination] 分页参数
  * @returns {Promise<object[]>} 消息行对象数组
  */
-export async function readChannelMessagesForUser(username, groupId, channelId, q) {
+export async function readChannelMessagesForUser(username, groupId, channelId, pagination = {}) {
 	const { state } = await getState(username, groupId)
 	let lines = state.channelMergedMessages?.[channelId]
 	if (!lines) {
@@ -124,23 +117,25 @@ export async function readChannelMessagesForUser(username, groupId, channelId, q
 		lines = mergeChannelMessagesForDisplay(lines)
 	}
 	lines = await decryptChannelMessageLines(username, groupId, channelId, lines)
-	if (q.since) {
-		const sinceIndex = lines.findIndex(message => message.eventId === q.since)
+	if (pagination.since) {
+		const sinceIndex = lines.findIndex(message => message.eventId === pagination.since)
 		// 含 since 行本身：`message_edit` 终稿会就地更新同 eventId，slice(+1) 会漏掉终稿
 		if (sinceIndex !== -1) lines = lines.slice(sinceIndex)
 	}
-	if (q.before) {
-		const beforeIndex = lines.findIndex(message => message.eventId === q.before)
+	if (pagination.before) {
+		const beforeIndex = lines.findIndex(message => message.eventId === pagination.before)
 		if (beforeIndex !== -1) lines = lines.slice(0, beforeIndex)
 	}
-	const lim = q.limit != null ? Number(q.limit) : undefined
-	if (Number.isFinite(lim) && lim > 0) lines = lines.slice(-lim)
-	const idle = Number(state.groupSettings?.streamGeneratingIdleMs)
-	const streamIdleMs = Number.isFinite(idle) && idle > 0 ? idle : undefined
-	const memberKey = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
-	const viewerPubKeyHash = memberKey ? state.members[memberKey].pubKeyHash || memberKey : username
+	const messageLimit = pagination.limit != null ? Number(pagination.limit) : undefined
+	if (Number.isFinite(messageLimit) && messageLimit > 0) lines = lines.slice(-messageLimit)
+	const viewerPubKeyHash = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
+	if (!viewerPubKeyHash) throw new Error('Not a member')
+	const streamGeneratingIdleMs = Number(state.groupSettings?.streamGeneratingIdleMs)
 	return enrichChannelMessagesForViewer(
-		await resolveContentRefsInMessageLines(username, markStaleGeneratingMessages(lines, streamIdleMs)),
+		await resolveContentRefsInMessageLines(username, markStaleGeneratingMessages(
+			lines,
+			Number.isFinite(streamGeneratingIdleMs) && streamGeneratingIdleMs > 0 ? streamGeneratingIdleMs : undefined,
+		)),
 		viewerPubKeyHash,
 	)
 }

@@ -1,11 +1,8 @@
 /**
  * 【文件】public/src/api/groupGovernance.mjs
- * 【职责】群治理 API：fork 新群、封对立分支、用户拉黑、声誉 slash/reset、群主继任、轮换群钥、合并 DAG tips。
- * 【原理】各操作映射 groups/:id/fork|block|reputation|governance 等子路径 POST。
- * 【数据结构】acceptedTipId、entry(scope,value)、reputation 载荷。
+ * 【职责】群治理 API：fork、封对立分支、声誉、群主继任、轮换群钥、合并 DAG tips。
  * 【关联】groupClient.mjs；groupBan、审计与 Hub 管理 UI。
  */
-﻿
 import { groupFetch, groupPath } from './groupClient.mjs'
 
 /**
@@ -25,15 +22,14 @@ export async function forkGroupAsNew(sourceGroupId, opts = {}) {
  * @returns {Promise<{ blocked: string[] }>} 被拉黑公钥哈希列表
  */
 export async function blockOpposingForkBranch(groupId, acceptedTipId) {
-	const data = await groupFetch(groupPath(groupId, 'fork', 'block-opposing'), {
+	return groupFetch(groupPath(groupId, 'fork', 'block-opposing'), {
 		method: 'POST',
 		json: { acceptedTipId },
 	})
-	return { blocked: Array.isArray(data.blocked) ? data.blocked : [] }
 }
 
 /**
- * 追加用户级拉黑（可选同步群内 `blockedPeers`）。
+ * 追加用户级拉黑（`blocklist.json`）。
  * @param {string|{ scope: string, value: string, groupId?: string }} entry 主体或 `{ scope, value }`
  * @param {string} [groupId] 来源群 ID（`entry` 为字符串时使用）
  * @returns {Promise<void>}
@@ -42,7 +38,7 @@ export async function blockUser(entry, groupId) {
 	const body = entry?.scope
 		? { scope: entry.scope, value: entry.value, groupId: entry.groupId || groupId }
 		: { scope: 'subject', value: entry, groupId }
-	const response = await fetch('/api/parts/shells:chat/blocklist', {
+	const response = await fetch('/api/p2p/blocklist', {
 		method: 'POST',
 		credentials: 'include',
 		headers: { 'Content-Type': 'application/json' },
@@ -56,7 +52,7 @@ export async function blockUser(entry, groupId) {
  * 设置当前采纳的治理分支 tip。
  * @param {string} groupId 群 ID
  * @param {string} tipId 分支 tip 事件 ID
- * @returns {Promise<{ authzBranchTip: string|null, consensusBranchTip: string|null, localViewBranchTip: string|null, governanceFork: boolean }>} 更新后的分支状态
+ * @returns {Promise<{ consensusBranchTip: string|null, localViewBranchTip: string|null, governanceFork: boolean }>} 更新后的分支状态
  */
 export async function setGovernanceBranch(groupId, tipId) {
 	const data = await groupFetch(groupPath(groupId, 'governance-branch'), {
@@ -64,19 +60,12 @@ export async function setGovernanceBranch(groupId, tipId) {
 		json: { tipId },
 	})
 	return {
-		authzBranchTip: data.authzBranchTip ?? null,
-		consensusBranchTip: data.consensusBranchTip ?? data.authzBranchTip ?? null,
+		consensusBranchTip: data.consensusBranchTip ?? null,
 		localViewBranchTip: data.localViewBranchTip ?? null,
 		governanceFork: !!data.governanceFork,
 	}
 }
 
-/**
- * 发布声誉扣减事件。
- * @param {string} groupId 群 ID
- * @param {object} body 扣减参数（`targetPubKeyHash`、`claim`、`verified`、`proof` 等）
- * @returns {Promise<{ applied: number }>} 实际应用的事件数
- */
 /**
  * 读取群主观信誉表。
  * @param {string} groupId 群 ID
@@ -124,7 +113,7 @@ export async function postReputationSlash(groupId, body) {
 /**
  * 合并 DAG 分叉 tip（§8 治理）。
  * @param {string} groupId 群 ID
- * @returns {Promise<object>} 含 `success` 与 `event` 的 merge API 响应
+ * @returns {Promise<object>} merge API 响应
  */
 export async function mergeDagTips(groupId) {
 	return groupFetch(groupPath(groupId, 'dag', 'merge-tips'), { method: 'POST', json: {} })
@@ -142,7 +131,7 @@ export async function rotateGroupKey(groupId) {
 /**
  * 群主继任联署提交。
  * @param {string} groupId 群 ID
- * @param {object} body `{ proposedOwnerPubKeyHash, ballotId, adminSignatures?, thresholdRatio? }`（联署可由服务端自动追加）
+ * @param {object} body `{ proposedOwnerPubKeyHash, ballotId, adminSignatures?, thresholdRatio? }`
  * @returns {Promise<object>} 服务端 JSON 响应
  */
 export async function submitOwnerSuccession(groupId, body) {
@@ -153,9 +142,8 @@ export async function submitOwnerSuccession(groupId, body) {
  * 解封成员。
  * @param {string} groupId 群 ID
  * @param {string} pubKeyHash 成员公钥哈希（用户名键）
- * @returns {Promise<void>} 无正文成功
+ * @returns {Promise<void>}
  */
 export async function unbanMember(groupId, pubKeyHash) {
 	await groupFetch(groupPath(groupId, 'members', pubKeyHash, 'unban'), { method: 'POST', json: {} })
 }
-

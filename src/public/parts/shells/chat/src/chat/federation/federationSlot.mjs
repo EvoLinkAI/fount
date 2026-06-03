@@ -59,10 +59,10 @@ function requireRegistrySender(senderRegistry, actionName) {
  */
 
 /**
- * @param {FederationRoomContext} ctx 房间上下文（由 room.mjs 组装）
+ * @param {FederationRoomContext} roomContext 房间上下文（由 room.mjs 组装）
  * @returns {FederationSlot} 联邦房间槽
  */
-export function buildFederationSlot(ctx) {
+export function buildFederationSlot(roomContext) {
 	const {
 		partitionId,
 		trysteroRoomName,
@@ -76,7 +76,7 @@ export function buildFederationSlot(ctx) {
 		nodeToPeer,
 		getActionSender,
 		senderRegistry,
-	} = ctx
+	} = roomContext
 
 	/** @type {Map<string, (payload: unknown, peerId: string | null) => void>} */
 	const boundByAction = new Map()

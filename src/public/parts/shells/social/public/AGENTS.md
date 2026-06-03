@@ -4,7 +4,7 @@
 
 - **Local trust domain**: Social UI、`/api/parts/shells:social/...`、本机 timeline append 与 P2P deps 互信。
 - **External untrusted**: `part_timeline_put`、`part_invoke`（Social RPC / timeline pull）；入站在 `timeline/sync.mjs`（`ingestRemoteTimelineEvent`）与 `timeline/federationExport.mjs`（联邦 pull 出站过滤）。
-- **关注列表**: 无 sidecar JSON；从 operator 时间线物化 `following`；反向查询用 `data/social/follower_index/{entityHash}.json` 分片投影（LRU 热缓存）。
+- **关注列表**: 无 sidecar JSON；从 operator 时间线物化 `following`；反向查询用 `data/social/follower_index/buckets/{hexPrefix}.json` 分桶投影（LRU 热缓存）。
 - **拉黑**: 用户级 `settings/blocklist.json`，HTTP `/api/p2p/blocklist`。
 
 ## UI conventions

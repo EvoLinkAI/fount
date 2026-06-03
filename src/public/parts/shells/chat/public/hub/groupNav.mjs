@@ -19,7 +19,6 @@ import { showToastI18n } from '../../../../scripts/toast.mjs'
 import {
 	federationCatchUp,
 	rebindFederationRoom,
-	getMembersPage,
 	getGroupState,
 	joinGroup,
 	updateChannelListItems,
@@ -386,7 +385,7 @@ async function refreshMemberDigestBar(state) {
 	pending.dataset.i18n = 'chat.hub.membersDigestPending'
 	el.appendChild(pending)
 	i18nElement(el)
-	const keys = await collectActiveMemberHashes(hubStore.currentGroupId, state, getMembersPage)
+	const keys = collectActiveMemberHashes(state)
 	const local = keys.length ? await computeMembersMerkleRoot(keys) : null
 	const ok = local === expected
 	const short = `${expected.slice(0, 8)}…${expected.slice(-8)}`

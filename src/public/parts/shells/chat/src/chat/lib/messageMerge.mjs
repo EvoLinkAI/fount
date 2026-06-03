@@ -11,7 +11,7 @@
  */
 import { channelMessageContentObject, isTextChannelContent, textChannelContent } from './channelContent.mjs'
 
-const OVERLAY_EVENT_TYPES = ['message_edit', 'message_delete', 'message_feedback']
+const OVERLAY_EVENT_TYPES = new Set(['message_edit', 'message_delete', 'message_feedback'])
 
 /**
  * @param {object | undefined} base 原消息 content
@@ -71,7 +71,7 @@ export function mergeChannelMessagesForDisplay(messages) {
 	}
 	const merged = []
 	for (const row of messages) {
-		if (OVERLAY_EVENT_TYPES.includes(row.type)) continue
+		if (OVERLAY_EVENT_TYPES.has(row.type)) continue
 		if (row.type !== 'message') {
 			merged.push(row)
 			continue
@@ -83,7 +83,7 @@ export function mergeChannelMessagesForDisplay(messages) {
 			? { type: feedback.content.feedbackType, content: feedback.content.feedbackContent || '' }
 			: row.extension?.feedback
 		if (targetId && edits.has(targetId)) {
-			const patch = edits.get(targetId)?.newContent || edits.get(targetId)
+			const patch = edits.get(targetId)
 			const content = {
 				...mergeMessageContent(row.content, patch),
 				...patch?.fileCount != null ? { fileCount: patch.fileCount } : {},

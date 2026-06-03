@@ -84,9 +84,11 @@ export async function putVaultFileManifest(username, entityHash, opts) {
 export async function registerVaultFile(username, entityHash, manifest) {
 	const index = await loadVaultIndex(username, entityHash)
 	const fileId = manifest.fileId || randomUUID()
-	let logicalPath = manifest.logicalPath || `shells/social/vault/${fileId}`
-	if (manifest.dataBase64 || manifest.data) {
-		const buffer = Buffer.from(String(manifest.dataBase64 || manifest.data), manifest.dataBase64 ? 'base64' : 'utf8')
+	let logicalPath = manifest.logicalPath
+	if (!logicalPath && !manifest.dataBase64)
+		throw new Error('logicalPath required')
+	if (manifest.dataBase64) {
+		const buffer = Buffer.from(String(manifest.dataBase64), 'base64')
 		const stored = await putVaultFileManifest(username, entityHash, {
 			fileId,
 			plaintext: buffer,

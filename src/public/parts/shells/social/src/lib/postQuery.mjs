@@ -9,7 +9,7 @@ import { extractHashtagsFromText } from './hashtags.mjs'
  * @returns {{ kind: 'none' | 'text' | 'hashtag', value: string, display: string }} 规范化查询
  */
 export function normalizeSearchQuery(query) {
-	const raw = String(query || '').trim()
+	const raw = (query || '').trim()
 	if (!raw) return { kind: 'none', value: '', display: '' }
 	if (raw.startsWith('#')) {
 		const tag = raw.slice(1).trim().toLowerCase()
@@ -31,11 +31,11 @@ export function postMatchesQuery(post, query) {
 	const norm = normalizeSearchQuery(query)
 	if (norm.kind === 'none' || norm.value.length < 2) return false
 	if (post?.content?.protected) return false
-	const text = String(post.content?.text || '').toLowerCase()
+	const text = (post.content?.text || '').toLowerCase()
 	if (norm.kind === 'hashtag')
 		return extractHashtagsFromText(text).includes(norm.value)
 	if (text.includes(norm.value)) return true
-	const author = String(post.senderEntityHash || post.entityHash || '').toLowerCase()
+	const author = (post.entityHash || '').toLowerCase()
 	if (norm.value.length >= 8 && author.includes(norm.value)) return true
 	return false
 }

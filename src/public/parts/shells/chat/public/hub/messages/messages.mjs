@@ -18,7 +18,6 @@ import {
 } from '../../src/api/groupApi.mjs'
 import { viewerCanAddReactions, viewerCanManageMessages, viewerCanPinMessages } from '../../src/groupViewerPermissions.mjs'
 import { hubEmptyWaveIcon } from '../../src/lib/emojiSvg.mjs'
-import { isHex64 } from '../../src/lib/pubKeyHex.mjs'
 import { createMessagePipeline } from '../../src/MessagePipeline.mjs'
 import { applyChannelDisplayChain } from '../../src/ui/channelDisplay.mjs'
 import { refreshChannelPinsBar } from '../banners.mjs'
@@ -59,9 +58,9 @@ let pendingScrollToEventId = null
  * @returns {object[]} 过滤后的消息行
  */
 function applyChannelSearchFilter(messages) {
-	const q = hubStore.channelSearchQuery
-	if (!q) return messages
-	return messages.filter(message => getMessageText(message).toLowerCase().includes(q))
+	const searchQuery = hubStore.channelSearchQuery
+	if (!searchQuery) return messages
+	return messages.filter(message => getMessageText(message).toLowerCase().includes(searchQuery))
 }
 
 /** 从 API 物化行重建展示列表（分叉链 + 搜索）。 @returns {void} */
@@ -271,7 +270,7 @@ function isTwoPartyCharDialogue() {
 	const state = hubStore.currentState
 	if (!state) return false
 	const charCount = state.charPartNames?.length ?? 0
-	const activeMembers = Object.values(state.members || {}).filter(member => member?.status === 'active').length
+	const activeMembers = Object.values(state.members).filter(member => member?.status === 'active').length
 	return charCount === 1 && activeMembers <= 2
 }
 
@@ -492,17 +491,16 @@ export async function scrollToMessageEventId(eventId) {
  * @returns {object} 频道消息行
  */
 function channelRowFromPostedEvent(event) {
-	const eventId = event?.id ?? event?.eventId
+	const eventId = event?.id
 	const viewerPubKeyHash = String(hubStore.currentState?.viewerMemberPubKeyHash || '').trim().toLowerCase()
-	const senderKey = String(event.sender || '').trim().toLowerCase()
-	const authorPubKeyHash = isHex64(senderKey) ? senderKey : null
+	const authorPubKeyHash = String(event.sender || '').trim().toLowerCase()
 	return {
 		eventId,
 		type: 'message',
 		content: event.content,
 		sender: event.sender,
 		charId: event.charId || null,
-		timestamp: event.timestamp ?? event.hlc?.wall ?? Date.now(),
+		timestamp: event.hlc?.wall ?? Date.now(),
 		authorPubKeyHash,
 		isRemote: !!(authorPubKeyHash && viewerPubKeyHash && authorPubKeyHash !== viewerPubKeyHash),
 	}

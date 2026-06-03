@@ -101,7 +101,7 @@ function syncBannerDataset() {
 
 /** @returns {boolean} 是否显示本地视图分叉横幅 */
 function localViewBannerVisible() {
-	const consensus = hubStore.currentState?.consensusBranchTip || hubStore.currentState?.authzBranchTip || ''
+	const consensus = hubStore.currentState?.consensusBranchTip || ''
 	const localView = hubStore.currentState?.localViewBranchTip || ''
 	return hubStore.currentMode === 'groups'
 		&& !!hubStore.currentGroupId

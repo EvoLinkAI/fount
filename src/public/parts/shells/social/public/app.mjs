@@ -12,5 +12,5 @@ applyTheme()
 usingTemplates('/parts/shells:social/public/src/templates')
 await initTranslations('social')
 
-const ctx = createSocialContext(geti18n)
-await bootstrapSocialApp(ctx)
+const appContext = createSocialContext(geti18n)
+await bootstrapSocialApp(appContext)

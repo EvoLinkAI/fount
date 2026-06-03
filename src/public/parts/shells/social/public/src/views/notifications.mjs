@@ -74,7 +74,7 @@ export async function loadNotifications(appContext) {
 		card.innerHTML = `
 			<div class="notification-row">
 				<div class="post-header-row">
-					${appContext.renderAvatarHtml(row.entityHash, { displayName: label })}
+					${appContext.renderAvatarHtml(row.entityHash, { name: label })}
 					<div>
 						<span class="notification-type">${message}</span>
 						<span class="post-meta">${appContext.formatTime(row.at)}</span>

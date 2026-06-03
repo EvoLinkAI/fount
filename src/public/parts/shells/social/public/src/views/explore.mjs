@@ -30,7 +30,7 @@ export async function loadExplore(appContext) {
 		row.className = 'card explore-account'
 		row.innerHTML = `
 			<div class="post-header-row">
-				${appContext.renderAvatarHtml(account.entityHash, { displayName: account.name })}
+				${appContext.renderAvatarHtml(account.entityHash, { name: account.name })}
 				<div>
 					<strong><a href="${formatSocialProfileHref(account.entityHash)}" class="link-btn">${account.name}</a></strong>
 					<p>${account.exploreBlurb || ''}</p>

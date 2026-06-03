@@ -24,11 +24,11 @@ function resolveIndexedMessage(state, targetId) {
 }
 
 /**
- * @param {{ channelId?: string, content?: { channelId?: string } }} event DAG 事件
+ * @param {{ channelId?: string }} event DAG 事件
  * @returns {string} 权限求值用的频道 ID
  */
 export function eventChannelId(event) {
-	return event.channelId || event.content?.channelId || 'default'
+	return event.channelId || 'default'
 }
 
 /**
@@ -44,7 +44,7 @@ export function checkEventPermission(state, event, senderHash) {
 	if (!FEDERATION_ACL_GATED_EVENT_TYPES.has(type)) return { ok: true }
 
 	const sender = String(senderHash || '').trim().toLowerCase()
-	if (type !== 'member_join' && type !== 'member_leave' && state.members[sender]?.status !== 'active')
+	if (!['member_join', 'member_leave'].includes(type) && state.members[sender]?.status !== 'active')
 		return { ok: false, reason: 'requires active member sender' }
 
 
@@ -185,8 +185,8 @@ export function checkEventPermission(state, event, senderHash) {
 				? { ok: true }
 				: { ok: false, reason: 'ADD_REACTIONS denied' }
 		case 'reaction_remove': {
-			const tgt = String(event.content?.targetPubKeyHash || '').trim().toLowerCase()
-			if (tgt && tgt !== sender)
+			const reactionActorHash = String(event.content?.targetPubKeyHash || '').trim().toLowerCase()
+			if (reactionActorHash && reactionActorHash !== sender)
 				return channelPerms[PERMISSIONS.MANAGE_MESSAGES]
 					? { ok: true }
 					: { ok: false, reason: 'MANAGE_MESSAGES required' }
@@ -206,6 +206,6 @@ export function checkEventPermission(state, event, senderHash) {
  * @returns {void}
  */
 export function assertEventPermission(state, event, senderHash) {
-	const permission = checkEventPermission(state, event, senderHash)
-	if (!permission.ok) throw new Error(permission.reason || 'permission denied')
+	const { ok, reason } = checkEventPermission(state, event, senderHash)
+	if (!ok) throw new Error(reason || 'permission denied')
 }
