@@ -105,6 +105,39 @@ export function messagesPath(username, groupId, channelId) {
 }
 
 /**
+ * 频道按月冷归档 JSONL。
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @param {string} channelId 频道 ID
+ * @param {string} yyyyMm `YYYY-MM`
+ * @returns {string} 归档文件绝对路径
+ */
+export function channelArchivePath(username, groupId, channelId, yyyyMm) {
+	return join(groupDir(username, groupId), 'archive', channelId, `${yyyyMm}.jsonl`)
+}
+
+/**
+ * 群级归档 manifest（已归档月份与 eventId 索引）。
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @returns {string} manifest 绝对路径
+ */
+export function archiveManifestPath(username, groupId) {
+	return join(groupDir(username, groupId), 'archive_manifest.json')
+}
+
+/**
+ * 频道归档目录。
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @param {string} channelId 频道 ID
+ * @returns {string} 目录绝对路径
+ */
+export function channelArchiveDir(username, groupId, channelId) {
+	return join(groupDir(username, groupId), 'archive', channelId)
+}
+
+/**
  * 消息 logContext sidecar：`groups/{groupId}/context_cache/{channelId}/{messageId}.json`
  * @param {string} username 本地账户名
  * @param {string} groupId 会话 / 群 ID

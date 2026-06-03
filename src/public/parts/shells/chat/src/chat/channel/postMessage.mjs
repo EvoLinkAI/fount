@@ -222,6 +222,25 @@ export async function postChannelMessage(username, groupId, channelId, payload =
 
 	content = normalizeChannelMessageContent(content, maxBytes)
 
+	const { resolveLocalEventSigner } = await import('../dag/localSigner.mjs')
+	const { getState } = await import('../dag/materialize.mjs')
+	const { resolveDisplaySnapshot } = await import('../archive/postSnapshot.mjs')
+	const [{ sender }, { state }] = await Promise.all([
+		resolveLocalEventSigner(username, groupId),
+		getState(username, groupId),
+	])
+	const display = await resolveDisplaySnapshot(
+		state,
+		{ sender, charId: payload.charId ?? null },
+		username,
+		groupId,
+	)
+	content = channelMessageContentObject({
+		...content,
+		displayName: display.name,
+		...display.avatar ? { displayAvatar: display.avatar } : {},
+	})
+
 	const event = await appendSignedLocalEvent(username, groupId, {
 		type: 'message',
 		channelId,

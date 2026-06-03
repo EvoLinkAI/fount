@@ -25,7 +25,7 @@ import { channelMessageText } from '../../chat/lib/channelContent.mjs'
 import { EVENT_ID_ROUTE_SEGMENT } from '../../chat/lib/hexRoute.mjs'
 import { triggerCharReply } from '../../chat/session/generation.mjs'
 import { buildStreamingEmbedUrl, mintStreamingViewToken } from '../../chat/stream/auth.mjs'
-import { readChannelReactionEvents, readChannelMessagesForUser } from '../queries.mjs'
+import { readChannelReactionEvents, readChannelMessagesForUser, readPinNeighborhoodForUser } from '../queries.mjs'
 import { ChannelMessageService } from '../services/ChannelMessageService.mjs'
 
 import {
@@ -315,7 +315,7 @@ export function registerChannelRoutes(router, authenticate) {
 	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/channels\/([^/]+)\/messages$/, authenticate, async (req, res) => {
 		const groupId = req.params[0]
 		const channelId = req.params[1]
-		const { since, before, limit } = req.query
+		const { since, before, limit, eventIds: rawEventIds } = req.query
 
 		const membership = await resolveGroupMember(req, res, groupId)
 		if (!membership) return
@@ -324,13 +324,32 @@ export function registerChannelRoutes(router, authenticate) {
 
 		if (!ensureCanInChannel(res, state, member, PERMISSIONS.VIEW_CHANNEL, channelId, 'No permission to view channel')) return
 
+		const eventIds = String(rawEventIds || '').split(',').map(s => s.trim()).filter(Boolean)
 		const messages = await readChannelMessagesForUser(username, groupId, channelId, {
 			since: since || undefined,
 			before: before || undefined,
 			limit,
+			...eventIds.length ? { eventIds } : {},
 		})
 		const reactionEvents = await readChannelReactionEvents(username, groupId, channelId)
 		res.status(200).json({ messages, reactionEvents })
+	})
+
+	router.get(new RegExp(`^/api/parts/shells:chat/groups/([^/]+)/channels/([^/]+)/pin-context/(${EVENT_ID_ROUTE_SEGMENT})$`, 'i'), authenticate, async (req, res) => {
+		const groupId = req.params[0]
+		const channelId = req.params[1]
+		const pinEventId = String(req.params[2] || '').toLowerCase()
+		if (!CHANNEL_MESSAGE_EVENT_ID_RE.test(pinEventId))
+			return res.status(400).json({ error: 'invalid eventId' })
+
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username, state, member } = membership
+		if (!ensureChannel(res, state, channelId)) return
+		if (!ensureCanInChannel(res, state, member, PERMISSIONS.VIEW_CHANNEL, channelId, 'No permission to view channel')) return
+
+		const messages = await readPinNeighborhoodForUser(username, groupId, channelId, pinEventId)
+		res.status(200).json({ messages })
 	})
 
 	router.put(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/default-channel$/, authenticate, async (req, res) => {

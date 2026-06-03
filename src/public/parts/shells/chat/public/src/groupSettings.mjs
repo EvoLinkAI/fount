@@ -155,6 +155,7 @@ async function loadGroupSettings(groupId) {
 	currentState = data.state
 	currentStateJson = data
 	await renderGroupSettings()
+	await renderArchiveStoragePanel()
 	await renderPermissionSettings()
 	await renderMembers()
 	await updateAuditTabVisibility()
@@ -306,6 +307,76 @@ async function viewerCanFedTuning(stateJson, groupId) {
 		|| 'default'
 	const permissions = await fetchViewerChannelPermissions(stateJson, groupId, channelId)
 	return permissions.ADMIN === true || permissions.MANAGE_ADMINS === true
+}
+
+/**
+ * 格式化归档文件字节数为可读字符串。
+ * @param {number} bytes 字节数
+ * @returns {string} 可读大小
+ */
+function formatArchiveBytes(bytes) {
+	const n = Number(bytes) || 0
+	if (n < 1024) return `${n} B`
+	if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+	return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}
+
+/** 渲染冷归档存储清理面板。 */
+async function renderArchiveStoragePanel() {
+	const container = document.getElementById('group-archive-container')
+	if (!container || !currentGroupId) return
+	const canManageArchive = await viewerCanOwnerSuccession(currentState, currentGroupId)
+	let archiveRowsHtml = ''
+	if (canManageArchive) 
+		try {
+			const resp = await fetch(
+				`/api/parts/shells:chat/groups/${encodeURIComponent(currentGroupId)}/archive/summary`,
+				{ credentials: 'include' },
+			)
+			const data = await resp.json()
+			const files = Array.isArray(data.files) ? data.files : []
+			if (files.length) 
+				archiveRowsHtml = `<div class="overflow-x-auto"><table class="table table-sm">
+<thead><tr><th data-i18n="chat.group.settingsArchiveColChannel"></th><th data-i18n="chat.group.settingsArchiveColMonth"></th><th data-i18n="chat.group.settingsArchiveColSize"></th></tr></thead>
+<tbody>${files.map(row => `<tr><td>${escapeHtml(row.channelId)}</td><td>${escapeHtml(row.month)}</td><td>${escapeHtml(formatArchiveBytes(row.bytes))}</td></tr>`).join('')}
+</tbody></table></div>`
+			
+		}
+		catch { /* summary miss */ }
+	
+	await mountTemplate(container, 'group/settings/archive_storage_panel', {
+		currentState,
+		canManageArchive,
+		archiveRowsHtml,
+	})
+	document.getElementById('archive-delete-button')?.addEventListener('click', async () => {
+		const raw = document.getElementById('archive-delete-before-month')?.value?.trim()
+		if (!raw || !/^\d{4}-\d{2}$/.test(raw)) {
+			showToastI18n('error', 'chat.group.settingsArchiveDeleteInvalidMonth')
+			return
+		}
+		if (!confirmI18n('chat.group.settingsArchiveDeleteConfirm', { month: raw })) return
+		const btn = document.getElementById('archive-delete-button')
+		if (btn instanceof HTMLButtonElement) btn.disabled = true
+		try {
+			const resp = await fetch(
+				`/api/parts/shells:chat/groups/${encodeURIComponent(currentGroupId)}/archive?before=${encodeURIComponent(raw)}`,
+				{ method: 'DELETE', credentials: 'include' },
+			)
+			const data = await resp.json()
+			if (!resp.ok) throw new Error(data.error || resp.statusText)
+			showToastI18n('success', 'chat.group.settingsArchiveDeleteOk', {
+				files: String(data.deletedFiles ?? 0),
+			})
+			await renderArchiveStoragePanel()
+		}
+		catch (error) {
+			showToastI18n('error', 'chat.group.settingsArchiveDeleteFailed', { error: error.message })
+		}
+		finally {
+			if (btn instanceof HTMLButtonElement) btn.disabled = false
+		}
+	})
 }
 
 /** 渲染基本信息与设置表单。 */
@@ -724,6 +795,14 @@ async function saveGroupSettings() {
 			discoveryTitle: document.getElementById('discovery-title')?.value?.trim() || null,
 			discoveryBlurb: document.getElementById('discovery-blurb')?.value?.trim() || null,
 			autoChannelGc: !!document.getElementById('auto-channel-gc')?.checked,
+			hotEarliestMessageCount: Math.max(0, Number.parseInt(
+				document.getElementById('hot-earliest-message-count')?.value,
+				10,
+			) || 50),
+			pinContextMessageCount: Math.max(0, Number.parseInt(
+				document.getElementById('pin-context-message-count')?.value,
+				10,
+			) || 30),
 		})
 	})
 	if (!settingsResponse.ok) throw new Error(await readApiError(settingsResponse))

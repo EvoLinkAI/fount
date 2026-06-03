@@ -39,6 +39,9 @@ import {
 	invalidateTopologicalOrderMemo,
 	resolveTopologicalOrderMemoCached,
 } from '../../../../../../../scripts/p2p/topo_order_memo.mjs'
+import { archivePostsBeforeDagFold, trimMessagesJsonlToHotWindow } from '../archive/archiveBeforeFold.mjs'
+import { computeHotPostsForCheckpoint } from '../archive/hotPosts.mjs'
+import { archiveSettingsFromGroup } from '../archive/settings.mjs'
 import { findStaleUnreachableChannels } from '../channel/gc.mjs'
 import { enforceEventRetention } from '../events/retention.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
@@ -260,6 +263,7 @@ export async function buildAndSaveCheckpoint(username, groupId, opts = {}) {
 		overlay: serializeMessageOverlayForCheckpoint(state.messageOverlay),
 		fileFolders: { ...state.fileFolders },
 		epoch_chain,
+		hot_posts: await computeHotPostsForCheckpoint(username, groupId, state, events),
 	})
 	if (opts.checkpointOwnerSecretKey && await canUseSecretKeyForCheckpointSignature(state, opts.checkpointOwnerSecretKey))
 		checkpointPayload = await signCheckpoint(checkpointPayload, opts.checkpointOwnerSecretKey)
@@ -306,31 +310,58 @@ export async function runPostCheckpointMaintenance(username, groupId, checkpoint
 			console.error('channel_gc:', error)
 		}
 
+	const groupSettings = state.groupSettings
+	const archiveSettings = archiveSettingsFromGroup(groupSettings)
+
 	try {
-		await enforceEventRetention(username, groupId, checkpointPayload, state.groupSettings)
+		if (archiveSettings.autoPruneDagMessages)
+			await enforceEventRetention(username, groupId, checkpointPayload, groupSettings)
 	}
 	catch (error) {
 		console.error('event_retention:', error)
 	}
 
-	const groupSettings = state.groupSettings
+	const hotPosts = checkpointPayload.hot_posts || await computeHotPostsForCheckpoint(username, groupId, state, events)
+
+	try {
+		await archivePostsBeforeDagFold(username, groupId, state, events, hotPosts)
+	}
+	catch (error) {
+		console.error('post_archive:', error)
+	}
+
+	try {
+		const { foldDagProcessEvents } = await import('./foldEvents.mjs')
+		await foldDagProcessEvents(username, groupId, hotPosts, groupSettings)
+	}
+	catch (error) {
+		console.error('dag_fold:', error)
+	}
+
 	const compactTrigger = Math.max(256, Number(groupSettings.compactTriggerEventDepth) || 100_000)
 	if (events.length > compactTrigger)
 		try {
-			const { pruneEventsJsonlAfterCheckpoint, pruneAllChannelMessagesByRetention } = await import('./queries.mjs')
+			const { pruneEventsJsonlAfterCheckpoint } = await import('./queries.mjs')
 			await pruneEventsJsonlAfterCheckpoint(username, groupId, checkpointPayload)
-			await pruneAllChannelMessagesByRetention(username, groupId, groupSettings)
 		}
 		catch (error) {
 			console.error('event_compact:', error)
 		}
-	else
+
+	if (archiveSettings.autoPruneMessagesJsonl)
 		try {
 			const { pruneAllChannelMessagesByRetention } = await import('./queries.mjs')
 			await pruneAllChannelMessagesByRetention(username, groupId, groupSettings)
 		}
 		catch (error) {
 			console.error('message_content_retention:', error)
+		}
+	else
+		try {
+			await trimMessagesJsonlToHotWindow(username, groupId, hotPosts)
+		}
+		catch (error) {
+			console.error('hot_messages_trim:', error)
 		}
 
 	try {

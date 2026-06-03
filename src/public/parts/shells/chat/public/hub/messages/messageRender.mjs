@@ -448,7 +448,11 @@ export async function renderChannelMessageBlock(message, prevSender, prevTime, a
 		: ''
 	const charAttr = message.charId ? ` data-char-id="${escapeHtml(String(message.charId))}"` : ''
 	const authorKey = message.charId || sender
-	const { displayName: displayAuthor, profileKey: avatarKey } = authorPresentationKeys(authorKey)
+	const snapDisplay = message.content?.displayName || message.extension?.display?.name
+	const snapAvatar = message.content?.displayAvatar || message.extension?.display?.avatar
+	const presentation = authorPresentationKeys(authorKey)
+	const displayAuthor = snapDisplay || presentation.displayName
+	const avatarKey = presentation.profileKey
 	const streamingAttr = generating ? ' data-streaming="1"' : ''
 	const pendingAttr = message.pending ? ' data-pending="1"' : ''
 	const failedAttr = message.sendFailed ? ' data-send-failed="1"' : ''
@@ -554,7 +558,9 @@ export async function renderChannelMessageBlock(message, prevSender, prevTime, a
 			rowAttrs,
 			avatarFor: avatarKey,
 			avatarBg: avatarColor(displayAuthor),
-			avatarHtml: escapeHtml(avatarInitial(displayAuthor)),
+			avatarHtml: snapAvatar
+				? `<img src="${escapeHtml(String(snapAvatar))}" class="w-full h-full object-cover rounded-full" alt="" />`
+				: escapeHtml(avatarInitial(displayAuthor)),
 			headerHtml,
 			contentHtml: bodyHtml,
 			bubbleAttrs,

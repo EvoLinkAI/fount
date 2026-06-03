@@ -140,6 +140,18 @@
 
 		<div class="grid grid-cols-2 gap-3">
 			<div class="form-control">
+				<label class="label"><span class="label-text" data-i18n="chat.group.settingsHotEarliest"></span></label>
+				<input type="number" id="hot-earliest-message-count" class="input input-bordered" min="0" max="500" value="${Number(currentState.groupSettings.hotEarliestMessageCount) || 50}">
+			</div>
+			<div class="form-control">
+				<label class="label"><span class="label-text" data-i18n="chat.group.settingsPinContext"></span></label>
+				<input type="number" id="pin-context-message-count" class="input input-bordered" min="0" max="200" value="${Number(currentState.groupSettings.pinContextMessageCount) || 30}">
+			</div>
+		</div>
+		<p class="text-xs opacity-60 mb-2" data-i18n="chat.group.settingsHotWindowHint"></p>
+
+		<div class="grid grid-cols-2 gap-3">
+			<div class="form-control">
 				<label class="label"><span class="label-text" data-i18n="chat.group.settingsEventRetentionDepth"></span></label>
 				<input type="number" id="event-retention-depth" class="input input-bordered" min="1000" max="500000" step="1000" value="${Number(currentState.groupSettings.event_retention_depth) || 200000}">
 			</div>

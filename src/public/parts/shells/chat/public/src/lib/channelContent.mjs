@@ -53,6 +53,16 @@ function finalizeTextChannelContent(raw) {
 		if (out.content_for_edit === out.content) delete out.content_for_edit
 	}
 	else delete out.content_for_edit
+	if (out.displayName != null) {
+		if (typeof out.displayName !== 'string') throw new Error('displayName must be a string')
+		if (!out.displayName.trim()) delete out.displayName
+	}
+	else delete out.displayName
+	if (out.displayAvatar != null) {
+		if (typeof out.displayAvatar !== 'string') throw new Error('displayAvatar must be a string')
+		if (!out.displayAvatar.trim()) delete out.displayAvatar
+	}
+	else delete out.displayAvatar
 	return out
 }
 

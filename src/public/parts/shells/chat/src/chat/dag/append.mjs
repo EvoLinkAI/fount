@@ -27,6 +27,7 @@ import { resolveLocalEventSigner } from './localSigner.mjs'
 import { getState } from './materialize.mjs'
 import { releaseQuarantinedEvents } from './remoteIngest.mjs'
 import { unsignedEventFields, validateSignature } from './validator.mjs'
+import { CKG_ENCRYPT_EVENT_TYPES, encryptEventContent, isCkgEncryptedContent } from '../channel_keys/content.mjs'
 
 /** §2.1 低功耗模式下禁止本地发起的重量级治理变更类型。 */
 const BATTERY_SAVER_BLOCKED_LOCAL_TYPES = new Set([
@@ -102,7 +103,14 @@ export async function appendEvent(username, groupId, event, secretKey) {
  */
 export async function appendSignedLocalEvent(username, groupId, event) {
 	const { sender, secretKey } = await resolveLocalEventSigner(username, groupId)
-	const eventBody = { ...event }
+	let eventBody = { ...event }
 	delete eventBody.sender
+	if (CKG_ENCRYPT_EVENT_TYPES.has(eventBody.type) && eventBody.content && !isCkgEncryptedContent(eventBody.content)) {
+		const channelId = eventBody.channelId || 'default'
+		eventBody = {
+			...eventBody,
+			content: await encryptEventContent(username, groupId, channelId, eventBody.content),
+		}
+	}
 	return appendEvent(username, groupId, { ...eventBody, sender }, secretKey)
 }

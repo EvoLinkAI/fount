@@ -125,7 +125,7 @@ export async function requestChannelHistoryFromPeers(groupId, channelId, options
  * 分页拉取频道消息与反应事件。
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID
- * @param {{ since?: string, before?: string, limit?: number }} [options] 游标与条数限制
+ * @param {{ since?: string, before?: string, limit?: number, eventIds?: string[] }} [options] 游标与条数限制
  * @returns {Promise<{ messages: object[], reactionEvents: object[] }>} 消息与反应
  */
 export async function getChannelMessages(groupId, channelId, options = {}) {
@@ -133,6 +133,8 @@ export async function getChannelMessages(groupId, channelId, options = {}) {
 	if (options.since) params.append('since', options.since)
 	if (options.before) params.append('before', options.before)
 	if (options.limit) params.append('limit', String(options.limit))
+	if (Array.isArray(options.eventIds) && options.eventIds.length)
+		params.append('eventIds', options.eventIds.join(','))
 	const query = params.toString()
 	const data = await groupFetch(
 		`${groupPath(groupId, 'channels', channelId, 'messages')}${query ? `?${query}` : ''}`,
@@ -142,6 +144,21 @@ export async function getChannelMessages(groupId, channelId, options = {}) {
 		messages: data.messages || [],
 		reactionEvents: data.reactionEvents || [],
 	}
+}
+
+/**
+ * 拉取置顶消息 ±N 邻域（冷归档 + 热区）。
+ * @param {string} groupId 群 ID
+ * @param {string} channelId 频道 ID
+ * @param {string} pinEventId 置顶 eventId
+ * @returns {Promise<{ messages: object[] }>} 邻域消息
+ */
+export async function getPinContextMessages(groupId, channelId, pinEventId) {
+	const data = await groupFetch(
+		groupPath(groupId, 'channels', channelId, 'pin-context', pinEventId),
+		{ method: 'GET' },
+	)
+	return { messages: data.messages || [] }
 }
 
 /**

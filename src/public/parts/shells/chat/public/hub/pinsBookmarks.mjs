@@ -16,7 +16,7 @@ import { setPinsBookmarksWrapVisible, refreshChannelPinsBar } from './banners.mj
 import { escapeHtml } from './core/domUtils.mjs'
 import { hubStore } from './core/state.mjs'
 import { selectChannel, selectGroup } from './groupNav.mjs'
-import { loadMessages } from './messages/messages.mjs'
+import { loadMessages, scrollToMessageEventId } from './messages/messages.mjs'
 import { pinPreviewTemplateFields, resolvePinMessagePreview } from './messages/pinPreview.mjs'
 
 /**
@@ -67,8 +67,7 @@ export async function refreshPinsBookmarks() {
 			if (!channelId || !eventId) return
 			if (channelId !== hubStore.currentChannelId) await selectChannel(channelId)
 			else await loadMessages()
-			document.querySelector(`#hub-messages [data-message-id="${eventId}"]`)
-				?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+			await scrollToMessageEventId(eventId)
 		})
 	})
 	pinsHost.querySelectorAll('.hub-pinned-message-unpin-button').forEach(unpinButton => {

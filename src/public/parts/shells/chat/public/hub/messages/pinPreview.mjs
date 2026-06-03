@@ -80,7 +80,7 @@ export async function resolvePinMessagePreview(groupId, channelId, eventId) {
 	}
 
 	try {
-		const { messages } = await getChannelMessages(groupId, channelId, { limit: 300 })
+		const { messages } = await getChannelMessages(groupId, channelId, { eventIds: [normalizedEventId] })
 		const message = messages.find(row => String(row.eventId) === normalizedEventId)
 		const descriptor = message ? previewFromMessage(message) : { text: shortEventId(normalizedEventId) }
 		previewCache.set(cacheKey, descriptor)

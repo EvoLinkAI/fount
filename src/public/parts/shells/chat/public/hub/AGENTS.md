@@ -22,3 +22,12 @@
 
 - [Shell AGENTS.md](../../AGENTS.md)
 - [Pages AGENTS.md](../../../../pages/AGENTS.md)
+
+## Message storage (hot / archive / DAG)
+
+- **Hot**: `checkpoint.json` (`hot_posts` earliest N + pin ±N), `messages/{channelId}.jsonl` slim cache.
+- **Cold archive**: `groups/{groupId}/archive/{channelId}/{YYYY-MM}.jsonl` — local plaintext `PostSnapshot` (final content, reactions, display name/avatar).
+- **DAG WAL**: `events.jsonl` — foldable process events (`message_edit`, reactions, pin/unpin); archived `message` rows removed only after cold archive + `dagFoldAfterArchive`.
+- **Read path**: `listChannelMessages({ includeArchive: true })` merges hot + archive; `before` pagination may call `requestChannelHistoryFromPeers` when local miss.
+- **Cleanup**: admins delete cold months via settings UI → `DELETE .../archive?before=YYYY-MM` (does not silent-prune DAG).
+- **Display**: Hub prefers `content.displayName` / `content.displayAvatar` on archived or folded posts, then live profile.

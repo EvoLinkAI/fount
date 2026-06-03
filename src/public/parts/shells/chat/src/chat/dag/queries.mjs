@@ -75,11 +75,31 @@ function messageLineWallMs(line) {
  * @param {string} username 用户名
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID
- * @param {{ before?: string, limit?: number, limitCap?: number, decrypt?: boolean }} [q] 游标与上限
+ * @param {{ before?: string, limit?: number, limitCap?: number, decrypt?: boolean, includeArchive?: boolean, fetchFromPeers?: boolean }} [q] 游标与上限
  * @returns {Promise<object[]>} 消息行
  */
 export async function listChannelMessages(username, groupId, channelId, q = {}) {
 	let lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
+	if (q.includeArchive) {
+		const { listArchiveMonthsForChannel } = await import('../archive/index.mjs')
+		const { readArchiveAsMessageLines } = await import('../archive/reader.mjs')
+		const months = await listArchiveMonthsForChannel(username, groupId, channelId)
+		const archived = await readArchiveAsMessageLines(username, groupId, channelId, months)
+		const known = new Set(lines.map(row => String(row.eventId).trim()))
+		for (const row of archived) {
+			const id = String(row.eventId).trim()
+			if (id && !known.has(id)) {
+				lines.push(row)
+				known.add(id)
+			}
+		}
+		lines.sort((a, b) => {
+			const ta = messageLineWallMs(a)
+			const tb = messageLineWallMs(b)
+			if (ta !== tb) return ta - tb
+			return String(a.eventId).localeCompare(String(b.eventId))
+		})
+	}
 	if (q.decrypt !== false) {
 		const { decryptChannelMessageLines, isCkgEncryptedContent } = await import('../channel_keys/content.mjs')
 		const needsDecrypt = lines.some(line => isCkgEncryptedContent(line?.content))
@@ -88,10 +108,28 @@ export async function listChannelMessages(username, groupId, channelId, q = {}) 
 	}
 	const cap = Math.min(Number(q.limitCap) || 500, JOIN_CHANNEL_HISTORY_LIMIT)
 	const limit = Math.min(Number(q.limit) || 200, cap)
-	if (!q.before) return lines.slice(-limit)
-	const beforeIndex = lines.findIndex(line => line.eventId === q.before)
-	if (beforeIndex <= 0) return []
-	return lines.slice(Math.max(0, beforeIndex - limit), beforeIndex)
+	if (Array.isArray(q.eventIds) && q.eventIds.length) {
+		const want = new Set(q.eventIds.map(id => String(id).trim()).filter(Boolean))
+		return lines.filter(row => want.has(String(row.eventId).trim()))
+	}
+	let slice
+	if (!q.before) slice = lines.slice(-limit)
+	else {
+		const beforeIndex = lines.findIndex(line => line.eventId === q.before)
+		slice = beforeIndex <= 0 ? [] : lines.slice(Math.max(0, beforeIndex - limit), beforeIndex)
+	}
+	if (!slice.length && q.before && q.fetchFromPeers !== false) {
+		const { requestChannelHistoryFromPeers } = await import('../federation/channelHistory.mjs')
+		const fetched = await requestChannelHistoryFromPeers(username, groupId, channelId, {
+			before: q.before,
+			limit,
+		})
+		if (fetched.length) {
+			await mergeChannelHistoryRows(username, groupId, channelId, fetched)
+			return listChannelMessages(username, groupId, channelId, { ...q, fetchFromPeers: false })
+		}
+	}
+	return slice
 }
 
 /**

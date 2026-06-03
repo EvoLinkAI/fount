@@ -47,6 +47,16 @@ export const DEFAULT_GROUP_SETTINGS = {
 	/** 0 = 不自动删除消息正文；>0 时按毫秒裁 `messages/*.jsonl` */
 	message_content_retention_ms: 0,
 	compactTriggerEventDepth: 100_000,
+	/** 热区：每频道保留时间最早的 N 帖 eventId */
+	hotEarliestMessageCount: 50,
+	/** 每个 pin 保留 ±N 邻帖（按频道时间序） */
+	pinContextMessageCount: 30,
+	/** 仅当帖已冷归档后才允许从 DAG 删除 message */
+	dagFoldAfterArchive: true,
+	/** 关闭自动按时间裁 messages.jsonl */
+	autoPruneMessagesJsonl: false,
+	/** 关闭 retention 删除未归档 message */
+	autoPruneDagMessages: false,
 	messageRateLimitPerMin: 10,
 	messageRateLimitWindowMs: 60_000,
 	iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],

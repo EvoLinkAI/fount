@@ -13,6 +13,7 @@ import {
 import { showToastI18n } from '../../../../../scripts/toast.mjs'
 import {
 	getChannelMessages,
+	getPinContextMessages,
 	requestChannelHistoryFromPeers,
 	sendGroupMessage,
 } from '../../src/api/groupApi.mjs'
@@ -458,6 +459,28 @@ function messageIdSelector(messageId) {
 }
 
 /**
+ * 将拉取到的消息合并进当前频道视图。
+ * @param {object[]} fetched 消息行
+ * @returns {Promise<boolean>} 是否合并了新行
+ */
+async function mergeFetchedMessagesIntoView(fetched) {
+	if (!Array.isArray(fetched) || !fetched.length) return false
+	const known = new Set(hubStore.channelMessagesSource.map(m => String(m.eventId)))
+	const fresh = fetched.filter(m => {
+		const eventId = String(m.eventId)
+		return eventId && !known.has(eventId)
+	})
+	if (!fresh.length) return false
+	hubStore.channelMessagesSource = sortChannelRows([...fresh, ...hubStore.channelMessagesSource])
+	const container = document.getElementById('hub-channel-messages')
+	if (!(container instanceof HTMLElement)) return true
+	destroyChannelVirtualList()
+	initChannelVirtualList(container)
+	decorateRenderedMessages(container, false)
+	return true
+}
+
+/**
  * 滚动到指定 DAG 消息（引用条点击等）。
  * @param {string} eventId 消息 event id
  * @returns {Promise<void>}
@@ -468,7 +491,26 @@ export async function scrollToMessageEventId(eventId) {
 	const container = document.getElementById('hub-channel-messages')
 	if (!(container instanceof HTMLElement)) return
 	const sel = messageIdSelector(norm)
-	const existing = sel ? container.querySelector(sel) : null
+	let existing = sel ? container.querySelector(sel) : null
+	if (!(existing instanceof HTMLElement) && hubStore.currentGroupId && hubStore.currentChannelId) 
+		try {
+			let fetched = (await getPinContextMessages(
+				hubStore.currentGroupId,
+				hubStore.currentChannelId,
+				norm,
+			)).messages || []
+			if (!fetched.some(row => String(row.eventId) === norm)) 
+				fetched = (await getChannelMessages(
+					hubStore.currentGroupId,
+					hubStore.currentChannelId,
+					{ eventIds: [norm] },
+				)).messages || []
+			
+			if (await mergeFetchedMessagesIntoView(fetched))
+				existing = sel ? container.querySelector(sel) : null
+		}
+		catch { /* unavailable */ }
+	
 	if (existing instanceof HTMLElement) {
 		existing.scrollIntoView({ behavior: 'smooth', block: 'center' })
 		existing.classList.add('ring-2', 'ring-primary', 'ring-offset-2')

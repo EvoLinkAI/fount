@@ -24,6 +24,7 @@ import { serializeReactionsOverlay, serializeVotesOverlay } from './materialized
  *   epoch_chain?: object[],
  *   dag_tip_ids?: string[],
  *   local_tips_hash?: string | null,
+ *   hot_posts?: object,
  * }} args 载荷字段
  * @returns {object} 可 JSON 落盘的 checkpoint
  */
@@ -38,6 +39,7 @@ export function buildCheckpointPayload({
 	epoch_chain = [],
 	dag_tip_ids = [],
 	local_tips_hash = null,
+	hot_posts = null,
 }) {
 	const materializedState = materialized
 	const messageOverlay = materializedState?.messageOverlay || {}
@@ -108,6 +110,7 @@ export function buildCheckpointPayload({
 		fileFolders: JSON.parse(JSON.stringify(fileFolders || {})),
 		epoch_chain: Array.isArray(epoch_chain) ? epoch_chain : [],
 		...permissionAnchorHash !== null && { permissionAnchorHash },
+		...hot_posts && { hot_posts },
 	}
 }
 

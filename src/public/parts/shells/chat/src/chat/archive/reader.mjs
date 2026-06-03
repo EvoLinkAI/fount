@@ -1,0 +1,59 @@
+import { readFile } from 'node:fs/promises'
+
+import { channelArchivePath } from '../lib/paths.mjs'
+
+import { postSnapshotToMessageLine } from './postSnapshot.mjs'
+
+/**
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @param {string} channelId 频道 ID
+ * @param {string} month `YYYY-MM`
+ * @returns {Promise<object[]>} PostSnapshot 列表
+ */
+export async function readArchiveMonth(username, groupId, channelId, month) {
+	try {
+		const text = await readFile(channelArchivePath(username, groupId, channelId, month), 'utf8')
+		return text.split('\n').filter(Boolean).map(line => JSON.parse(line))
+	}
+	catch {
+		return []
+	}
+}
+
+/**
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @param {string} channelId 频道 ID
+ * @param {string[]} months 月份列表（升序）
+ * @returns {Promise<object[]>} 消息行（Hub 形）
+ */
+export async function readArchiveAsMessageLines(username, groupId, channelId, months) {
+	/** @type {object[]} */
+	const rows = []
+	for (const month of months) {
+		const snaps = await readArchiveMonth(username, groupId, channelId, month)
+		for (const snap of snaps)
+			if (!snap.deleted) rows.push(postSnapshotToMessageLine(snap))
+	}
+	rows.sort((a, b) => {
+		const wa = Number(a.hlc?.wall ?? a.timestamp ?? 0)
+		const wb = Number(b.hlc?.wall ?? b.timestamp ?? 0)
+		if (wa !== wb) return wa - wb
+		return String(a.eventId).localeCompare(String(b.eventId))
+	})
+	return rows
+}
+
+/**
+ * @param {object[]} lines 消息行
+ * @param {string} beforeEventId 游标 eventId（不含）
+ * @param {number} limit 条数上限
+ * @returns {object[]} 分页结果
+ */
+export function sliceMessagesBefore(lines, beforeEventId, limit = 50) {
+	if (!beforeEventId) return lines.slice(-limit)
+	const idx = lines.findIndex(r => r.eventId === beforeEventId)
+	if (idx <= 0) return []
+	return lines.slice(Math.max(0, idx - limit), idx)
+}

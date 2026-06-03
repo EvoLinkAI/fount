@@ -323,6 +323,27 @@ export function registerGroupSyncRoutes(router, authenticate) {
 		res.status(200).json(await requestJoinSnapshotFromPeers(username, groupId, slot))
 	})
 
+	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/archive\/summary$/, authenticate, async (req, res) => {
+		const groupId = req.params[0]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username } = membership
+		const { summarizeArchiveStorage } = await import('../../chat/archive/index.mjs')
+		res.status(200).json({ files: await summarizeArchiveStorage(username, groupId) })
+	})
+
+	router.delete(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/archive$/, authenticate, async (req, res) => {
+		const groupId = req.params[0]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username } = membership
+		const beforeMonth = String(req.query.before || '').trim()
+		if (!/^\d{4}-\d{2}$/.test(beforeMonth))
+			return res.status(400).json({ error: 'before must be YYYY-MM' })
+		const { deleteArchivesBeforeMonth } = await import('../../chat/archive/index.mjs')
+		res.status(200).json(await deleteArchivesBeforeMonth(username, groupId, beforeMonth))
+	})
+
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/federation\/rebind$/, authenticate, async (req, res) => {
 		const groupId = req.params[0]
 		const membership = await resolveGroupMember(req, res, groupId)
