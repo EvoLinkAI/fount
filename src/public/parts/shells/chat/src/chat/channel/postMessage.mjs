@@ -16,7 +16,7 @@ import { resolveOperatorEntityHash } from '../../../../../../../scripts/p2p/enti
 import { appendSignedLocalEvent } from '../dag/append.mjs'
 import { appendFileUploadEvent } from '../dag/channelOps.mjs'
 import { putEncryptedChunk, syncGroupFileManifest } from '../files/groupFiles.mjs'
-import { getCurrentH } from '../gsh/store.mjs'
+import { getCurrentFileMasterKey } from '../gsh/store.mjs'
 import {
 	channelMessageAgentText,
 	channelMessageContentObject,
@@ -37,8 +37,8 @@ async function uploadPlainFileToGroup(username, groupId, buffer, file) {
 	const name = String(file.name || 'file').slice(0, 255)
 	const mimeType = String(file.mime_type || 'application/octet-stream')
 	const contentHash = createHash('sha256').update(buffer).digest('hex')
-	const hEntry = await getCurrentH(username, groupId)
-	const keyGen = hEntry?.generation
+	const keyEntry = await getCurrentFileMasterKey(username, groupId)
+	const keyGen = keyEntry?.generation
 	const partCount = Math.max(1, Math.ceil(buffer.byteLength / FEDERATION_CHUNK_MAX_BYTES))
 	/** @type {object[]} */
 	const parts = []

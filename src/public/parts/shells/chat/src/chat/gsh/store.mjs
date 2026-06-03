@@ -1,38 +1,28 @@
 /**
- * 【文件】src/chat/gsh/store.mjs
- * 【职责】GSH 持久化层：按 groupId 读写版本链与最新快照指针。
- * 【原理】文件名含 seq；读时合并 buffer 未刷条目，供 hydration 快速启动。
- * 【数据结构】GshStoreMeta：latestSeq、path、byteSize。
- * 【关联】gsh/buffer、gsh/content、dag/hydration。
- */
-/**
- * 【文件】gsh/store.mjs
- * 【职责】群 GSH（Group Symmetric History）本地持久化：维护 H 代数历史，供加密取当前 H、解密按 generation 查历史 H，并处理 key_rotate 等 DAG 事件。
- * 【原理】gsh.json 存 schema/current/generations[]（最多 64 代）；initGroupH 创世、appendH 推进、applyGshRotationFromEvent 响应成员变更事件。encryptHForMember 供 DM 双方导入密钥。与联邦无独立同步——随 DAG 成员事件在各节点各自推导/同步代数。
- * 【数据结构】GshFile { current:number, generations:[{gen,h}] }；h 为 32 字节 hex。
- * 【关联】gsh/content.mjs、dm/index.mjs、groupFiles 文件密钥、lib/paths gshPath、scripts/p2p/gsh.mjs。
+ * 群文件主密钥（fileMasterKey）本地持久化：维护代数历史，供文件加密与成员变更轮换。
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 import { debugLog } from '../../../../../../../scripts/debug_log.mjs'
-import { generateH, clearGshKdfCache } from '../../../../../../../scripts/p2p/gsh.mjs'
-import { gshPath } from '../lib/paths.mjs'
+import { generateH, clearGshKdfCache, deriveNewH } from '../../../../../../../scripts/p2p/gsh.mjs'
+import { fileMasterKeysPath } from '../lib/paths.mjs'
 
-/** 最多保留多少代历史 H（用于解密积压的旧消息） */
+/** 最多保留多少代历史密钥（用于解密旧文件块） */
 const MAX_GENERATIONS = 64
 
 /**
- * @typedef {{ current: number, generations: Array<{ gen: number, h: string }> }} GshFile
+ * @typedef {{ current: number, generations: Array<{ gen: number, fileMasterKey: string }> }} FileMasterKeysFile
  */
 
 /**
  * @param {unknown} raw 磁盘读取的原始 JSON 对象（未经校验）
- * @returns {GshFile} 规范化后的 GSH 文件对象
+ * @returns {FileMasterKeysFile} 规范化后的文件对象
  */
-function normalizeGshFile(raw) {
+function normalizeFileMasterKeysFile(raw) {
 	const generations = (raw?.generations ?? [])
-		.filter(g => g?.h && Number.isFinite(g.gen))
+		.filter(g => g?.fileMasterKey && Number.isFinite(g.gen))
+		.map(g => ({ gen: g.gen, fileMasterKey: g.fileMasterKey }))
 		.sort((a, b) => a.gen - b.gen)
 	return {
 		current: generations.length ? generations.at(-1).gen : -1,
@@ -43,30 +33,29 @@ function normalizeGshFile(raw) {
 /**
  * @param {string} username 本地账户名
  * @param {string} groupId 群 ID
- * @returns {Promise<GshFile>} 规范化后的 GSH 文件对象；不存在时返回空结构
+ * @returns {Promise<FileMasterKeysFile>} 规范化后的文件对象；不存在时返回空结构
  */
-export async function loadGsh(username, groupId) {
+export async function loadFileMasterKeys(username, groupId) {
 	try {
-		const text = await readFile(gshPath(username, groupId), 'utf8')
-		return normalizeGshFile(JSON.parse(text))
+		const text = await readFile(fileMasterKeysPath(username, groupId), 'utf8')
+		return normalizeFileMasterKeysFile(JSON.parse(text))
 	}
 	catch (error) {
 		if (error?.code !== 'ENOENT')
-			await debugLog('gsh-load-fail', { username, groupId, message: error?.message }).catch(() => { })
-		return normalizeGshFile(null)
+			await debugLog('file-master-key-load-fail', { username, groupId, message: error?.message }).catch(() => { })
+		return normalizeFileMasterKeysFile(null)
 	}
 }
 
 /**
  * @param {string} username 本地账户名
  * @param {string} groupId 群 ID
- * @param {GshFile} data 待保存的 GSH 文件对象
+ * @param {FileMasterKeysFile} data 待保存的对象
  * @returns {Promise<void>} 写入完成
  */
-async function saveGsh(username, groupId, data) {
-	const p = gshPath(username, groupId)
+async function saveFileMasterKeys(username, groupId, data) {
+	const p = fileMasterKeysPath(username, groupId)
 	await mkdir(dirname(p), { recursive: true })
-	// 只保留最近 MAX_GENERATIONS 代
 	const gens = data.generations.slice(-MAX_GENERATIONS)
 	const current = gens.length ? gens[gens.length - 1].gen : -1
 	const out = { current, generations: gens }
@@ -74,87 +63,85 @@ async function saveGsh(username, groupId, data) {
 }
 
 /**
- * 获取当前（最新代）的 H。
+ * 获取当前（最新代）群文件主密钥。
  * @param {string} username 本地账户名
  * @param {string} groupId 群 ID
- * @returns {Promise<{ h: string, generation: number } | null>} 当前 H 及代数；无记录时返回 null
+ * @returns {Promise<{ fileMasterKey: string, generation: number } | null>} 当前密钥及代数；无记录时为 null
  */
-export async function getCurrentH(username, groupId) {
-	const data = await loadGsh(username, groupId)
+export async function getCurrentFileMasterKey(username, groupId) {
+	const data = await loadFileMasterKeys(username, groupId)
 	if (!data.generations.length) return null
 	const last = data.generations[data.generations.length - 1]
-	return { h: last.h, generation: last.gen }
+	return { fileMasterKey: last.fileMasterKey, generation: last.gen }
 }
 
 /**
- * 按 generation 查找 H（用于解密历史消息）。
+ * 按 generation 查找群文件主密钥。
  * @param {string} username 本地账户名
  * @param {string} groupId 群 ID
- * @param {number} generation H 代数
- * @returns {Promise<string | null>} H hex；无此代记录时返回 null
+ * @param {number} generation 代数
+ * @returns {Promise<string | null>} 32 字节 hex
  */
-export async function getHByGeneration(username, groupId, generation) {
-	const data = await loadGsh(username, groupId)
+export async function getFileMasterKeyByGeneration(username, groupId, generation) {
+	const data = await loadFileMasterKeys(username, groupId)
 	const entry = data.generations.find(g => g.gen === generation)
-	return entry ? entry.h : null
+	return entry ? entry.fileMasterKey : null
 }
 
 /**
- * 群初始化时生成并存储 H（generation 0）；若已存在则不覆盖。
+ * 群初始化时生成并存储 fileMasterKey（generation 0）；若已存在则不覆盖。
  * @param {string} username 本地账户名
  * @param {string} groupId 群 ID
- * @returns {Promise<{ h: string, generation: number }>} 当前 H 及代数
+ * @returns {Promise<{ fileMasterKey: string, generation: number }>} 当前密钥及代数
  */
-export async function initGroupH(username, groupId) {
-	const existing = await getCurrentH(username, groupId)
+export async function initGroupFileMasterKey(username, groupId) {
+	const existing = await getCurrentFileMasterKey(username, groupId)
 	if (existing) return existing
-	const h = generateH()
-	const data = { current: 0, generations: [{ gen: 0, h }] }
-	await saveGsh(username, groupId, data)
-	return { h, generation: 0 }
+	const fileMasterKey = generateH()
+	const data = { current: 0, generations: [{ gen: 0, fileMasterKey }] }
+	await saveFileMasterKeys(username, groupId, data)
+	return { fileMasterKey, generation: 0 }
 }
 
 /**
- * 追加新的 H（踢人/key_rotate 后调用）。
+ * 追加新的群文件主密钥（踢人/key_rotate 后调用）。
  * @param {string} username 本地账户名
  * @param {string} groupId 群 ID
  * @param {number} generation 新代数（应为 current + 1）
- * @param {string} hHex 新 H（32 字节十六进制）
- * @returns {Promise<void>} 写入完成
+ * @param {string} fileMasterKeyHex 新密钥（32 字节十六进制）
+ * @returns {Promise<void>}
  */
-export async function appendH(username, groupId, generation, hHex) {
-	const data = await loadGsh(username, groupId)
-	// 去重：同代数已存在则跳过（并发踢人保护）
+export async function appendFileMasterKey(username, groupId, generation, fileMasterKeyHex) {
+	const data = await loadFileMasterKeys(username, groupId)
 	if (data.generations.some(g => g.gen === generation)) return
-	data.generations.push({ gen: generation, h: hHex })
+	data.generations.push({ gen: generation, fileMasterKey: fileMasterKeyHex })
 	data.generations.sort((a, b) => a.gen - b.gen)
 	clearGshKdfCache()
-	await saveGsh(username, groupId, data)
+	await saveFileMasterKeys(username, groupId, data)
 }
 
 /**
- * 从已落盘的 `member_kick` / `key_rotate` 事件推导并写入新 H（联邦入站与本地踢人共用）。
+ * 从已落盘的 `member_kick` / `key_rotate` 事件推导并写入新 fileMasterKey。
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
  * @param {{ id: string, type: string, content?: { key_generation?: number, new_H_nonce?: string } }} event 签名事件
  * @returns {Promise<void>}
  */
-export async function applyGshRotationFromEvent(username, groupId, event) {
+export async function applyFileMasterKeyRotationFromEvent(username, groupId, event) {
 	if (event.type !== 'member_kick' && event.type !== 'key_rotate') return
 	const c = event.content
 	const gen = c.key_generation
-	const nonce = c.new_H_nonce.trim()
+	const nonce = c.new_H_nonce?.trim()
 	if (!Number.isFinite(gen) || gen < 0 || !nonce) return
 
-	const hEntry = await getCurrentH(username, groupId)
-	if (!hEntry) return
+	const entry = await getCurrentFileMasterKey(username, groupId)
+	if (!entry) return
 
-	const { deriveNewH } = await import('../../../../../../../scripts/p2p/gsh.mjs')
 	const newGen = Math.floor(gen)
-	if (newGen <= hEntry.generation) return
+	if (newGen <= entry.generation) return
 
-	const newH = deriveNewH(hEntry.h, event.id, nonce)
-	await appendH(username, groupId, newGen, newH)
+	const newKey = deriveNewH(entry.fileMasterKey, event.id, nonce)
+	await appendFileMasterKey(username, groupId, newGen, newKey)
 	const { flushGshBufferAfterRotation } = await import('./buffer.mjs')
 	flushGshBufferAfterRotation(username, groupId, newGen)
 }

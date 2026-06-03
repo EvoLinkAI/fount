@@ -37,10 +37,10 @@ export function validateLocalAuthzPayload(type, content, callerPubKeyHash, state
 		if (from !== callerPubKeyHash) throw new Error('peer_invite from must match caller')
 		if (!to || to === callerPubKeyHash) throw new Error('peer_invite requires distinct to')
 		if (!resolveActiveMemberKey(state, from)) throw new Error('peer_invite from must be active member')
-		if (content.fileHGrant !== undefined) {
-			const grant = content.fileHGrant
+		if (content.file_key_grant !== undefined) {
+			const grant = content.file_key_grant
 			if (!Array.isArray(grant?.generations) || !grant.generations.length)
-				throw new Error('peer_invite.fileHGrant must be a non-empty grant object or omitted (server injects)')
+				throw new Error('peer_invite.file_key_grant must be a non-empty grant object or omitted (server injects)')
 		}
 	}
 }

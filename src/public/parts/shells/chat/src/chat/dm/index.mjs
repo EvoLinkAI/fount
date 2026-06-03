@@ -18,8 +18,8 @@ import { setFederationBootstrap } from '../federation/bootstrapStore.mjs'
 import { getFederationSettings } from '../federation/config.mjs'
 import { catchUpGroupFromPeers } from '../federation/index.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../federation/room.mjs'
-import { buildFileHGrant } from '../gsh/historicalGrant.mjs'
-import { initGroupH, getCurrentH } from '../gsh/store.mjs'
+import { buildFileKeyGrant } from '../gsh/historicalGrant.mjs'
+import { initGroupFileMasterKey, getCurrentFileMasterKey } from '../gsh/store.mjs'
 import { consumeGroupInviteTicket } from '../lib/inviteTickets.mjs'
 import { listUserGroups } from '../lib/userGroups.mjs'
 
@@ -77,7 +77,7 @@ export async function createEcdhDmGroup(username, myPubKeyHex, peerPubKeyHex) {
 		enableGroupFederation: true,
 	})
 	const {groupId} = result
-	await initGroupH(username, groupId)
+	await initGroupFileMasterKey(username, groupId)
 	await appendSignedLocalEvent(username, groupId, {
 		type: 'group_meta_update',
 		timestamp: Date.now(),
@@ -96,16 +96,16 @@ export async function createEcdhDmGroup(username, myPubKeyHex, peerPubKeyHex) {
 		},
 	})
 
-	const hEntry = await getCurrentH(username, groupId)
-	if (hEntry?.h) {
-		const fileHGrant = await buildFileHGrant(username, groupId, peerPubKey)
+	const keyEntry = await getCurrentFileMasterKey(username, groupId)
+	if (keyEntry?.fileMasterKey) {
+		const file_key_grant = await buildFileKeyGrant(username, groupId, peerPubKey)
 		await appendSignedLocalEvent(username, groupId, {
 			type: 'peer_invite',
 			timestamp: Date.now(),
 			content: {
 				from: ownerPubKeyHash,
 				to: peerPubKey,
-				fileHGrant,
+				file_key_grant,
 			},
 		})
 	}

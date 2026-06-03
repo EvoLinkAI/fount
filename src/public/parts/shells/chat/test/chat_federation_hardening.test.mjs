@@ -219,7 +219,7 @@ Deno.test('pull response rejects plaintext gossip shape', () => {
 
 Deno.test('HPKE pull envelope roundtrip', async () => {
 	const recipient = await randomKeyPair()
-	const inner = { fileHGrant: { generations: [] }, events: [] }
+	const inner = { file_key_grant: { generations: [] }, events: [] }
 	const wrapped = wrapPullResponseInner(bytesToHex(recipient.publicKey), inner)
 	const envelope = {
 		requestId: 'r1',

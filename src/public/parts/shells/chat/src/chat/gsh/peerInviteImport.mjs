@@ -1,5 +1,5 @@
 /**
- * 从 DAG `peer_invite.fileHGrant` 导入群文件密钥 H 历史代际。
+ * 从 DAG `peer_invite.file_key_grant` 导入群文件主密钥历史代际。
  */
 import { Buffer } from 'node:buffer'
 
@@ -7,7 +7,7 @@ import { publicKeyFromSeed } from '../../../../../../../scripts/p2p/crypto.mjs'
 import { normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 
-import { applyFileHGrant } from './historicalGrant.mjs'
+import { applyFileKeyGrant } from './historicalGrant.mjs'
 
 /**
  * @param {string} username 用户
@@ -15,9 +15,9 @@ import { applyFileHGrant } from './historicalGrant.mjs'
  * @param {object} event 已落盘 DAG 事件
  * @returns {Promise<void>}
  */
-export async function tryImportHFromPeerInvite(username, groupId, event) {
+export async function tryImportFileKeyGrantFromPeerInvite(username, groupId, event) {
 	if (event?.type !== 'peer_invite') return
-	const grant = event.content?.fileHGrant
+	const grant = event.content?.file_key_grant
 	if (!grant || typeof grant !== 'object') return
 
 	let signer
@@ -30,5 +30,5 @@ export async function tryImportHFromPeerInvite(username, groupId, event) {
 	const toHex = normalizeHex64(event.content?.to)
 	if (!toHex || toHex !== normalizeHex64(myEdPubHex)) return
 
-	await applyFileHGrant(username, groupId, grant)
+	await applyFileKeyGrant(username, groupId, grant)
 }

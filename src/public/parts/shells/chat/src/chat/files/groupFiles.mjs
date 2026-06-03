@@ -34,7 +34,7 @@ import {
 	replicateChunkToFederation,
 } from '../federation/chunks.mjs'
 import { ensureFederationRoom } from '../federation/room.mjs'
-import { getCurrentH, getHByGeneration } from '../gsh/store.mjs'
+import { getCurrentFileMasterKey, getFileMasterKeyByGeneration } from '../gsh/store.mjs'
 import { shellChatRoot } from '../lib/paths.mjs'
 import { getFederatedChunkStorage, getStorageForGroup } from '../storage.mjs'
 
@@ -242,8 +242,8 @@ function assertFileUploadBody(body) {
  * @returns {Promise<object>} manifest 字段（contentHash、ciphertextHash、wrappedKey 等）
  */
 export async function putEncryptedChunk(username, groupId, opts) {
-	const hEntry = await getCurrentH(username, groupId)
-	if (!hEntry) throw new Error('group GSH not initialized')
+	const keyEntry = await getCurrentFileMasterKey(username, groupId)
+	if (!keyEntry) throw new Error('group file master key not initialized')
 
 	const ceMode = normalizeCeMode(opts.ceMode)
 	const encrypted = ceMode === 'random'
@@ -283,7 +283,7 @@ export async function putEncryptedChunk(username, groupId, opts) {
 	const contentKey = ceMode === 'random'
 		? encrypted.contentKey
 		: deriveContentKey(contentHash)
-	const wrappedKey = wrapContentKey(contentKey, hEntry.h, opts.fileId)
+	const wrappedKey = wrapContentKey(contentKey, keyEntry.fileMasterKey, opts.fileId)
 	await cachePlaintextFile(username, contentHash, opts.data)
 
 	return {
@@ -292,7 +292,7 @@ export async function putEncryptedChunk(username, groupId, opts) {
 		ciphertextHash,
 		storageLocator,
 		wrappedKey,
-		key_generation: opts.keyGeneration ?? hEntry.generation,
+		key_generation: opts.keyGeneration ?? keyEntry.generation,
 		have,
 	}
 }
@@ -305,8 +305,8 @@ export async function putEncryptedChunk(username, groupId, opts) {
  * @returns {Promise<object | null>} manifest；本地无密文时 `null`
  */
 export async function registerEncryptedChunkIfPresent(username, groupId, opts) {
-	const hEntry = await getCurrentH(username, groupId)
-	if (!hEntry) throw new Error('group GSH not initialized')
+	const keyEntry = await getCurrentFileMasterKey(username, groupId)
+	if (!keyEntry) throw new Error('group file master key not initialized')
 
 	const ceMode = normalizeCeMode(opts.ceMode)
 	const encrypted = ceMode === 'random'
@@ -320,7 +320,7 @@ export async function registerEncryptedChunkIfPresent(username, groupId, opts) {
 	const contentKey = ceMode === 'random'
 		? encrypted.contentKey
 		: deriveContentKey(contentHash)
-	const wrappedKey = wrapContentKey(contentKey, hEntry.h, opts.fileId)
+	const wrappedKey = wrapContentKey(contentKey, keyEntry.fileMasterKey, opts.fileId)
 	await cachePlaintextFile(username, contentHash, opts.data)
 
 	return {
@@ -329,7 +329,7 @@ export async function registerEncryptedChunkIfPresent(username, groupId, opts) {
 		ciphertextHash,
 		storageLocator,
 		wrappedKey,
-		key_generation: opts.keyGeneration ?? hEntry.generation,
+		key_generation: opts.keyGeneration ?? keyEntry.generation,
 		have: true,
 	}
 }
@@ -486,11 +486,11 @@ export async function getDecryptedChunk(username, groupId, storageLocator, conte
 		const keyGeneration = Number.isFinite(Number(options?.keyGeneration))
 			? Math.floor(Number(options.keyGeneration))
 			: null
-		const h = keyGeneration == null
-			? await getCurrentH(username, groupId)
-			: { h: await getHByGeneration(username, groupId, keyGeneration), generation: keyGeneration }
-		if (!h?.h) throw new Error('missing H for random ceMode')
-		const contentKey = unwrapContentKey(options.wrappedKey, h.h, fileId)
+		const keyEntry = keyGeneration == null
+			? await getCurrentFileMasterKey(username, groupId)
+			: { fileMasterKey: await getFileMasterKeyByGeneration(username, groupId, keyGeneration), generation: keyGeneration }
+		if (!keyEntry?.fileMasterKey) throw new Error('missing file master key for random ceMode')
+		const contentKey = unwrapContentKey(options.wrappedKey, keyEntry.fileMasterKey, fileId)
 		if (!contentKey) throw new Error('unwrap random content key failed')
 		plain = decryptRandomCiphertext(raw, contentKey, contentHash)
 	}
@@ -755,7 +755,7 @@ export function registerGroupFileRoutes(router, authenticate, getUserByReq, getS
 		if (!canInChannel(state, member, PERMISSIONS.UPLOAD_FILES, permChannelId))
 			return res.status(403).json({ error: 'No permission to upload files' })
 
-		const hEntry = await getCurrentH(username, groupId)
+		const keyEntry = await getCurrentFileMasterKey(username, groupId)
 		/** @type {object} */
 		const uploadMeta = {
 			fileId,
@@ -765,7 +765,7 @@ export function registerGroupFileRoutes(router, authenticate, getUserByReq, getS
 			folderId: body.folderId,
 			ceMode: normalizeCeMode(body.ceMode),
 			contentHash: body.contentHash,
-			key_generation: body.key_generation ?? hEntry?.generation,
+			key_generation: body.key_generation ?? keyEntry?.generation,
 		}
 		if (Array.isArray(body.parts) && body.parts.length)
 			uploadMeta.parts = body.parts

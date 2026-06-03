@@ -79,7 +79,7 @@ function messageLineWallMs(line) {
  * @returns {Promise<object[]>} 消息行
  */
 export async function listChannelMessages(username, groupId, channelId, q = {}) {
-	let lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
+	const lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
 	if (q.includeArchive) {
 		const { listArchiveMonthsForChannel } = await import('../archive/index.mjs')
 		const { readArchiveAsMessageLines } = await import('../archive/reader.mjs')
@@ -100,17 +100,16 @@ export async function listChannelMessages(username, groupId, channelId, q = {}) 
 			return String(a.eventId).localeCompare(String(b.eventId))
 		})
 	}
-	if (q.decrypt !== false) {
-		const { decryptChannelMessageLines, isCkgEncryptedContent } = await import('../channel_keys/content.mjs')
-		const needsDecrypt = lines.some(line => isCkgEncryptedContent(line?.content))
-		if (needsDecrypt)
-			lines = await decryptChannelMessageLines(username, groupId, channelId, lines)
-	}
 	const cap = Math.min(Number(q.limitCap) || 500, JOIN_CHANNEL_HISTORY_LIMIT)
 	const limit = Math.min(Number(q.limit) || 200, cap)
 	if (Array.isArray(q.eventIds) && q.eventIds.length) {
 		const want = new Set(q.eventIds.map(id => String(id).trim()).filter(Boolean))
-		return lines.filter(row => want.has(String(row.eventId).trim()))
+		const filtered = lines.filter(row => want.has(String(row.eventId).trim()))
+		if (q.decrypt === false) return filtered
+		const { decryptChannelMessageLines, isCkgEncryptedContent } = await import('../channel_keys/content.mjs')
+		if (filtered.some(line => isCkgEncryptedContent(line?.content)))
+			return decryptChannelMessageLines(username, groupId, channelId, filtered)
+		return filtered
 	}
 	let slice
 	if (!q.before) slice = lines.slice(-limit)
@@ -128,6 +127,11 @@ export async function listChannelMessages(username, groupId, channelId, q = {}) 
 			await mergeChannelHistoryRows(username, groupId, channelId, fetched)
 			return listChannelMessages(username, groupId, channelId, { ...q, fetchFromPeers: false })
 		}
+	}
+	if (q.decrypt !== false) {
+		const { decryptChannelMessageLines, isCkgEncryptedContent } = await import('../channel_keys/content.mjs')
+		if (slice.some(line => isCkgEncryptedContent(line?.content)))
+			slice = await decryptChannelMessageLines(username, groupId, channelId, slice)
 	}
 	return slice
 }

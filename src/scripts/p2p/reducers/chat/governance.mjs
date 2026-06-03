@@ -121,16 +121,16 @@ export const governanceReducers = {
 		if (from && to) {
 			const edge = { from, to, at: event.timestamp }
 			if (content.reputationEdge !== undefined) edge.reputationEdge = clampRepEdge(content.reputationEdge)
-			if (content.fileHGrant) edge.fileHGrant = true
+			if (content.file_key_grant) edge.file_key_grant = true
 			state.inviteEdges.push(edge)
 		}
 		return state
 	},
 
 	/**
-	 * @param {object} state
-	 * @param {object} event
-	 * @returns {object}
+	 * @param {object} state 物化群状态
+	 * @param {object} event state_summary 事件
+	 * @returns {object} 更新后的 state
 	 */
 	state_summary(state, event) {
 		withGroupId(state, event)

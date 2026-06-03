@@ -6,7 +6,7 @@ import { extractInboundSignedEvent, isPlainObject } from '../../../../../../../s
 import { encryptSignedEventForWire } from '../channel_keys/content.mjs'
 import { getState } from '../dag/materialize.mjs'
 import { mergeChannelHistories } from '../dag/queries.mjs'
-import { applyFileHGrant, buildFileHGrant } from '../gsh/historicalGrant.mjs'
+import { applyFileKeyGrant, buildFileKeyGrant } from '../gsh/historicalGrant.mjs'
 import { verifyRemoteCheckpoint } from '../lib/checkpointVerifier.mjs'
 import { snapshotPath } from '../lib/paths.mjs'
 
@@ -25,7 +25,7 @@ import { wrapPullResponseInner, unwrapPullResponseEnvelope } from './pullRespons
  * @param {Record<string, object[]>} [opts.channelHistories] 频道历史
  * @param {object} [opts.checkpoint] checkpoint
  * @param {object} [opts.archiveSummary] 存档摘要
- * @param {boolean} [opts.includeFileHGrant] 是否附带群文件密钥 H grant
+ * @param {boolean} [opts.includeFileKeyGrant] 是否附带群文件主密钥 grant
  * @param {boolean} [opts.includeChannelKeyRotates] 是否附带频道密钥 rotate 事件
  * @returns {Promise<object>} HPKE envelope
  */
@@ -39,7 +39,7 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 		channelHistories,
 		checkpoint,
 		archiveSummary,
-		includeFileHGrant = false,
+		includeFileKeyGrant = false,
 		includeChannelKeyRotates = false,
 	} = opts
 	/** @type {Record<string, unknown>} */
@@ -58,8 +58,8 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 		if (Object.keys(wireHistories).length)
 			inner.channelHistories = wireHistories
 	}
-	if (includeFileHGrant)
-		inner.fileHGrant = await buildFileHGrant(username, groupId, recipientEdPubKeyHex)
+	if (includeFileKeyGrant)
+		inner.file_key_grant = await buildFileKeyGrant(username, groupId, recipientEdPubKeyHex)
 	if (includeChannelKeyRotates) {
 		const { collectChannelKeyRotatesForRecipient } = await import('../channel_keys/bootstrap.mjs')
 		const rotates = await collectChannelKeyRotatesForRecipient(username, groupId, recipientEdPubKeyHex)
@@ -82,8 +82,8 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
  */
 export async function applyPullInner(username, groupId, inner) {
 	if (!isPlainObject(inner)) return { eventsApplied: 0, historiesMerged: 0 }
-	if (inner.fileHGrant)
-		await applyFileHGrant(username, groupId, inner.fileHGrant)
+	if (inner.file_key_grant)
+		await applyFileKeyGrant(username, groupId, inner.file_key_grant)
 	if (Array.isArray(inner.channelKeyRotates)) {
 		const { applyChannelKeyRotateEvent } = await import('../channel_keys/store.mjs')
 		const { resolveLocalEventSigner } = await import('../dag/localSigner.mjs')

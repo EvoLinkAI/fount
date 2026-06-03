@@ -32,14 +32,19 @@ export async function deliverToUserRoomPeers(username, actionName, payload, exce
 		nodeHash: getNodeHash(username),
 	}
 	let sent = 0
-	for (const { peerId } of slot.getRoster()) {
-		if (!peerId || peerId === exceptPeerId) continue
+	const peers = slot.getRoster()
+		.filter(({ peerId }) => peerId && peerId !== exceptPeerId)
+	for (let i = peers.length - 1; i > 0; i--) {
+		const j = Math.floor(Math.random() * (i + 1));
+		[peers[i], peers[j]] = [peers[j], peers[i]]
+	}
+	for (const { peerId } of peers) 
 		try {
 			slot.sendToPeer(peerId, actionName, body)
 			sent++
 			if (sent >= limit) break
 		}
 		catch { /* disconnected */ }
-	}
+	
 	return sent
 }

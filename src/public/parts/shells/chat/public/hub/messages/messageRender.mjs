@@ -98,7 +98,7 @@ function isOwnViewerMessage(message, renderOpts) {
  */
 export function getMessageText(message) {
 	const content = message?.content
-	if (content?.ckgDecryptFailed) return ''
+	if (content?.decryptFailed) return ''
 	return channelMessageShowText(content)
 }
 
@@ -117,8 +117,8 @@ export function getMessageEditText(message) {
  */
 async function renderDecryptBodyHtml(message) {
 	const content = message?.content
-	if (!content?.ckgDecryptFailed) return ''
-	const pendingGen = content.ckgPendingGeneration ?? content.gshPendingGeneration
+	if (!content?.decryptFailed) return ''
+	const pendingGen = content.pendingGeneration
 	return renderTemplateAsHtmlString('hub/messages/decrypt_body', {
 		mode: pendingGen != null ? 'pending' : 'failed',
 		generation: pendingGen,

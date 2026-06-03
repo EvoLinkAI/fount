@@ -4,7 +4,7 @@
 import { Buffer } from 'node:buffer'
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto'
 
-import { decryptH, encryptHForMember, generateH } from './gsh.mjs'
+import { decryptH, encryptHForMember } from './gsh.mjs'
 
 /** @typedef {{ ephemPub: string, iv: string, ciphertext: string, authTag: string }} HpkeWrapBlob */
 
@@ -13,7 +13,7 @@ import { decryptH, encryptHForMember, generateH } from './gsh.mjs'
  * @returns {string} 32 字节 hex 频道密钥
  */
 export function generateChannelKey() {
-	return generateH()
+	return randomBytes(32).toString('hex')
 }
 
 /**
@@ -56,7 +56,7 @@ function messageAesKey(channelKeyHex, channelId, generation) {
  * @param {string} channelKeyHex K_ch
  * @param {string} channelId 频道 ID
  * @param {number} generation 密钥代际
- * @returns {{ scheme: 'ckg', channelId: string, generation: number, iv: string, ciphertext: string, authTag: string }} ckg 信封
+ * @returns {{ scheme: 'ckg', channelId: string, generation: number, payload: string }} ckg 信封
  */
 export function encryptWithChannelKey(plaintext, channelKeyHex, channelId, generation) {
 	const key = messageAesKey(channelKeyHex, channelId, generation)
@@ -64,30 +64,31 @@ export function encryptWithChannelKey(plaintext, channelKeyHex, channelId, gener
 	const cipher = createCipheriv('aes-256-gcm', key, iv)
 	const plain = Buffer.from(String(plaintext), 'utf8')
 	const ciphertext = Buffer.concat([cipher.update(plain), cipher.final()])
+	const authTag = cipher.getAuthTag()
 	return {
 		scheme: 'ckg',
 		channelId: String(channelId),
 		generation: Number(generation) || 0,
-		iv: iv.toString('base64'),
-		ciphertext: ciphertext.toString('base64'),
-		authTag: cipher.getAuthTag().toString('base64'),
+		payload: `${iv.toString('base64')}.${ciphertext.toString('base64')}.${authTag.toString('base64')}`,
 	}
 }
 
 /**
- * @param {{ scheme?: string, channelId?: string, generation?: number, iv: string, ciphertext: string, authTag: string }} envelope ckg 信封
+ * @param {{ scheme?: string, channelId?: string, generation?: number, payload: string }} envelope ckg 信封
  * @param {string} channelKeyHex K_ch
  * @param {string} channelId 频道 ID
  * @returns {string | null} 明文 UTF-8
  */
 export function decryptWithChannelKey(envelope, channelKeyHex, channelId) {
-	if (!envelope || envelope.scheme !== 'ckg') return null
+	if (!envelope || envelope.scheme !== 'ckg' || typeof envelope.payload !== 'string') return null
 	try {
+		const parts = envelope.payload.split('.')
+		if (parts.length !== 3) return null
 		const generation = Number(envelope.generation) || 0
 		const key = messageAesKey(channelKeyHex, channelId || envelope.channelId, generation)
-		const iv = Buffer.from(envelope.iv, 'base64')
-		const ciphertext = Buffer.from(envelope.ciphertext, 'base64')
-		const authTag = Buffer.from(envelope.authTag, 'base64')
+		const iv = Buffer.from(parts[0], 'base64')
+		const ciphertext = Buffer.from(parts[1], 'base64')
+		const authTag = Buffer.from(parts[2], 'base64')
 		const decipher = createDecipheriv('aes-256-gcm', key, iv)
 		decipher.setAuthTag(authTag)
 		return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')

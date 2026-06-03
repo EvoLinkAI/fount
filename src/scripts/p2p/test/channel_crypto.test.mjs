@@ -29,6 +29,8 @@ Deno.test('ckg message encrypt decrypt', () => {
 	const plain = JSON.stringify({ type: 'text', content: 'hello' })
 	const envelope = encryptWithChannelKey(plain, kch, channelId, gen)
 	assertEquals(envelope.scheme, 'ckg')
+	assertEquals(typeof envelope.payload, 'string')
+	assertEquals(envelope.payload.split('.').length, 3)
 	const out = decryptWithChannelKey(envelope, kch, channelId)
 	assertEquals(out, plain)
 })

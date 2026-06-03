@@ -21,7 +21,7 @@ import { isGroupFederationActive } from '../federation/groupFederation.mjs'
 import { DEFAULT_MQTT_APP_ID, mintMqttRoomSecret } from '../federation/mqttCredentials.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../federation/room.mjs'
 import { releaseFileStorageRefs } from '../files/groupFiles.mjs'
-import { initGroupH } from '../gsh/store.mjs'
+import { initGroupFileMasterKey } from '../gsh/store.mjs'
 import { groupDir, eventsPath } from '../lib/paths.mjs'
 import { getLocalNodeHash } from '../lib/replica.mjs'
 import { safeRm } from '../lib/utils.mjs'
@@ -150,7 +150,7 @@ export async function createGroup(username, body) {
 
 	await syncEntityProfileFromPersona(username, groupId)
 
-	await initGroupH(username, groupId)
+	await initGroupFileMasterKey(username, groupId)
 
 	const { checkpoint, state } = await getState(username, groupId)
 	try {

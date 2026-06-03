@@ -23,8 +23,8 @@ import { ensureFederationRoom, invalidateFederationRoomCache } from '../../chat/
 import { saveGovernanceBranchTip } from '../../chat/governance/branchStore.mjs'
 import { forkGroupFromBranch } from '../../chat/governance/fork.mjs'
 import { blockOpposingForkBranch } from '../../chat/governance/forkBlockOpposing.mjs'
-import { buildFileHGrant } from '../../chat/gsh/historicalGrant.mjs'
-import { getCurrentH } from '../../chat/gsh/store.mjs'
+import { buildFileKeyGrant } from '../../chat/gsh/historicalGrant.mjs'
+import { getCurrentFileMasterKey } from '../../chat/gsh/store.mjs'
 import { eventsPath } from '../../chat/lib/paths.mjs'
 import { canGovSlash, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
 import { validateLocalAuthzBatch } from '../localAuthz.mjs'
@@ -175,12 +175,12 @@ export function registerDagRoutes(router, authenticate) {
 				continue
 			}
 
-			if (event.type === 'peer_invite' && !content.fileHGrant) {
+			if (event.type === 'peer_invite' && !content.file_key_grant) {
 				const peerPubKeyHex = normalizePubKeyHex(content.to || '')
 				if (PUB_KEY_HEX_64.test(peerPubKeyHex)) {
-					const hEntry = await getCurrentH(username, groupId)
-					if (hEntry)
-						content.fileHGrant = await buildFileHGrant(username, groupId, peerPubKeyHex)
+					const keyEntry = await getCurrentFileMasterKey(username, groupId)
+					if (keyEntry)
+						content.file_key_grant = await buildFileKeyGrant(username, groupId, peerPubKeyHex)
 				}
 			}
 

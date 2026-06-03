@@ -14,7 +14,7 @@ import { createGroup, removeLocalGroupReplica } from '../../chat/dag/lifecycle.m
 import { getLocalSignerForNewGroup } from '../../chat/dag/localSigner.mjs'
 import { createEcdhDmGroup } from '../../chat/dm/index.mjs'
 import { validateDmIntroLinkProof } from '../../chat/dm/linkValidate.mjs'
-import { initGroupH } from '../../chat/gsh/store.mjs'
+import { initGroupFileMasterKey } from '../../chat/gsh/store.mjs'
 import { newMetadata } from '../../chat/session/crud.mjs'
 import { modifyTimeLine } from '../../chat/session/generation.mjs'
 import { getActiveGroupRuntime } from '../../chat/session/persistence.mjs'
@@ -88,7 +88,7 @@ export function registerGroupLifecycleRoutes(router, authenticate) {
 		})
 		registerGroupRuntime(result.groupId, username)
 		await newMetadata(result.groupId, username)
-		await initGroupH(username, result.groupId)
+		await initGroupFileMasterKey(username, result.groupId)
 		res.status(201).json({
 			groupId: result.groupId,
 			defaultChannelId: result.defaultChannelId,

@@ -150,20 +150,20 @@ export function sidecarPath(username, groupId, channelId, messageId) {
 }
 
 /**
- * GSH 状态 JSON 路径（H 代数历史，§11，§19）。
+ * 群文件主密钥本地存储路径。
  * @param {string} username 本地账户名
  * @param {string} groupId 会话 / 群 ID
- * @returns {string} `gsh.json` 绝对路径
+ * @returns {string} `file_master_keys.json` 绝对路径
  */
-export function gshPath(username, groupId) {
-	return join(groupDir(username, groupId), 'gsh.json')
+export function fileMasterKeysPath(username, groupId) {
+	return join(groupDir(username, groupId), 'file_master_keys.json')
 }
 
 /**
  * 频道域密钥本地存储（K_ch 代际）。
  * @param {string} username replica
  * @param {string} groupId 群 ID
- * @returns {string}
+ * @returns {string} `channel_keys.json` 绝对路径
  */
 export function channelKeysPath(username, groupId) {
 	return join(groupDir(username, groupId), 'channel_keys.json')

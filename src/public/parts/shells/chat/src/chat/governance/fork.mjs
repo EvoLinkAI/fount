@@ -20,7 +20,7 @@ import { createGroup } from '../dag/lifecycle.mjs'
 import { getLocalSignerForNewGroup } from '../dag/localSigner.mjs'
 import { getState } from '../dag/materialize.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
-import { groupDir, eventsPath, gshPath, messagesPath, snapshotPath } from '../lib/paths.mjs'
+import { groupDir, eventsPath, fileMasterKeysPath, messagesPath, snapshotPath } from '../lib/paths.mjs'
 
 import { saveGovernanceBranchTip } from './branchStore.mjs'
 
@@ -58,7 +58,7 @@ export async function forkGroupFromBranch(username, sourceGroupId, opts = {}) {
 	})
 
 	try {
-		await cp(gshPath(username, sourceGroupId), gshPath(username, forkGroupId), { force: true })
+		await cp(fileMasterKeysPath(username, sourceGroupId), fileMasterKeysPath(username, forkGroupId), { force: true })
 	}
 	catch { /* source may lack gsh */ }
 

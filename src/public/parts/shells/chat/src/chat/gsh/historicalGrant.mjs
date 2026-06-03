@@ -1,5 +1,5 @@
 /**
- * 群文件密钥 H 历史代际批量授予（补拉 inner.fileHGrant / peer_invite）。
+ * 群文件主密钥历史代际批量授予（补拉 inner.file_key_grant / peer_invite）。
  */
 import { Buffer } from 'node:buffer'
 
@@ -8,22 +8,22 @@ import { isHex64, normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 
 import { flushGshBufferAfterRotation } from './buffer.mjs'
-import { appendH, loadGsh } from './store.mjs'
+import { appendFileMasterKey, loadFileMasterKeys } from './store.mjs'
 
 /**
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
  * @param {string} recipientEdPubKeyHex 接收方 Ed25519 公钥 hex
- * @returns {Promise<{ generations: Array<{ gen: number, encrypted_H: object }> }>} grant bundle
+ * @returns {Promise<{ generations: Array<{ gen: number, encryptedKey: object }> }>} grant bundle
  */
-export async function buildFileHGrant(username, groupId, recipientEdPubKeyHex) {
+export async function buildFileKeyGrant(username, groupId, recipientEdPubKeyHex) {
 	const recipient = normalizeHex64(recipientEdPubKeyHex)
 	if (!recipient || Buffer.from(recipient, 'hex').length !== 32)
 		throw new Error('invalid recipient Ed25519 pub key')
-	const data = await loadGsh(username, groupId)
+	const data = await loadFileMasterKeys(username, groupId)
 	const generations = (data.generations || []).map(entry => ({
 		gen: entry.gen,
-		encrypted_H: encryptHForMember(entry.h, recipient),
+		encryptedKey: encryptHForMember(entry.fileMasterKey, recipient),
 	}))
 	return { generations }
 }
@@ -31,10 +31,10 @@ export async function buildFileHGrant(username, groupId, recipientEdPubKeyHex) {
 /**
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
- * @param {{ generations?: Array<{ gen?: number, encrypted_H?: object }> }} grant grant bundle
+ * @param {{ generations?: Array<{ gen?: number, encryptedKey?: object }> }} grant grant bundle
  * @returns {Promise<number>} 新导入的代数条数
  */
-export async function applyFileHGrant(username, groupId, grant) {
+export async function applyFileKeyGrant(username, groupId, grant) {
 	const rows = Array.isArray(grant?.generations) ? grant.generations : []
 	if (!rows.length) return 0
 	let signer
@@ -48,11 +48,11 @@ export async function applyFileHGrant(username, groupId, grant) {
 	let maxGen = -1
 	for (const row of rows) {
 		const gen = Number(row?.gen)
-		const encrypted = row?.encrypted_H
+		const encrypted = row?.encryptedKey
 		if (!Number.isFinite(gen) || gen < 0 || !encrypted) continue
-		const hHex = decryptH(encrypted, signer.secretKey)
-		if (!hHex || !isHex64(hHex)) continue
-		await appendH(username, groupId, Math.floor(gen), hHex)
+		const keyHex = decryptH(encrypted, signer.secretKey)
+		if (!keyHex || !isHex64(keyHex)) continue
+		await appendFileMasterKey(username, groupId, Math.floor(gen), keyHex)
 		imported++
 		if (gen > maxGen) maxGen = Math.floor(gen)
 	}

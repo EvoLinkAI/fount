@@ -106,7 +106,10 @@ export async function buildPostSnapshotsFromLines(username, groupId, channelId, 
 	const out = []
 	for (const row of merged) {
 		if (row.type !== 'message') continue
-		const content = await decryptEventContent(username, groupId, channelId, row.content)
+		const result = await decryptEventContent(username, groupId, channelId, row.content)
+		const content = result.ok
+			? result.content
+			: { decryptFailed: true, pendingGeneration: result.generation ?? null }
 		out.push(await buildPostSnapshotFromRow({ ...row, content }, state, username, groupId))
 	}
 	return out

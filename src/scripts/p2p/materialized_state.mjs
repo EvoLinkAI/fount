@@ -146,6 +146,8 @@ export function createInitialState(groupId, creatorPubKeyHash) {
 		membersPagesCount: 1,
 		roles: createDefaultRoles(),
 		channelPermissions: {},
+		channelKeyGeneration: {},
+		channelKeyWraps: {},
 		channels: {
 			[defaultChannelId]: {
 				id: defaultChannelId,
@@ -203,6 +205,7 @@ export function emptyMaterializedState() {
 		roles: {},
 		channelPermissions: {},
 		channelKeyGeneration: {},
+		channelKeyWraps: {},
 		channels: {},
 		fileFolders: {},
 		groupMeta: { name: '', description: '', avatar: null },
@@ -241,6 +244,7 @@ export function materializeFromCheckpoint(checkpoint) {
 		roles: structuredClone(membersRecord.roles),
 		channelPermissions: structuredClone(membersRecord.channelPermissions),
 		channelKeyGeneration: structuredClone(membersRecord.channelKeyGeneration || {}),
+		channelKeyWraps: structuredClone(membersRecord.channelKeyWraps || {}),
 		channels: structuredClone(membersRecord.channels),
 		fileFolders: structuredClone(membersRecord.fileFolders),
 		groupMeta: structuredClone(membersRecord.groupMeta),

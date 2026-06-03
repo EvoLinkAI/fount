@@ -20,6 +20,7 @@ export const PERMISSION_ANCHOR_TYPES = new Set([
 	'peer_invite',
 	'channel_permissions_update',
 	'channel_key_rotate',
+	'channel_key_rotate_batch',
 	'state_summary',
 	'group_settings_update',
 	'group_meta_update',

@@ -23,8 +23,8 @@ import { getEventReceivedAt } from '../events/meta.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { onMqttCredentialsSyncedFromDag, mqttCredentialsFromGroupSettings } from '../federation/mqttCredentials.mjs'
 import { releaseFileChunksAfterDelete } from '../files/deleteGc.mjs'
-import { tryImportHFromPeerInvite } from '../gsh/peerInviteImport.mjs'
-import { applyGshRotationFromEvent } from '../gsh/store.mjs'
+import { tryImportFileKeyGrantFromPeerInvite } from '../gsh/peerInviteImport.mjs'
+import { applyFileMasterKeyRotationFromEvent } from '../gsh/store.mjs'
 import { eventsPath, messagesPath } from '../lib/paths.mjs'
 import { broadcastEvent } from '../stream/groupWsHub.mjs'
 import { groupWsRoomKeyForReplica } from '../stream/groupWsRooms.mjs'
@@ -104,11 +104,16 @@ export async function broadcastAndPersist(username, groupId, signPayload, persis
 	const roomKey = groupWsRoomKeyForReplica(username, groupId)
 	broadcastEvent(roomKey, { type: 'dag_event', event: signPayload })
 	await applyReputationHooks(username, groupId, signPayload)
-	await applyGshRotationFromEvent(username, groupId, signPayload)
-	await tryImportHFromPeerInvite(username, groupId, signPayload)
+	await applyFileMasterKeyRotationFromEvent(username, groupId, signPayload)
+	await tryImportFileKeyGrantFromPeerInvite(username, groupId, signPayload)
 	if (signPayload.type === 'channel_key_rotate') {
 		const { sender } = await resolveLocalEventSigner(username, groupId)
 		await applyChannelKeyRotateEvent(username, groupId, signPayload, sender)
+	}
+	if (signPayload.type === 'channel_key_rotate_batch') {
+		const { sender } = await resolveLocalEventSigner(username, groupId)
+		for (const rot of signPayload.content?.rotations || [])
+			await applyChannelKeyRotateEvent(username, groupId, { content: rot }, sender)
 	}
 	if (!PERSIST_MESSAGE_TYPES.has(signPayload.type)) {
 		await rebuildAndSaveCheckpoint(username, groupId, { ...persistOpts, skipChannelGc: true })
@@ -125,14 +130,18 @@ export async function broadcastAndPersist(username, groupId, signPayload, persis
 	let displayContent = storedContent
 	let sidecarContent = storedContent
 	if (CKG_ENCRYPT_EVENT_TYPES.has(signPayload.type)) {
-		displayContent = await decryptEventContent(username, groupId, channelId, storedContent)
-		if (displayContent?.ckgDecryptFailed)
-			sidecarContent = {
+		const result = await decryptEventContent(username, groupId, channelId, storedContent)
+		if (result.ok) {
+			displayContent = result.content
+			sidecarContent = result.content
+		}
+		else {
+			displayContent = {
 				decryptFailed: true,
-				pendingGeneration: displayContent.ckgPendingGeneration ?? null,
+				pendingGeneration: result.generation ?? null,
 			}
-		else
 			sidecarContent = displayContent
+		}
 	}
 	const messageLine = {
 		eventId: signPayload.id,

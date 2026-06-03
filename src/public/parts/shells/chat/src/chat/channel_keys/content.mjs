@@ -14,7 +14,7 @@ export const CKG_ENCRYPT_EVENT_TYPES = new Set(['message', 'message_edit'])
  * @returns {boolean} 是否为 ckg 密文
  */
 export function isCkgEncryptedContent(content) {
-	return content?.ckg?.scheme === 'ckg'
+	return content?.scheme === 'ckg'
 }
 
 /**
@@ -49,19 +49,18 @@ async function resolveChannelKey(username, groupId, channelId) {
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID
  * @param {object} plaintextContent 明文 content
- * @returns {Promise<object>} 含 `ckg` 的 content
+ * @returns {Promise<object>} ckg 加密信封（展平为 content）
  */
 export async function encryptEventContent(username, groupId, channelId, plaintextContent) {
 	if (isCkgEncryptedContent(plaintextContent) || !plaintextContent) return plaintextContent
 	const resolved = await resolveChannelKey(username, groupId, channelId)
 	if (!resolved) throw new Error(`no channel key for ${channelId}`)
-	const ckg = encryptWithChannelKey(
+	return encryptWithChannelKey(
 		JSON.stringify(plaintextContent),
 		resolved.keyHex,
 		channelId,
 		resolved.generation,
 	)
-	return { ckg }
 }
 
 /**
@@ -96,27 +95,27 @@ export async function encryptMessageLineForWire(username, groupId, channelId, li
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID
  * @param {unknown} content 事件 content
- * @returns {Promise<object>} 明文或带 `ckgDecryptFailed` 的占位
+ * @returns {Promise<{ ok: boolean, content: object | null, generation?: number }>} 解密结果
  */
 export async function decryptEventContent(username, groupId, channelId, content) {
-	if (!isCkgEncryptedContent(content)) return content
-	const envelope = content.ckg
-	const gen = Number(envelope.generation)
+	if (!isCkgEncryptedContent(content)) return { ok: true, content }
+	const gen = Number(content.generation)
 	const keyHex = await getChannelKeyHex(username, groupId, channelId, gen)
 	if (!keyHex) {
 		recordGshPendingDecrypt(username, groupId, gen)
-		return { ...content, ckgDecryptFailed: true, ckgPendingGeneration: gen }
+		return { ok: false, generation: gen, content: null }
 	}
-	const decryptedText = decryptWithChannelKey(envelope, keyHex, channelId)
+	const decryptedText = decryptWithChannelKey(content, keyHex, channelId)
 	if (decryptedText == null) {
 		recordGshPendingDecrypt(username, groupId, gen)
-		return { ...content, ckgDecryptFailed: true, ckgPendingGeneration: gen }
+		return { ok: false, generation: gen, content: null }
 	}
 	try {
-		return JSON.parse(decryptedText)
+		return { ok: true, content: JSON.parse(decryptedText) }
 	}
 	catch {
-		return decryptedText ? { type: 'text', content: decryptedText } : decryptedText
+		const fallback = decryptedText ? { type: 'text', content: decryptedText } : null
+		return { ok: true, content: fallback }
 	}
 }
 
@@ -131,6 +130,14 @@ export async function decryptChannelMessageLines(username, groupId, channelId, l
 	if (!lines?.length) return lines || []
 	return Promise.all(lines.map(async line => {
 		if (!line?.content || !isCkgEncryptedContent(line.content)) return line
-		return { ...line, content: await decryptEventContent(username, groupId, channelId, line.content) }
+		const result = await decryptEventContent(username, groupId, channelId, line.content)
+		if (result.ok) return { ...line, content: result.content }
+		return {
+			...line,
+			content: {
+				decryptFailed: true,
+				pendingGeneration: result.generation ?? null,
+			},
+		}
 	}))
 }

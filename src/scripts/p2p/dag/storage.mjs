@@ -66,6 +66,9 @@ export async function appendJsonl(filePath, record) {
  * @param {object} record 记录对象
  * @returns {Promise<void>}
  */
+/** 流式重写 JSONL 时分块写入的行数上限 */
+const WRITE_JSONL_CHUNK_LINES = 1000
+
 /**
  * 流式重写 JSONL（临时文件 + rename），避免大数组 join 的内存峰值。
  * @param {string} filePath 目标路径
@@ -78,9 +81,11 @@ export async function writeJsonl(filePath, records) {
 	const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`
 	const stream = createWriteStream(tmp, { encoding: 'utf8' })
 	try {
-		for (const record of records) {
-			const line = `${JSON.stringify(record)}\n`
-			if (!stream.write(line))
+		for (let i = 0; i < records.length; i += WRITE_JSONL_CHUNK_LINES) {
+			const chunk = records.slice(i, i + WRITE_JSONL_CHUNK_LINES)
+				.map(record => `${JSON.stringify(record)}\n`)
+				.join('')
+			if (!stream.write(chunk))
 				await new Promise(resolve => stream.once('drain', resolve))
 		}
 		await new Promise((resolve, reject) => {

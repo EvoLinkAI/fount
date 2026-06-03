@@ -92,6 +92,7 @@ export function checkEventPermission(state, event, senderHash) {
 				? { ok: true }
 				: { ok: false, reason: 'MANAGE_ROLES or MANAGE_CHANNELS required' }
 		case 'channel_key_rotate':
+		case 'channel_key_rotate_batch':
 			return channelPerms[PERMISSIONS.MANAGE_CHANNELS] || govPerms[PERMISSIONS.MANAGE_CHANNELS]
 				? { ok: true }
 				: { ok: false, reason: 'MANAGE_CHANNELS required' }

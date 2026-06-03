@@ -20,7 +20,7 @@ import {
 	appendUnpinEvent,
 } from '../../chat/dag/channelOps.mjs'
 import { requestChannelHistoryFromPeers } from '../../chat/federation/channelHistory.mjs'
-import { getCurrentH } from '../../chat/gsh/store.mjs'
+import { getCurrentFileMasterKey } from '../../chat/gsh/store.mjs'
 import { channelMessageText } from '../../chat/lib/channelContent.mjs'
 import { EVENT_ID_ROUTE_SEGMENT } from '../../chat/lib/hexRoute.mjs'
 import { triggerCharReply } from '../../chat/session/generation.mjs'
@@ -147,12 +147,12 @@ export function registerChannelRoutes(router, authenticate) {
 		if (!baseUrl)
 			return res.status(404).send('External SFU not configured')
 
-		const currentH = await getCurrentH(username, groupId)
-		if (!currentH?.h)
+		const keyEntry = await getCurrentFileMasterKey(username, groupId)
+		if (!keyEntry?.fileMasterKey)
 			return res.status(400).send('Group encryption (GSH) not initialized')
 
 		const { sessionId, token, expiresAt } = mintStreamingViewToken(
-			username, groupId, channelId, undefined, currentH.h,
+			username, groupId, channelId, undefined, keyEntry.fileMasterKey,
 		)
 		await appendStreamingSession(username, groupId, channelId, { sessionId, expiresAt })
 		const sfuEmbedUrlWithToken = buildStreamingEmbedUrl(baseUrl, token)
@@ -180,12 +180,12 @@ export function registerChannelRoutes(router, authenticate) {
 			return res.status(200).json({ mode: 'webrtc', iceServers: resolveIceServers(state.groupSettings) })
 		}
 
-		const currentH = await getCurrentH(username, groupId)
-		if (!currentH?.h)
+		const keyEntry = await getCurrentFileMasterKey(username, groupId)
+		if (!keyEntry?.fileMasterKey)
 			return res.status(400).json({ error: 'Group encryption (GSH) not initialized' })
 
 		const { sessionId, token, expiresAt } = mintStreamingViewToken(
-			username, groupId, channelId, undefined, currentH.h,
+			username, groupId, channelId, undefined, keyEntry.fileMasterKey,
 		)
 		await appendStreamingSession(username, groupId, channelId, { sessionId, expiresAt })
 		res.status(200).json({
@@ -572,7 +572,10 @@ export function registerChannelRoutes(router, authenticate) {
 			maxDagPayloadBytes: Number(state.groupSettings?.maxDagPayloadBytes) || 262_144,
 		})
 		const { decryptEventContent } = await import('../../chat/channel_keys/content.mjs')
-		const displayContent = await decryptEventContent(username, groupId, channelId, event.content)
+		const result = await decryptEventContent(username, groupId, channelId, event.content)
+		const displayContent = result.ok
+			? result.content
+			: { decryptFailed: true, pendingGeneration: result.generation ?? null }
 		const content = displayContent || {}
 		const { recordEmojiUsageFromMessageContent } = await import('../../emojiUsage.mjs')
 		recordEmojiUsageFromMessageContent(username, content)

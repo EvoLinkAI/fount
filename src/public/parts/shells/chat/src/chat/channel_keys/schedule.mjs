@@ -26,10 +26,22 @@ export async function appendChannelKeyRotate(username, groupId, channelId) {
 /**
  * @param {string} username replica
  * @param {string} groupId 群 ID
- * @returns {Promise<void>}
+ * @returns {Promise<object | null>} 批量签名事件
  */
 export async function rotateAllChannelKeys(username, groupId) {
 	const { state } = await getState(username, groupId)
-	for (const channelId of Object.keys(state.channels || {}))
-		await appendChannelKeyRotate(username, groupId, channelId)
+	/** @type {object[]} */
+	const rotations = []
+	for (const channelId of Object.keys(state.channels || {})) {
+		const content = buildChannelKeyRotateContent(state, channelId)
+		rotations.push(content)
+		if (!state.channelKeyGeneration) state.channelKeyGeneration = {}
+		state.channelKeyGeneration[channelId] = content.generation
+	}
+	if (!rotations.length) return null
+	return appendSignedLocalEvent(username, groupId, {
+		type: 'channel_key_rotate_batch',
+		timestamp: Date.now(),
+		content: { rotations },
+	})
 }
