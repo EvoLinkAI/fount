@@ -1,11 +1,12 @@
 /**
  * Chat 群 DAG 事件入库 canonicalize（形状规范化，非权限校验）。
  */
-import { assertHex64, HEX_ID_64, normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { canonicalizeSignedRow } from '../../../../../../../scripts/p2p/dag/canonicalizeRow.mjs'
+import { validateRemoteEventShape } from '../../../../../../../scripts/p2p/schemas/remote_event.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 
 /** content / 顶层可选 hex64 字段名 */
-const HEX64_FIELD_NAMES = new Set([
+const CHAT_CONTENT_HEX_KEYS = new Set([
 	'targetId',
 	'targetPubKeyHash',
 	'targetNodeHash',
@@ -20,51 +21,25 @@ const HEX64_FIELD_NAMES = new Set([
 	'charOwner',
 ])
 
-/**
- * @param {Record<string, unknown>} obj 可变对象
- * @param {string} key 字段名
- */
-function canonicalizeHexField(obj, key) {
-	if (!(key in obj) || obj[key] == null || obj[key] === '') return
-	const normalized = normalizeHex64(obj[key])
-	if (!HEX_ID_64.test(normalized))
-		throw new Error(`${key} must be 64 hex characters`)
-	obj[key] = normalized
+const CHAT_ROW_OPTS = {
+	prepare: sanitizeFederatedEvent,
+	contentHexKeys: CHAT_CONTENT_HEX_KEYS,
+	includeSenderHomeNodeHash: true,
 }
 
 /**
- * @param {unknown} content 事件 content
- * @returns {object | undefined} 规范化后的 content
- */
-function canonicalizeContent(content) {
-	if (!content || typeof content !== 'object') return content
-	const out = { ...content }
-	for (const key of HEX64_FIELD_NAMES)
-		canonicalizeHexField(out, key)
-	if (out.content_ref && typeof out.content_ref === 'object') {
-		const ref = { ...out.content_ref }
-		canonicalizeHexField(ref, 'contentHash')
-		out.content_ref = ref
-	}
-	return out
-}
-
-/**
- * 签名事件落盘前规范化（变异返回新对象）。
- * @param {object} signPayload 完整签名事件
+ * @param {object} event 签名事件
  * @returns {object} canonical 行
  */
-export function canonicalizeSignedChatEvent(signPayload) {
-	const out = sanitizeFederatedEvent({ ...signPayload })
-	out.id = assertHex64(out.id, 'id')
-	out.sender = assertHex64(out.sender, 'sender')
-	if (Array.isArray(out.prev_event_ids))
-		out.prev_event_ids = out.prev_event_ids.map((id, index) =>
-			assertHex64(id, `prev_event_ids[${index}]`),
-		)
-	if (out.senderHomeNodeHash)
-		out.senderHomeNodeHash = assertHex64(out.senderHomeNodeHash, 'senderHomeNodeHash')
-	if (out.content)
-		out.content = canonicalizeContent(out.content)
-	return out
+export function canonicalizeSignedChatEvent(event) {
+	return canonicalizeSignedRow(event, CHAT_ROW_OPTS)
+}
+
+/**
+ * @param {object} event 远程入站事件
+ * @returns {object} canonical 行
+ */
+export function prepareInboundRemoteChatEvent(event) {
+	validateRemoteEventShape(event)
+	return canonicalizeSignedChatEvent(event)
 }

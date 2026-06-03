@@ -63,14 +63,32 @@ export function buildMemberBanContent(banScope, memberRow) {
  * @returns {string[]} 去重后的 block 键
  */
 export function blockKeysFromBanContent(content) {
-	const keys = new Set()
+	return blockEntriesFromBanContent(content).map(entry => entry.value)
+}
+
+/**
+ * 从 ban 事件 content 收集应写入 peers/blocklist 的 scope 化条目。
+ * @param {object} content member_ban content
+ * @returns {Array<{ scope: 'subject' | 'entity' | 'node', value: string }>} 去重后的 block 条目
+ */
+export function blockEntriesFromBanContent(content) {
+	/** @type {Map<string, { scope: 'subject' | 'entity' | 'node', value: string }>} */
+	const entries = new Map()
+	/**
+	 * @param {'subject' | 'entity' | 'node'} scope 拉黑范围
+	 * @param {string} value 键值
+	 */
+	const add = (scope, value) => {
+		if (!value) return
+		entries.set(`${scope}:${value}`, { scope, value })
+	}
 	const pk = normalizeHex64(content?.targetPubKeyHash)
-	if (isHex64(pk)) keys.add(pk)
+	if (isHex64(pk)) add('subject', pk)
 	const entity = String(content?.targetEntityHash || '').trim().toLowerCase()
-	if (isEntityHash128(entity)) keys.add(entity)
+	if (isEntityHash128(entity)) add('entity', entity)
 	const node = normalizeHex64(content?.targetNodeHash)
-	if (isHex64(node)) keys.add(node)
-	return [...keys]
+	if (isHex64(node)) add('node', node)
+	return [...entries.values()]
 }
 
 /**

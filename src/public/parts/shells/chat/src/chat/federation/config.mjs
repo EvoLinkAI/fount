@@ -1,28 +1,13 @@
 import { events } from '../../../../../../../server/events.mjs'
 
-import {
-	federationRoomInflight,
-	federationRoomRebindGeneration,
-	federationRooms,
-	groupFederationOwner,
-} from './registry.mjs'
+import { invalidateAllFederationPartitionsForUser } from './registry.mjs'
 
 /**
  * @param {string} username 用户名
  * @returns {void}
  */
 export function invalidateAllFederationRoomsForUser(username) {
-	const prefix = `${username}\0`
-	for (const key of [...federationRooms.keys()])
-		if (key.startsWith(prefix)) {
-			federationRooms.delete(key)
-			federationRoomInflight.delete(key)
-			federationRoomRebindGeneration.set(key, (federationRoomRebindGeneration.get(key) || 0) + 1)
-		}
-
-	for (const groupId of [...groupFederationOwner.keys()])
-		if (groupFederationOwner.get(groupId) === username)
-			groupFederationOwner.delete(groupId)
+	invalidateAllFederationPartitionsForUser(username)
 }
 
 events.on('federation-settings-changed', ({ username }) => {

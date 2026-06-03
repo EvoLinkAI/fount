@@ -3,9 +3,10 @@
  * 【职责】将无法立即入主 DAG 的签名事件写入 `quarantine.jsonl`；时钟恢复后批量重试入库。
  * 【原理】消息类 HLC 超 skew 时隔离而非丢弃；`replayQuarantinedEvents` 逐条调用 ingest，成功或 dup 则释放，仍失败则保留行。
  * 【数据结构】隔离行 `{ event, reason, quarantinedAt }`；`tryIngest` 返回与 `appendValidatedRemoteEvent` 相同的状态码。
- * 【关联】`events/hlcPolicy.mjs`、`remoteIngest.mjs`、`dag/storage.mjs`、`dag/groupLock.mjs`。
+ * 【关联】`events/hlcPolicy.mjs`、`remoteIngest.mjs`、`p2p/dag/storage.mjs`、`dag/groupLock.mjs`。
  */
-import { appendJsonlSynced, readJsonl } from '../dag/storage.mjs'
+import { appendJsonlSynced, readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { quarantinePath } from '../lib/paths.mjs'
 
 /**
@@ -29,7 +30,7 @@ export async function appendQuarantinedEvent(username, groupId, signPayload, rea
  * @returns {Promise<object[]>} 隔离行
  */
 export async function readQuarantineRows(username, groupId) {
-	return readJsonl(quarantinePath(username, groupId))
+	return readJsonl(quarantinePath(username, groupId), { sanitize: sanitizeFederatedEvent })
 }
 
 /**

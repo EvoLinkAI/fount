@@ -3,6 +3,7 @@
  * 无 social 面板的老角色在加载时注入 default_interface（见 lib/charSocial.mjs）。
  * Social 账号 = Chat 账号 = fount P2P 实体，无需单独注册。
  */
+import { applyMentionNetworkHint } from '../../../../../scripts/p2p/social/network_hints.mjs'
 import { loadPart } from '../../../../../server/parts_loader.mjs'
 
 import { getEntityProfile } from './feed.mjs'
@@ -11,8 +12,7 @@ import { ensureCharSocialInterface } from './lib/charSocial.mjs'
 import { listLocalAgentEntities, resolveSocialEntity } from './lib/entityResolve.mjs'
 import { extractMentionEntityHashes } from './lib/mentions.mjs'
 import { mentionSourceText, postTextForNotification } from './lib/postMentionText.mjs'
-import { appendTimelineEvent } from './timeline/append.mjs'
-import { fanoutTimelineEvent } from './timeline/publish.mjs'
+import { commitTimelineEvent } from './timeline/append.mjs'
 
 /** 重导出帖子正文工具（@ 扫描与通知可见文本）。 */
 export { mentionSourceText, postTextForNotification } from './lib/postMentionText.mjs'
@@ -52,14 +52,13 @@ async function invokeCharSocialInterface(username, charPartName, method, event) 
 }
 
 /**
- * @param {unknown} socialHandlerResult social 接口返回值
+ * @param {unknown} result social 接口返回值
  * @returns {{ text?: string, skip?: boolean }} 统一结果
  */
-function normalizeSocialHandlerResult(socialHandlerResult) {
-	if (socialHandlerResult == null) return { skip: true }
-	if (typeof socialHandlerResult === 'string') return { text: socialHandlerResult }
-	if (typeof socialHandlerResult === 'object') return socialHandlerResult
-	return { skip: true }
+function normalizeSocialHandlerResult(result) {
+	if (result == null) return { skip: true }
+	if (typeof result === 'string') return { text: result }
+	return result?.text != null || result?.skip != null ? result : { skip: true }
 }
 
 /**
@@ -71,13 +70,41 @@ function normalizeSocialHandlerResult(socialHandlerResult) {
  * @returns {Promise<object>} 签名 post 事件
  */
 async function publishEntityReply(username, authorEntityHash, content, charPartName = null) {
-	const signed = await appendTimelineEvent(username, authorEntityHash, {
+	return commitTimelineEvent(username, authorEntityHash, {
 		type: 'post',
 		charId: charPartName,
 		content,
 	})
-	await fanoutTimelineEvent(username, authorEntityHash, signed)
-	return signed
+}
+
+/**
+ * 本机托管 agent 对 @ 提及的 OnMention 处理与可选自动回复。
+ * @param {ReturnType<typeof resolveSocialEntity>} target 解析后的目标实体
+ * @param {object} mentionEvent OnMention 载荷
+ * @returns {Promise<{ handled: boolean, published: boolean }>} handled 表示目标是否为本机 agent；published 表示是否已发帖回复
+ */
+async function handleLocalAgentOnMention(target, mentionEvent) {
+	if (!target?.local || target.kind !== 'agent' || !target.replicaUsername || !target.charPartName)
+		return { handled: false, published: false }
+	const custom = await invokeCharSocialInterface(
+		target.replicaUsername,
+		target.charPartName,
+		'OnMention',
+		{ ...mentionEvent, mentionedEntityHash: target.entityHash },
+	)
+	if (!custom || custom.skip || !custom.text) return { handled: true, published: false }
+	await publishEntityReply(
+		target.replicaUsername,
+		target.entityHash,
+		{
+			text: custom.text,
+			replyTo: mentionEvent.replyTo,
+			visibility: 'public',
+			lang: mentionEvent.lang,
+		},
+		target.charPartName,
+	)
+	return { handled: true, published: true }
 }
 
 /**
@@ -88,30 +115,16 @@ async function publishEntityReply(username, authorEntityHash, content, charPartN
  */
 export async function processSocialOnMentionRpc(hostingUsername, rpc) {
 	const target = resolveSocialEntity(rpc.targetEntityHash, hostingUsername)
-	if (!target?.local || target.kind !== 'agent' || !target.replicaUsername || !target.charPartName)
-		return { ok: false }
-	const custom = await invokeCharSocialInterface(
-		target.replicaUsername,
-		target.charPartName,
-		'OnMention',
-		{
-			authorEntityHash: rpc.authorEntityHash,
-			authorDisplayName: rpc.authorDisplayName,
-			postId: rpc.postId,
-			postText: rpc.postText,
-			mentionedEntityHash: target.entityHash,
-			replyTo: rpc.replyTo,
-			lang: rpc.lang,
-		},
-	)
-	if (!custom || custom.skip || !custom.text) return { ok: true, published: false }
-	await publishEntityReply(
-		target.replicaUsername,
-		target.entityHash,
-		{ text: custom.text, replyTo: rpc.replyTo, visibility: 'public', lang: rpc.lang },
-		target.charPartName,
-	)
-	return { ok: true, published: true }
+	const result = await handleLocalAgentOnMention(target, {
+		authorEntityHash: rpc.authorEntityHash,
+		authorDisplayName: rpc.authorDisplayName,
+		postId: rpc.postId,
+		postText: rpc.postText,
+		replyTo: rpc.replyTo,
+		lang: rpc.lang,
+	})
+	if (!result.handled) return { ok: false }
+	return { ok: true, published: result.published }
 }
 
 /**
@@ -132,34 +145,20 @@ export async function dispatchPostMentions(posterUsername, authorEntityHash, pos
 
 	for (const targetHash of mentions) {
 		if (targetHash === authorEntityHash.toLowerCase()) continue
+		applyMentionNetworkHint(posterUsername, targetHash)
 		const target = resolveSocialEntity(targetHash)
-		if (target?.local && target.kind === 'agent' && target.replicaUsername && target.charPartName) {
-			const custom = await invokeCharSocialInterface(
-				target.replicaUsername,
-				target.charPartName,
-				'OnMention',
-				{
-					authorEntityHash,
-					authorDisplayName: authorLabel,
-					postId: post.id,
-					postText: notifyText,
-					mentionedEntityHash: target.entityHash,
-					replyTo,
-					lang,
-				},
-			)
-			if (!custom || custom.skip || !custom.text) continue
-			await publishEntityReply(
-				target.replicaUsername,
-				target.entityHash,
-				{ text: custom.text, replyTo, visibility: 'public', lang },
-				target.charPartName,
-			)
-			continue
-		}
+		const local = await handleLocalAgentOnMention(target, {
+			authorEntityHash,
+			authorDisplayName: authorLabel,
+			postId: post.id,
+			postText: notifyText,
+			replyTo,
+			lang,
+		})
+		if (local.handled) continue
 
-		const { requestSocialRpcFromNetwork } = await import('./federation/relay.mjs')
-		void requestSocialRpcFromNetwork(posterUsername, {
+		const { collectSocialRpcResponses } = await import('../../../../../scripts/p2p/part_wire.mjs')
+		void collectSocialRpcResponses(posterUsername, {
 			type: 'social_on_mention',
 			targetEntityHash: targetHash,
 			authorEntityHash,

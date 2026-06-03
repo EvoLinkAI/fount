@@ -42,24 +42,6 @@ export function vaultStatePath(username, entityHash) {
 }
 
 /**
- * 返回 following.json 文件路径。
- * @param {string} username 用户
- * @returns {string} following.json
- */
-export function followingPath(username) {
-	return `${getUserDictionary(username)}/shells/social/following.json`
-}
-
-/**
- * 返回 blocklist.json 文件路径。
- * @param {string} username 用户
- * @returns {string} blocklist.json
- */
-export function blocklistPath(username) {
-	return `${getUserDictionary(username)}/shells/social/blocklist.json`
-}
-
-/**
  * 返回 savedPosts.json 文件路径。
  * @param {string} username 用户
  * @returns {string} savedPosts.json

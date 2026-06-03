@@ -25,7 +25,8 @@ import { mkdir, readdir, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import { loadJsonFile, saveJsonFile } from '../../../../../../../scripts/json_loader.mjs'
-import { readJsonl } from '../dag/storage.mjs'
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 
 import { isChannelIdValid, resolveChannelId } from './channelId.mjs'
 import { groupDir, eventsPath, sidecarPath } from './paths.mjs'
@@ -114,12 +115,12 @@ async function collectReachableSidecarRefsFromDisk(username, groupId) {
 	for (const name of messageIndexFilenames) {
 		if (!name.endsWith('.jsonl')) continue
 		const channelId = name.slice(0, -6)
-		const lines = await readJsonl(join(messagesDir, name))
+		const lines = await readJsonl(join(messagesDir, name, { sanitize: sanitizeFederatedEvent }))
 		mergeReachableFromMessageIndexLines(lines, channelId, reachable)
 	}
 
 	const ep = eventsPath(username, groupId)
-	const eventLines = await readJsonl(ep)
+	const eventLines = await readJsonl(ep, { sanitize: sanitizeFederatedEvent })
 	const deleted = new Set()
 	for (const line of eventLines)
 		if (line.type === 'message_delete' && line.content?.targetId)

@@ -8,7 +8,7 @@ import { relayBumpIsDuplicate } from '../../../../../scripts/p2p/reputation_rela
 
 Deno.test('relayBumpIsDuplicate blocks same peer and key within window', () => {
 	const now = Date.now()
-	const seen = [{ peerNodeId: 'peer-1', key: 'dag:abc', t: now }]
+	const seen = [{ peerNodeHash: 'peer-1', key: 'dag:abc', t: now }]
 	assertEquals(relayBumpIsDuplicate(seen, 'peer-1', 'dag:abc', now + 1000), true)
 	assertEquals(relayBumpIsDuplicate(seen, 'peer-1', 'dag:other', now + 1000), false)
 })

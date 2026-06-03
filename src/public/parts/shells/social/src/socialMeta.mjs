@@ -1,6 +1,5 @@
-import { appendTimelineEvent } from './timeline/append.mjs'
+import { commitTimelineEvent } from './timeline/append.mjs'
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
-import { fanoutTimelineEvent } from './timeline/publish.mjs'
 
 /**
  * 追加 social_meta 事件更新探索资料。
@@ -19,10 +18,9 @@ export async function updateSocialMeta(username, entityHash, patch) {
 	if (!Object.keys(content).length)
 		return (await getTimelineMaterialized(username, entityHash)).socialMeta
 
-	const event = await appendTimelineEvent(username, entityHash, {
+	await commitTimelineEvent(username, entityHash, {
 		type: 'social_meta',
 		content,
 	})
-	await fanoutTimelineEvent(username, entityHash, event)
 	return (await getTimelineMaterialized(username, entityHash)).socialMeta
 }

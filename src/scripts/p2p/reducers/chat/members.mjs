@@ -88,7 +88,7 @@ export const memberReducers = {
 	 */
 	member_ban(state, event) {
 		withGroupId(state, event)
-		applyBanContent(state, event.content || {})
+		applyBanContent(state, event.content ?? {})
 		const target = event.content?.targetPubKeyHash
 		if (target && state.members[target])
 			state.members[target].status = 'banned'

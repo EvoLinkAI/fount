@@ -1,5 +1,4 @@
-import { appendTimelineEvent } from '../timeline/append.mjs'
-import { fanoutTimelineEvent } from '../timeline/publish.mjs'
+import { commitTimelineEvent } from '../timeline/append.mjs'
 
 import { buildFollowApprovePayload } from './vault.mjs'
 
@@ -12,10 +11,8 @@ import { buildFollowApprovePayload } from './vault.mjs'
  */
 export async function autoApproveFollower(replicaUsername, ownerEntityHash, followerPubKeyHex) {
 	const payload = await buildFollowApprovePayload(replicaUsername, ownerEntityHash, followerPubKeyHex)
-	const event = await appendTimelineEvent(replicaUsername, ownerEntityHash, {
+	return commitTimelineEvent(replicaUsername, ownerEntityHash, {
 		type: 'follow_approve',
 		content: payload,
 	})
-	await fanoutTimelineEvent(replicaUsername, ownerEntityHash, event)
-	return event
 }

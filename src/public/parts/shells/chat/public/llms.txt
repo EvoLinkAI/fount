@@ -101,7 +101,7 @@ PoW 入群挑战（若群启用）。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET/POST | `/blocklist` | 联邦主体拉黑表 |
+| GET/POST | `/blocklist` | 兼容别名 → 用户级 `/api/p2p/blocklist`（`settings/blocklist.json`） |
 | GET/PUT | `/trusted-authors` | 不安全渲染可信作者 `pubKeyHash[]` |
 | GET/PUT | `/bookmarks` | `{ entries: [{ groupId, channelId, eventId, title?, href? }] }` |
 | GET/PUT | `/group-folders` | Hub 侧栏文件夹 `{ folders: [...] }` |

@@ -3,7 +3,6 @@ import { resolveOperatorEntityHash } from '../../../../../scripts/p2p/entity/rep
 import { getEntityProfile } from './feed.mjs'
 import { listKnownTimelineOwners } from './feedHelpers.mjs'
 import { extractMentionEntityHashes } from './lib/mentions.mjs'
-import { readTimelineEvents } from './timeline/append.mjs'
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
 
 /**
@@ -63,7 +62,6 @@ export async function buildNotifications(username, limit = 30) {
 					at,
 					snippet,
 				})
-
 		}
 		for (const like of view.likes) {
 			if (String(like.content?.targetEntityHash || '').toLowerCase() !== viewerEntityHash) continue
@@ -75,19 +73,27 @@ export async function buildNotifications(username, limit = 30) {
 				at: Number(like.hlc?.wall) || 0,
 			})
 		}
-	}
-
-	for (const owner of await listKnownTimelineOwners(username)) {
-		if (owner === viewerEntityHash) continue
-		const events = await readTimelineEvents(username, owner)
-		for (const event of events) {
-			if (event.type !== 'follow') continue
-			if (String(event.content?.targetEntityHash || '').toLowerCase() !== viewerEntityHash) continue
+		for (const repost of view.reposts) {
+			if (String(repost.content?.targetEntityHash || '').toLowerCase() !== viewerEntityHash) continue
+			notifications.push({
+				type: 'repost',
+				entityHash: owner,
+				authorName: await authorName(owner),
+				targetPostId: repost.content?.targetPostId,
+				at: Number(repost.hlc?.wall) || 0,
+				snippet: String(repost.content?.comment || '').slice(0, 120),
+			})
+		}
+		if (owner !== viewerEntityHash && view.following.includes(viewerEntityHash)) {
+			const at = (view.followEvents || []).reduce((max, follow) => {
+				if (String(follow.content?.targetEntityHash || '').toLowerCase() !== viewerEntityHash) return max
+				return Math.max(max, Number(follow.hlc?.wall) || 0)
+			}, 0)
 			notifications.push({
 				type: 'follow',
 				entityHash: owner,
 				authorName: await authorName(owner),
-				at: Number(event.hlc?.wall) || 0,
+				at,
 			})
 		}
 	}

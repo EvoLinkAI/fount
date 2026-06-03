@@ -1,8 +1,12 @@
 import path from 'node:path'
 
 import { getUserDictionary } from '../../server/auth.mjs'
+
 import { assertSafeEvfsLogicalPath } from './evfs_logical_path.mjs'
 
+/**
+ *
+ */
 export { assertSafeEvfsLogicalPath } from './evfs_logical_path.mjs'
 
 /**

@@ -9,19 +9,10 @@ const staleByKey = new Map()
 /**
  * @param {string} username 用户
  * @param {string} groupId 群 ID
- * @returns {string} Map 键
- */
-function key(username, groupId) {
-	return federationBootstrapKey(username, groupId)
-}
-
-/**
- * @param {string} username 用户
- * @param {string} groupId 群 ID
  * @returns {void}
  */
 export function markMqttCredentialsStale(username, groupId) {
-	const staleKey = key(username, groupId)
+	const staleKey = federationBootstrapKey(username, groupId)
 	const previous = staleByKey.get(staleKey)
 	staleByKey.set(staleKey, {
 		markedAt: Date.now(),
@@ -35,7 +26,7 @@ export function markMqttCredentialsStale(username, groupId) {
  * @returns {boolean} 是否已标记 stale
  */
 export function isMqttCredentialsStale(username, groupId) {
-	return staleByKey.has(key(username, groupId))
+	return staleByKey.has(federationBootstrapKey(username, groupId))
 }
 
 /**
@@ -44,5 +35,5 @@ export function isMqttCredentialsStale(username, groupId) {
  * @returns {void}
  */
 export function clearMqttCredentialsStale(username, groupId) {
-	staleByKey.delete(key(username, groupId))
+	staleByKey.delete(federationBootstrapKey(username, groupId))
 }

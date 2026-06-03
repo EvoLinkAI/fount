@@ -9,9 +9,9 @@ import { readFile } from 'node:fs/promises'
 
 import { computeArchiveSummary } from '../../../../../../../scripts/p2p/archive_summary.mjs'
 import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
-import { loadPeers } from '../governance/peers.mjs'
+import { loadPeerPoolView } from '../../../../../../../scripts/p2p/network.mjs'
+import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 import { eventsPath, snapshotPath } from '../lib/paths.mjs'
-import { isPlainObject } from '../lib/wireIngress.mjs'
 
 /**
  * §9 存档握手：严格对齐、可合并前缀、或本批 want 中至少一条本地可应答。
@@ -89,7 +89,7 @@ export async function loadLocalFederationArchive(username, groupId, readJsonl) {
 	catch { /* absent */ }
 	let blockedPeers = []
 	try {
-		const peers = await loadPeers(username, groupId)
+		const peers = loadPeerPoolView(username, groupId)
 		blockedPeers = peers.blockedPeers || []
 	}
 	catch { /* absent */ }

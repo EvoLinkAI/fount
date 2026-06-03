@@ -49,8 +49,8 @@ function wireCloseButtons() {
  * @returns {string | null} 文本或 null（空表）
  */
 function formatReputationDump(reputation) {
-	const byNodeId = reputation?.byNodeId || {}
-	const lines = Object.entries(byNodeId)
+	const byNodeHash = reputation?.byNodeHash || {}
+	const lines = Object.entries(byNodeHash)
 		.sort((left, right) => Number(right[1]?.score ?? 0) - Number(left[1]?.score ?? 0))
 		.map(([nodeId, row]) => `${nodeId}: ${Number(row?.score ?? 0).toFixed(3)}`)
 	return lines.length ? lines.join('\n') : null

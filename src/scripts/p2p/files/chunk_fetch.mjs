@@ -4,7 +4,7 @@ import { b64ToU8, u8ToB64 } from '../bytes_codec.mjs'
 import { FEDERATION_CHUNK_FETCH_FANOUT_K } from '../constants.mjs'
 import { DEFAULT_TRUST_GRAPH_OWNER, requireTrustGraphProvider } from '../trust_graph_registry.mjs'
 
-import { fetchFederationChunk, resolveNodeId } from './chunk_provider_registry.mjs'
+import { fetchFederationChunk, resolveNodeHash } from './chunk_provider_registry.mjs'
 import { getChunk, hasChunk, putChunk } from './chunk_store.mjs'
 
 /**
@@ -61,10 +61,10 @@ export async function fetchChunk(context) {
 			},
 		})
 	})
-	const { nodeId } = await resolveNodeId()
+	const { nodeHash } = await resolveNodeHash(username)
 	await requireTrustGraphProvider(DEFAULT_TRUST_GRAPH_OWNER).fanoutToTopNodes(username, 'fed_chunk_get', {
 		requestId,
-		nodeId,
+		nodeHash,
 		chunkHash: hash,
 		ownerEntityHash: context.ownerEntityHash,
 	}, FEDERATION_CHUNK_FETCH_FANOUT_K)

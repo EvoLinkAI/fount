@@ -3,7 +3,7 @@
 ## Trust model
 
 - **Local trust domain**: Hub UI, `/api/parts/shells:chat/...`, and in-process server logic are mutually trusted. Do not duplicate federation-style hex/array validation on local API calls or UI state.
-- **External untrusted**: Trystero wire, `remoteIngest`, federation discovery/mailbox ingress, remote social payloads. Validate only at those gates (`wireIngress`, `remoteIngest`, `scripts/p2p/schemas/*`).
+- **External untrusted**: Trystero wire, `remoteIngest`, federation discovery/mailbox ingress, remote social payloads. Validate only at those gates (`scripts/p2p/wire_ingress.mjs`, `remoteIngest`, `scripts/p2p/schemas/*`).
 
 ## Streaming AV
 

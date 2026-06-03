@@ -6,7 +6,7 @@ import {
 	assertMailboxPubKeyHash,
 	assertMailboxRecordShape,
 } from '../../../../../../../scripts/p2p/schemas/mailbox_wire.mjs'
-import { isPlainObject } from '../lib/wireIngress.mjs'
+import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 
 /**
  * @param {unknown} payload 载荷
@@ -16,8 +16,8 @@ export function parseMailboxPut(payload) {
 	if (!isPlainObject(payload) || !isPlainObject(payload.record)) return null
 	try {
 		assertMailboxRecordShape(payload.record)
-		if (payload.nodeId != null)
-			assertHex64(payload.nodeId, 'mailbox_put.nodeId')
+		if (payload.nodeHash != null)
+			assertHex64(payload.nodeHash, 'mailbox_put.nodeHash')
 		return payload
 	}
 	catch {

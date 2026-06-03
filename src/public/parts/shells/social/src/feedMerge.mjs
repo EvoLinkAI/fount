@@ -12,26 +12,127 @@ export function compareFeedItems(left, right) {
 }
 
 /**
+ * @param {{ candidates: object[], index: number }} stream 单源流
+ * @returns {object | null} 当前队首
+ */
+function streamHead(stream) {
+	if (stream.index >= stream.candidates.length) return null
+	return stream.candidates[stream.index]
+}
+
+/**
+ * @param {{ candidates: object[], index: number }[]} streams 每源已按 compareFeedItems 降序
+ * @param {number} streamIndex 流下标
+ * @returns {boolean} 该流是否仍有队首
+ */
+function streamHasHead(streams, streamIndex) {
+	return streamIndex >= 0 && streamHead(streams[streamIndex]) != null
+}
+
+/**
+ * @param {{ candidates: object[], index: number }[]} streams 源流
+ * @param {number} leftIndex 左流下标
+ * @param {number} rightIndex 右流下标
+ * @returns {boolean} left 队首是否新于 right
+ */
+function streamHeadBeats(streams, leftIndex, rightIndex) {
+	return compareFeedItems(streamHead(streams[leftIndex]), streamHead(streams[rightIndex])) > 0
+}
+
+/**
+ * 多路归并已排序 feed 流用的最大堆（存流下标，按队首 compareFeedItems 降序）。
+ */
+class FeedStreamMaxHeap {
+	/**
+	 * @param {{ candidates: object[], index: number }[]} streams 每源已按 compareFeedItems 降序
+	 */
+	constructor(streams) {
+		this.streams = streams
+		/** @type {number[]} */
+		this.heap = []
+		for (let i = 0; i < streams.length; i++)
+			if (streamHasHead(streams, i)) this.heap.push(i)
+		for (let i = (this.heap.length >> 1) - 1; i >= 0; i--) this.#siftDown(i)
+	}
+
+	/**
+	 * @returns {number} 当前最优流索引，无则 -1
+	 */
+	popMax() {
+		if (!this.heap.length) return -1
+		const best = this.heap[0]
+		const last = this.heap.pop()
+		if (this.heap.length) {
+			this.heap[0] = last
+			this.#siftDown(0)
+		}
+		return best
+	}
+
+	/**
+	 * 某流前进一位后若仍有队首则重新入堆。
+	 * @param {number} streamIndex 流索引
+	 * @returns {void}
+	 */
+	offerStream(streamIndex) {
+		if (!streamHasHead(this.streams, streamIndex)) return
+		this.heap.push(streamIndex)
+		this.#siftUp(this.heap.length - 1)
+	}
+
+	/** @param {number} i 堆下标 */
+	#siftUp(i) {
+		const streams = this.streams
+		while (i > 0) {
+			const parent = (i - 1) >> 1
+			if (!streamHeadBeats(streams, this.heap[i], this.heap[parent])) break
+			;[this.heap[i], this.heap[parent]] = [this.heap[parent], this.heap[i]]
+			i = parent
+		}
+	}
+
+	/** @param {number} i 堆下标 */
+	#siftDown(i) {
+		const streams = this.streams
+		const n = this.heap.length
+		while (true) {
+			const left = i * 2 + 1
+			const right = left + 1
+			let largest = i
+			if (left < n && streamHeadBeats(streams, this.heap[left], this.heap[largest])) largest = left
+			if (right < n && streamHeadBeats(streams, this.heap[right], this.heap[largest])) largest = right
+			if (largest === i) break
+			;[this.heap[i], this.heap[largest]] = [this.heap[largest], this.heap[i]]
+			i = largest
+		}
+	}
+}
+
+/**
+ * @param {{ candidates: object[], index: number }[]} streams 每源已按 compareFeedItems 降序
+ * @returns {number} 下一候选所在流索引，无则 -1
+ */
+export function pickNextFeedStreamIndex(streams) {
+	const heap = new FeedStreamMaxHeap(streams)
+	return heap.popMax()
+}
+
+/**
  * 多路归并已排序的 feed 候选流，取前 maxCount 条（不含游标偏移）。
  * @param {{ candidates: object[], index: number }[]} streams 每源已按 compareFeedItems 降序
  * @param {number} maxCount 最多条数
  * @returns {object[]} 合并后最多 maxCount 条 feed 条目
  */
 export function kWayMergeFeedStreams(streams, maxCount) {
+	const heap = new FeedStreamMaxHeap(streams)
 	/** @type {object[]} */
 	const merged = []
 	while (merged.length < maxCount) {
-		let best = -1
-		for (let i = 0; i < streams.length; i++) {
-			const stream = streams[i]
-			if (stream.index >= stream.candidates.length) continue
-			const head = stream.candidates[stream.index]
-			if (best < 0 || compareFeedItems(head, streams[best].candidates[streams[best].index]) > 0)
-				best = i
-		}
+		const best = heap.popMax()
 		if (best < 0) break
 		merged.push(streams[best].candidates[streams[best].index])
 		streams[best].index++
+		heap.offerStream(best)
 	}
 	return merged
 }

@@ -5,8 +5,8 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import { chunkFetchProgress } from '../../../../../../../scripts/p2p/chunk_fetch_scheduler.mjs'
+import { writeJsonAtomicSynced } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
-import { writeJsonAtomicSynced } from '../dag/storage.mjs'
 import { groupDir } from '../lib/paths.mjs'
 
 /**

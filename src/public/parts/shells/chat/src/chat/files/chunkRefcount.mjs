@@ -8,7 +8,7 @@
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
-import { writeJsonAtomic } from '../dag/storage.mjs'
+import { writeJsonAtomic } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { groupDir } from '../lib/paths.mjs'
 
 

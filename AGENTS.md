@@ -29,8 +29,9 @@
 
 - **Untrusted ingress**: Trystero、群 WebSocket 联邦帧、`remoteIngest`、`social_timeline_put` / `social_rpc` — 校验与 `canonicalize*` 仅在此边界。
 - **Trusted after disk**: `events.jsonl` 读出后仅做 `sanitizeFederatedEvent`（剥扩展键）；reducer / Hub / Social UI 不再重复 hex 规范化。
-- **User-level P2P identity/profile**: `{userDict}/settings/federation.json`（公钥/relay/batterySaver）与 `{userDict}/entities/{entityHash}/profile.json`；HTTP 见 `/api/p2p/federation`、`/api/p2p/entities/*`、`/api/p2p/viewer`（`src/server/web_server/p2p_endpoints.mjs`）。不依赖 shell Load。
-- **TrustGraph fanout**: Social/Mailbox 经 `requireTrustGraphProvider()`（Chat shell Load 时注册 `chatTrustGraph.mjs`）；无 Provider 时 explore 降级为本地-only，timeline fanout fail-fast。
+- **User-level P2P identity/profile**: `{userDict}/settings/federation.json`（公钥/relay/batterySaver）、`network.json`（trusted/explore peers + hints）、`blocklist.json`、`reputation.json`；entity 资料 `{userDict}/entities/{entityHash}/profile.json`；HTTP 见 `/api/p2p/federation`、`/api/p2p/network`、`/api/p2p/blocklist`、`/api/p2p/entities/*`、`/api/p2p/viewer`（`src/server/web_server/p2p_endpoints.mjs`）。不依赖 shell Load。
+- **TrustGraph fanout**: Social/Mailbox/Chat 经 `requireTrustGraphProvider()`（`scripts/p2p/trust_graph.mjs`）；群房间经 `registerFederationRoomProvider` 注入（Chat Load 注册），P2P 层不 import Chat。User room 密码 `sha256('fount-user-room:' + nodeHash)`，作为全局 Public Inbox。
+- **Social 关注真相源**: 无 `following.json`；follow/unfollow 仅写入 operator 时间线 `events.jsonl` + 联邦 fanout + `network.json` explore hints。
 
 ## 5. Entity 文件（EVFS）
 

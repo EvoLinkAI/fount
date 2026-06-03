@@ -6,26 +6,29 @@
  * 【关联】`materialize.mjs`、`events/meta.mjs`、`../stream/groupWsHub.mjs`、`../session/autoReply.mjs`。
  */
 import { sortedPrevEventIds } from '../../../../../../../scripts/p2p/dag/index.mjs'
-import { getEventReceivedAt } from '../events/meta.mjs'
-import { releaseFileChunksAfterDelete } from '../files/deleteGc.mjs'
+import { appendJsonlSynced, readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import {
 	applyDecayCollusionAfterSlash,
 	applyReputationResetToScores,
 	applySubjectiveSlashFromEvent,
 	seedMemberReputationFromIntroducer,
-} from '../governance/reputation.mjs'
+} from '../../../../../../../scripts/p2p/reputation_user.mjs'
+import { getEventReceivedAt } from '../events/meta.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
+import { onMqttCredentialsSyncedFromDag, mqttCredentialsFromGroupSettings } from '../federation/mqttCredentials.mjs'
+import { releaseFileChunksAfterDelete } from '../files/deleteGc.mjs'
 import {
 	decryptEventContent,
 	GSH_ENCRYPT_EVENT_TYPES,
 } from '../gsh/content.mjs'
 import { tryImportHFromPeerInvite } from '../gsh/peerInviteImport.mjs'
 import { applyGshRotationFromEvent } from '../gsh/store.mjs'
-import { messagesPath } from '../lib/paths.mjs'
+import { eventsPath, messagesPath } from '../lib/paths.mjs'
 import { broadcastEvent } from '../stream/groupWsHub.mjs'
 import { groupWsRoomKeyForReplica } from '../stream/groupWsRooms.mjs'
 
+
 import { getState, rebuildAndSaveCheckpoint } from './materialize.mjs'
-import { appendJsonlSynced } from './storage.mjs'
 
 /** 写入频道消息流 JSONL 的事件类型。 */
 const PERSIST_MESSAGE_TYPES = new Set([
@@ -51,23 +54,23 @@ async function applyReputationHooks(username, groupId, signPayload) {
 	if (!signPayload?.type) return
 
 	if (signPayload.type === 'reputation_slash') {
-		await applySubjectiveSlashFromEvent(username, groupId, signPayload)
+		await applySubjectiveSlashFromEvent(username, groupId, signPayload, async (u, g) => readJsonl(eventsPath(u, g), { sanitize: sanitizeFederatedEvent }))
 		const target = slashTargetPubKeyHash(signPayload)
 		if (target) {
 			const { state } = await getState(username, groupId)
-			await applyDecayCollusionAfterSlash(username, groupId, target, state.inviteEdges || [])
+			await applyDecayCollusionAfterSlash(username, target, state.inviteEdges || [])
 		}
 	}
 	if (signPayload.type === 'member_kick' || signPayload.type === 'member_ban') {
 		const target = slashTargetPubKeyHash(signPayload)
 		if (target) {
 			const { state } = await getState(username, groupId)
-			await applyDecayCollusionAfterSlash(username, groupId, target, state.inviteEdges || [])
+			await applyDecayCollusionAfterSlash(username, target, state.inviteEdges || [])
 		}
 	}
 	if (signPayload.type === 'reputation_reset') {
 		const target = slashTargetPubKeyHash(signPayload)
-		if (target) await applyReputationResetToScores(username, groupId, target)
+		if (target) await applyReputationResetToScores(username, target)
 	}
 	if (signPayload.type === 'member_join') {
 		const sender = signPayload.sender.trim().toLowerCase()
@@ -86,7 +89,7 @@ async function applyReputationHooks(username, groupId, signPayload) {
 		const edgeFromJoin = Number.isFinite(fromMember?.repEdgeFromIntroducer)
 			? fromMember.repEdgeFromIntroducer
 			: repEdge
-		await seedMemberReputationFromIntroducer(username, groupId, sender, introducer, edgeFromJoin)
+		await seedMemberReputationFromIntroducer(username, sender, introducer, edgeFromJoin)
 	}
 }
 
@@ -170,13 +173,9 @@ export async function broadcastAndPersist(username, groupId, signPayload, persis
 		).catch(error => {
 			console.error('maybeAutoTriggerCharReply failed:', error)
 		})
-	if (signPayload.type === 'group_settings_update' && signPayload.content?.mqttRoomSecret)
-		void import('../federation/mqttCredentials.mjs').then(async ({ onMqttCredentialsSyncedFromDag, mqttCredentialsFromGroupSettings }) => {
-			const { state } = await getState(username, groupId)
-			const creds = mqttCredentialsFromGroupSettings(state.groupSettings)
-			if (creds) await onMqttCredentialsSyncedFromDag(username, groupId, creds)
-		}).catch(error => {
-			console.error('mqtt credentials sync hook failed:', error)
-		})
-
+	if (signPayload.type === 'group_settings_update' && signPayload.content?.mqttRoomSecret) {
+		const { state } = await getState(username, groupId)
+		const creds = mqttCredentialsFromGroupSettings({ ...state.groupSettings, ...signPayload.content })
+		if (creds) await onMqttCredentialsSyncedFromDag(username, groupId, creds)
+	}
 }

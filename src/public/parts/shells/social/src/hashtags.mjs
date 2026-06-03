@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises'
 
+import { isEntityHashBlocked } from '../../../../../scripts/p2p/blocklist.mjs'
 import { isEntityHash128 } from '../../../../../scripts/p2p/entity_id.mjs'
 import { getUserDictionary } from '../../../../../server/auth.mjs'
 
-import { isBlocked } from './blocklist.mjs'
 import { canViewPost, listKnownTimelineOwners, loadViewerContext } from './feedHelpers.mjs'
 import { extractHashtagsFromText } from './lib/hashtags.mjs'
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
@@ -39,7 +39,7 @@ export async function buildTrendingHashtags(username, options = {}) {
 
 	for (const entityHash of await listKnownTimelineOwners(username)) {
 		if (!isEntityHash128(entityHash)) continue
-		if (await isBlocked(username, entityHash)) continue
+		if (isEntityHashBlocked(username, entityHash)) continue
 		if (!await timelineExists(username, entityHash)) continue
 		const view = await getTimelineMaterialized(username, entityHash)
 		for (const post of view.posts) {

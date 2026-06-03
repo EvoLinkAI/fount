@@ -1,13 +1,14 @@
 /**
  * 群级消息发送限速：按用户 pubKeyHash 与 agent charId 分别计数。
  */
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { memberChannelPermissions } from '../../../../../../../scripts/p2p/materialized_state.mjs'
 import {
 	messageRateEntityKey,
 	resolveMessageRateLimits,
 } from '../../../../../../../scripts/p2p/message_rate_limit.mjs'
 import { PERMISSIONS } from '../../../../../../../scripts/p2p/permissions.mjs'
-import { readJsonl } from '../dag/storage.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { eventsPath } from '../lib/paths.mjs'
 
 import {
@@ -55,7 +56,7 @@ export async function checkMessageRateLimit(username, groupId, state, event) {
 
 	const groupKey = `${username}:${groupId}`
 	if (!rebuiltGroups.has(groupKey)) {
-		const events = await readJsonl(eventsPath(username, groupId))
+		const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 		rebuildRateLimitBucketFromTail(username, groupId, events.slice(-TAIL_SCAN_MAX))
 		rebuiltGroups.add(groupKey)
 	}

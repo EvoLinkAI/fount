@@ -68,8 +68,7 @@ export function isJoinBanned(state, sender, joinContent = {}) {
  * @returns {void}
  */
 export function applyBanContent(state, content) {
-	const pk = content?.targetPubKeyHash
-	if (pk) state.bannedMembers.add(pk)
+	if (content?.targetPubKeyHash) state.bannedMembers.add(content.targetPubKeyHash)
 	const entity = content?.targetEntityHash
 	if (entity && /^[\da-f]{128}$/u.test(entity)) state.bannedEntities.add(entity)
 	const node = content?.targetNodeHash
@@ -82,14 +81,12 @@ export function applyBanContent(state, content) {
  * @returns {void}
  */
 export function clearBanForMember(state, targetPubKeyHash) {
-	const pk = targetPubKeyHash
-	if (!pk) return
-	state.bannedMembers.delete(pk)
-	const member = state.members?.[pk]
-	const home = member?.homeNodeHash
+	if (!targetPubKeyHash) return
+	state.bannedMembers.delete(targetPubKeyHash)
+	const home = state.members?.[targetPubKeyHash]?.homeNodeHash
 	if (home && isHex64(home)) {
 		state.bannedNodes.delete(home)
-		state.bannedEntities.delete(`${home}${pk}`)
+		state.bannedEntities.delete(`${home}${targetPubKeyHash}`)
 	}
 }
 

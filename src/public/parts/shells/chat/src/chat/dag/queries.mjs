@@ -10,13 +10,15 @@ import { dirname } from 'node:path'
 
 import { DEFAULT_MAX_CATCHUP_EVENTS } from '../../../../../../../scripts/p2p/constants.mjs'
 import { topologicalCanonicalOrder } from '../../../../../../../scripts/p2p/dag/index.mjs'
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { memberChannelPermissions } from '../../../../../../../scripts/p2p/materialized_state.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { resolveGroupChannelId } from '../lib/channelId.mjs'
 import { gcLogContextSidecars } from '../lib/contextSidecar.mjs'
 import { eventsPath, messagesPath, snapshotPath } from '../lib/paths.mjs'
 
+
 import { getState, rebuildAndSaveCheckpoint } from './materialize.mjs'
-import { readJsonl } from './storage.mjs'
 import { eventMatchesLazyChannelScope } from './syncScope.mjs'
 
 // ─── 同步 / 查询 ──────────────────────────────────────────────────────────────
@@ -29,7 +31,7 @@ import { eventMatchesLazyChannelScope } from './syncScope.mjs'
  * @returns {Promise<{ events: object[], truncated: boolean }>} 事件切片及是否因上限被截断
  */
 export async function syncEvents(username, groupId, q) {
-	const events = await readJsonl(eventsPath(username, groupId))
+	const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 	let work = events
 	const channelId = String(q.channelId || '').trim()
 	if (channelId) {
@@ -77,7 +79,7 @@ function messageLineWallMs(line) {
  * @returns {Promise<object[]>} 消息行
  */
 export async function listChannelMessages(username, groupId, channelId, q = {}) {
-	let lines = await readJsonl(messagesPath(username, groupId, channelId))
+	let lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
 	if (q.decrypt !== false) {
 		const { decryptChannelMessageLines, isGshEncryptedContent } = await import('../gsh/content.mjs')
 		const needsDecrypt = lines.some(line => isGshEncryptedContent(line?.content))
@@ -103,7 +105,7 @@ export async function listChannelMessages(username, groupId, channelId, q = {}) 
 export async function mergeChannelHistoryRows(username, groupId, channelId, incomingRows) {
 	if (!Array.isArray(incomingRows) || !incomingRows.length) return 0
 	const path = messagesPath(username, groupId, channelId)
-	const existing = await readJsonl(path)
+	const existing = await readJsonl(path, { sanitize: sanitizeFederatedEvent })
 	const known = new Set(
 		existing.map(row => String(row.eventId).trim()).filter(Boolean),
 	)
@@ -151,7 +153,7 @@ export async function mergeChannelHistories(username, groupId, channelHistories)
  */
 export async function pruneChannelMessagesJsonlByTime(username, groupId, channelId, cutoffWall) {
 	const path = messagesPath(username, groupId, channelId)
-	const lines = await readJsonl(path)
+	const lines = await readJsonl(path, { sanitize: sanitizeFederatedEvent })
 	if (!lines.length) return { dropped: 0, kept: 0 }
 	const kept = lines.filter(line => messageLineWallMs(line) >= cutoffWall)
 	const dropped = lines.length - kept.length
@@ -216,7 +218,7 @@ const GROUP_LIST_ACTIVITY_TYPES = new Set([
  * @returns {Promise<number>} 毫秒时间戳；无活动时为 0
  */
 export async function computeLastGroupActivityMs(username, groupId) {
-	const events = await readJsonl(eventsPath(username, groupId))
+	const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 	let max = 0
 	for (const ev of events) {
 		if (!GROUP_LIST_ACTIVITY_TYPES.has(ev.type)) continue
@@ -259,7 +261,7 @@ export async function getEffectivePermissions(username, groupId, pubKeyHash, cha
  */
 export async function pruneChannelMessagesJsonl(username, groupId, channelId, keepLastN) {
 	const path = messagesPath(username, groupId, channelId)
-	const lines = await readJsonl(path)
+	const lines = await readJsonl(path, { sanitize: sanitizeFederatedEvent })
 	const n = Math.max(0, Number(keepLastN) || 0)
 	const kept = n ? lines.slice(-n) : []
 	await mkdir(dirname(path), { recursive: true })
@@ -279,7 +281,7 @@ export async function compactAndPruneChannelMessages(username, groupId, channelI
 	const savedCheckpoint = await compactGroupCheckpoint(username, groupId)
 	await pruneEventsJsonlAfterCheckpoint(username, groupId, savedCheckpoint)
 	const path = messagesPath(username, groupId, channelId)
-	const lines = await readJsonl(path)
+	const lines = await readJsonl(path, { sanitize: sanitizeFederatedEvent })
 	const gs = (await getState(username, groupId)).state?.groupSettings || {}
 	const retentionMs = Number(gs.message_content_retention_ms) || 0
 	let kept = lines
@@ -327,7 +329,7 @@ export async function pruneEventsJsonlAfterCheckpoint(username, groupId, checkpo
 		return { pruned: false, kept: 0, dropped: 0 }
 
 	const eventsFilePath = eventsPath(username, groupId)
-	const events = await readJsonl(eventsFilePath)
+	const events = await readJsonl(eventsFilePath, { sanitize: sanitizeFederatedEvent })
 	if (!events.length) return { pruned: false, kept: 0, dropped: 0 }
 
 	const order = topologicalCanonicalOrder(events.map(dagEvent => ({

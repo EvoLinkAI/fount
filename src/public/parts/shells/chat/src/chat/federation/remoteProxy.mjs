@@ -85,7 +85,7 @@ export async function sendRpcToNode(sourceHost, username, groupId, rpcPayload) {
 	if (!slot?.room) return { mode: 'broadcast', payload }
 	const targetNodeId = resolveTargetNodeIdFromSourceHost(sourceHost)
 	if (!targetNodeId) return { mode: 'broadcast', payload }
-	const peerId = slot.getPeerIdByNodeId(targetNodeId)
+	const peerId = slot.getPeerIdByNodeHash(targetNodeId)
 	if (!peerId) return { mode: 'broadcast', payload }
 
 	slot.sendToPeer(peerId, 'char_rpc', payload)

@@ -1,11 +1,11 @@
 import {
 	registerFederationChunkFetcher,
-	registerNodeIdProvider,
+	registerNodeHashProvider,
 	unregisterChunkProviders,
 } from '../../../../../../scripts/p2p/files/chunk_provider_registry.mjs'
+import { getNodeHash } from '../../../../../../scripts/p2p/node_context.mjs'
 
 import { fetchCiphertextFromFederation } from './federation/chunks.mjs'
-import { requireDagDeps } from './federation/deps.mjs'
 
 const OWNER_ID = 'chat'
 
@@ -15,7 +15,7 @@ const OWNER_ID = 'chat'
  */
 export function registerChatChunkProviders() {
 	registerFederationChunkFetcher(OWNER_ID, fetchCiphertextFromFederation)
-	registerNodeIdProvider(OWNER_ID, () => requireDagDeps())
+	registerNodeHashProvider(OWNER_ID, username => ({ nodeHash: getNodeHash(username) }))
 }
 
 /** @returns {void} */

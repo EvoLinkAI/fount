@@ -1,7 +1,7 @@
 import { authenticate, getUserByReq } from '../../../../../../server/auth.mjs'
-import { discoverWithNetwork } from '../federation/relay.mjs'
-import { syncFollowingTimelines } from '../federation/syncFollowing.mjs'
+import { discoverWithNetwork } from '../discovery.mjs'
 import { buildHomeFeed } from '../feed.mjs'
+import { syncFollowingTimelines } from '../timeline/sync.mjs'
 import { registerFeedSocket } from '../ws/feedHub.mjs'
 
 /**

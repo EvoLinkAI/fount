@@ -8,7 +8,7 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
-import { readJsonl, appendJsonlSynced } from '../dag/storage.mjs'
+import { appendJsonlSynced, readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { pendingRelayPath } from '../lib/paths.mjs'
 
@@ -34,7 +34,7 @@ export async function enqueuePendingRelay(username, groupId, signPayload) {
  */
 export async function flushPendingRelay(username, groupId, publish) {
 	const pendingRelayFilePath = pendingRelayPath(username, groupId)
-	const pendingEvents = await readJsonl(pendingRelayFilePath)
+	const pendingEvents = await readJsonl(pendingRelayFilePath, { sanitize: sanitizeFederatedEvent })
 	if (!pendingEvents.length) return 0
 	const { writeFile, unlink } = await import('node:fs/promises')
 	await writeFile(pendingRelayFilePath, '', 'utf8')
@@ -50,7 +50,7 @@ export async function flushPendingRelay(username, groupId, publish) {
 		}
 
 	try {
-		const unflushedEvents = await readJsonl(pendingRelayFilePath)
+		const unflushedEvents = await readJsonl(pendingRelayFilePath, { sanitize: sanitizeFederatedEvent })
 		if (!unflushedEvents.length) await unlink(pendingRelayFilePath)
 	}
 	catch (error) {

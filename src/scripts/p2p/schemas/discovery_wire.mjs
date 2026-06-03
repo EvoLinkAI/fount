@@ -1,11 +1,11 @@
 import { assertHex64 } from '../hexIds.mjs'
 
 /**
- * @param {unknown} nodeId 节点 id
+ * @param {unknown} nodeHash 节点 hash
  * @returns {string} 规范化 hex64
  */
-export function assertDiscoveryNodeId(nodeId) {
-	return assertHex64(nodeId, 'discovery.nodeId')
+export function assertDiscoveryNodeHash(nodeHash) {
+	return assertHex64(nodeHash, 'discovery.nodeHash')
 }
 
 /**

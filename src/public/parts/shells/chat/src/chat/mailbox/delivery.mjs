@@ -8,11 +8,13 @@ import {
 	scoreMailboxImportance,
 } from '../../../../../../../scripts/p2p/mailbox_importance.mjs'
 import { takeIncomingMailboxPutSlot } from '../../../../../../../scripts/p2p/mailbox_rate.mjs'
-import { requireTrustGraphProvider } from '../../../../../../../scripts/p2p/trust_graph_registry.mjs'
+/** Chat shell partpath（本 shell 出站 part_invoke 自用，不写入 P2P 层常量表）。 */
+const CHAT_PARTPATH = 'shells/chat'
+import { fanoutPartInvoke } from '../../../../../../../scripts/p2p/part_wire.mjs'
+import { loadReputation } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 import { appendValidatedRemoteEvent } from '../dag/remoteIngest.mjs'
-import { requireDagDeps } from '../federation/deps.mjs'
-import { loadReputation } from '../governance/reputation.mjs'
+import { federationNodeHash } from '../federation/deps.mjs'
 
 import { isKnownMailboxSubject } from './memberIndex.mjs'
 import {
@@ -50,29 +52,32 @@ async function ingestMailboxRows(username, groupId, rows) {
  * @returns {Promise<void>}
  */
 export async function dispatchMailboxMessage(username, signedEvent, toPubKeyHash, meta = {}) {
-	const { nodeId } = requireDagDeps()
+	const nodeHash = federationNodeHash(username)
 	await storeMailboxRecord(username, {
 		toPubKeyHash,
 		groupId: meta.groupId || signedEvent.groupId,
 		channelId: meta.channelId || signedEvent.channelId,
 		dmSessionTag: meta.dmSessionTag,
 		envelope: signedEvent,
-		fromNodeHash: nodeId,
+		fromNodeHash: nodeHash,
 		hop: 0,
 		tier: 'trusted',
 		importance: 1,
 	})
-	await requireTrustGraphProvider('chat').fanoutToTopNodes(username, 'mailbox_put', {
-		nodeId,
-		record: {
-			toPubKeyHash: normalizeHex64(toPubKeyHash),
-			groupId: meta.groupId,
-			channelId: meta.channelId,
-			dmSessionTag: meta.dmSessionTag,
-			envelope: signedEvent,
-			hop: 0,
+	await fanoutPartInvoke(username, CHAT_PARTPATH, {
+		kind: 'mailbox_put',
+		wire: {
+			nodeHash,
+			record: {
+				toPubKeyHash: normalizeHex64(toPubKeyHash),
+				groupId: meta.groupId,
+				channelId: meta.channelId,
+				dmSessionTag: meta.dmSessionTag,
+				envelope: signedEvent,
+				hop: 0,
+			},
 		},
-	}, 8)
+	}, 8, nodeHash)
 }
 
 /**
@@ -102,9 +107,12 @@ export async function onFederationRoomReadyForMailbox(username, groupId) {
  * @returns {Promise<void>}
  */
 export async function requestMailboxFromNetwork(username, toPubKeyHash) {
-	await requireTrustGraphProvider('chat').fanoutToTopNodes(username, 'mailbox_want', {
-		toPubKeyHash: normalizeHex64(toPubKeyHash),
-		ids: (await listMailboxIdsForRecipient(username, toPubKeyHash)).slice(0, 64),
+	await fanoutPartInvoke(username, CHAT_PARTPATH, {
+		kind: 'mailbox_want',
+		wire: {
+			toPubKeyHash: normalizeHex64(toPubKeyHash),
+			ids: (await listMailboxIdsForRecipient(username, toPubKeyHash)).slice(0, 64),
+		},
 	}, 6)
 }
 
@@ -116,7 +124,7 @@ export async function requestMailboxFromNetwork(username, toPubKeyHash) {
 export async function ingestMailboxPut(username, put) {
 	const { record } = put
 	if (!record?.envelope || !record?.toPubKeyHash) return
-	const fromNode = String(put.nodeId || record.fromNodeHash || '').trim()
+	const fromNode = String(put.nodeHash || record.fromNodeHash || '').trim()
 	if (!takeIncomingMailboxPutSlot(username, fromNode)) return
 	const hop = Number(record.hop) || 0
 	const relayHop = hop + 1
@@ -126,10 +134,10 @@ export async function ingestMailboxPut(username, put) {
 		nodeHash: fromNode,
 	})
 	const groupId = String(record.groupId || put.groupId || '').trim()
-	const rep = groupId ? await loadReputation(username, groupId) : { byNodeId: {} }
+	const rep = groupId ? loadReputation(username) : { byNodeHash: {} }
 	const senderScore = Number(
-		rep.byNodeId?.[fromNode]?.score
-		?? rep.byNodeId?.[sender]?.score
+		rep.byNodeHash?.[fromNode]?.score
+		?? rep.byNodeHash?.[sender]?.score
 		?? 0,
 	)
 	const { tier, score } = scoreMailboxImportance({
@@ -143,7 +151,7 @@ export async function ingestMailboxPut(username, put) {
 	if (!tier) return
 	if (!await storeMailboxRecord(username, {
 		...record,
-		fromNodeHash: put.nodeId || record.fromNodeHash,
+		fromNodeHash: put.nodeHash || record.fromNodeHash,
 		hop: relayHop,
 		tier,
 		importance: score,
@@ -151,10 +159,13 @@ export async function ingestMailboxPut(username, put) {
 	})) return
 	if (hop >= MAX_MAILBOX_HOP) return
 	if (!allowMailboxRelayForTier(tier)) return
-	await requireTrustGraphProvider('chat').fanoutToTopNodes(username, 'mailbox_put', {
-		nodeId: put.nodeId,
-		record: { ...record, hop: relayHop, tier, importance: score },
-	}, tier === 'trusted' ? 4 : 2)
+	await fanoutPartInvoke(username, CHAT_PARTPATH, {
+		kind: 'mailbox_put',
+		wire: {
+			nodeHash: put.nodeHash,
+			record: { ...record, hop: relayHop, tier, importance: score },
+		},
+	}, tier === 'trusted' ? 4 : 2, put.nodeHash)
 }
 
 /**

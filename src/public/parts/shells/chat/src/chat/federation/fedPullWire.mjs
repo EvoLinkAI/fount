@@ -2,7 +2,7 @@
  * 联邦补拉 attestation / HPKE 响应 wire 解析（Breaking：无 attestation/envelope 即丢弃）。
  */
 import { isHex64, normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
-import { isPlainObject } from '../lib/wireIngress.mjs'
+import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 
 import { EVENT_ID_HEX } from './registry.mjs'
 
@@ -13,7 +13,7 @@ import { EVENT_ID_HEX } from './registry.mjs'
  * @returns {string} 去空白字符串
  */
 function readTrimmed(value) {
-	return typeof value === 'string' ? value.trim() : ''
+	return String(value ?? '').trim()
 }
 
 /**
@@ -44,28 +44,59 @@ export function parsePullAttestation(attestation) {
 
 /**
  * @param {unknown} envelope 响应 envelope
- * @returns {{ requestId: string, requesterPubKeyHash: string, requesterNodeId: string, ephemPub: string, iv: string, ciphertext: string, authTag: string } | null} 解析后的 envelope；缺字段为 null
+ * @returns {{ requestId: string, requesterPubKeyHash: string, requesterNodeHash: string, ephemPub: string, iv: string, ciphertext: string, authTag: string } | null} 解析后的 envelope；缺字段为 null
  */
 export function parsePullResponseEnvelope(envelope) {
 	if (!isPlainObject(envelope)) return null
 	const requestId = readTrimmed(envelope.requestId)
 	const requesterPubKeyHash = normalizeHex64(envelope.requesterPubKeyHash)
-	const requesterNodeId = readTrimmed(envelope.requesterNodeId)
+	const requesterNodeHash = readTrimmed(envelope.requesterNodeHash)
 	const ephemPub = readTrimmed(envelope.ephemPub)
 	const iv = readTrimmed(envelope.iv)
 	const ciphertext = readTrimmed(envelope.ciphertext)
 	const authTag = readTrimmed(envelope.authTag)
 	const scheme = readTrimmed(envelope.scheme)
-	if (!requestId || !isHex64(requesterPubKeyHash) || !requesterNodeId) return null
+	if (!requestId || !isHex64(requesterPubKeyHash) || !requesterNodeHash) return null
 	if (!ephemPub || !iv || !ciphertext || !authTag) return null
 	if (scheme !== 'fed_pull_v1') return null
 	return {
 		requestId,
 		requesterPubKeyHash,
-		requesterNodeId,
+		requesterNodeHash,
 		ephemPub,
 		iv,
 		ciphertext,
 		authTag,
 	}
+}
+
+/**
+ * @param {unknown} data 入群快照请求载荷
+ * @returns {object | null} 解析后的请求或 null
+ */
+export function parseJoinSnapshotRequest(data) {
+	if (!isPlainObject(data)) return null
+	const requestId = readTrimmed(data.requestId)
+	const requesterNodeHash = readTrimmed(data.requesterNodeHash)
+	const groupId = readTrimmed(data.groupId)
+	const attestation = parsePullAttestation(data.attestation)
+	if (!requestId || !requesterNodeHash || !groupId || !attestation) return null
+	if (attestation.groupId !== groupId || attestation.requestId !== requestId) return null
+	const tipsHash = readTrimmed(data.tipsHash)
+	return {
+		requestId,
+		requesterNodeHash,
+		requesterPubKeyHash: attestation.requesterPubKeyHash,
+		groupId,
+		tipsHash: tipsHash ? tipsHash.toLowerCase() : undefined,
+		attestation,
+	}
+}
+
+/**
+ * @param {unknown} data 入群快照响应载荷
+ * @returns {object | null} 解析后的 envelope 或 null
+ */
+export function parseJoinSnapshotResponse(data) {
+	return parsePullResponseEnvelope(data)
 }

@@ -4,6 +4,7 @@
 /* global Deno */
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 
+import { normalizeBlocklist } from '../../../../../scripts/p2p/blocklist.mjs'
 import { topologicalCanonicalOrder } from '../../../../../scripts/p2p/dag/index.mjs'
 import { canViewPost } from '../src/feedHelpers.mjs'
 
@@ -53,4 +54,10 @@ Deno.test('materialize unlike removes like by target key', () => {
 	const unlikeKey = 'author1:p1'
 	likes.delete(unlikeKey)
 	assertEquals(likes.size, 0)
+})
+
+Deno.test('blocklist entity scope from p2p normalizeBlocklist', () => {
+	const entity = `${'e'.repeat(128)}`
+	const list = normalizeBlocklist({ blocked: [{ scope: 'entity', entityHash: entity }] })
+	assertEquals(list.blocked[0].value, entity)
 })

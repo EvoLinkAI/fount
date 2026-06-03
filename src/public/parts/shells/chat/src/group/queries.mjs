@@ -6,10 +6,11 @@
  * 【关联】被 group/routes/groups.mjs、channels.mjs 调用；依赖 chat/dag、chat/gsh、messageMerge、access.mjs。
  */
 import { DEFAULT_STREAM_GENERATING_IDLE_MS } from '../../../../../../scripts/p2p/constants.mjs'
+import { readJsonl } from '../../../../../../scripts/p2p/dag/storage.mjs'
 import { isHex64 } from '../../../../../../scripts/p2p/hexIds.mjs'
 import { getState } from '../chat/dag/materialize.mjs'
 import { computeLastGroupActivityMs } from '../chat/dag/queries.mjs'
-import { readJsonl } from '../chat/dag/storage.mjs'
+import { sanitizeFederatedEvent } from '../chat/events/wire.mjs'
 import { resolveContentRefsInMessageLines } from '../chat/files/contentRefResolve.mjs'
 import { decryptChannelMessageLines } from '../chat/gsh/content.mjs'
 import { mergeChannelMessagesForDisplay } from '../chat/lib/messageMerge.mjs'
@@ -95,7 +96,7 @@ export async function enumerateJoinedFederatedGroups(username) {
  * @returns {Promise<object[]>} 精简 reaction 行
  */
 export async function readChannelReactionEvents(username, groupId, channelId) {
-	const events = await readJsonl(eventsPath(username, groupId))
+	const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 	return events
 		.filter(event => ['reaction_add', 'reaction_remove'].includes(event.type) && (event.channelId || 'default') === channelId)
 		.map(event => ({
@@ -119,7 +120,7 @@ export async function readChannelMessagesForUser(username, groupId, channelId, q
 	const { state } = await getState(username, groupId)
 	let lines = state.channelMergedMessages?.[channelId]
 	if (!lines) {
-		lines = await readJsonl(messagesPath(username, groupId, channelId))
+		lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
 		lines = mergeChannelMessagesForDisplay(lines)
 	}
 	lines = await decryptChannelMessageLines(username, groupId, channelId, lines)

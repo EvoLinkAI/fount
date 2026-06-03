@@ -7,10 +7,10 @@
  */
 import { createHash } from 'node:crypto'
 
-import { isSubjectBlocked, loadPeers } from '../governance/peers.mjs'
-import { isPlainObject } from '../lib/wireIngress.mjs'
+import { applyVolatileSlashAlert } from '../../../../../../../scripts/p2p/reputation_user.mjs'
+import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 
-import { loadFederationGroupSettings, requireDagDeps } from './deps.mjs'
+import { federationNodeHash, loadFederationGroupSettings } from './deps.mjs'
 import { groupFederationOwner } from './registry.mjs'
 
 /** 经联邦中继的 WS VOLATILE 类型（§6.4）。 */
@@ -64,9 +64,9 @@ export async function publishVolatileToFederation(groupId, payload) {
 		actionName: 'fed_volatile',
 		channelId,
 	})
-	if (!slot?.sendFedVolatile) return
+	if (!slot?.send) return
 
-	const { nodeId } = requireDagDeps()
+	const nodeHash = federationNodeHash(username)
 	const groupSettings = await loadFederationGroupSettings(username, groupId)
 
 	const { pickFederationTargetPeerIds } = await import('../governance/peerPool.mjs')
@@ -75,19 +75,19 @@ export async function publishVolatileToFederation(groupId, payload) {
 		groupId,
 		slot.getRoster?.() || [],
 		groupSettings,
-		nodeId,
+		nodeHash,
 	)
 	const dedupeId = createHash('sha256')
 		.update(JSON.stringify({ type: payload.type, ...payload }))
 		.digest('hex')
 		.slice(0, 24)
-	const envelope = { nodeId, groupId, dedupeId, payload }
+	const envelope = { nodeHash, groupId, dedupeId, payload }
 	if (!targets.length) {
-		slot.sendFedVolatile(envelope, null)
+		slot.send('fed_volatile',envelope, null)
 		return
 	}
 	for (const peerId of targets)
-		slot.sendFedVolatile(envelope, peerId)
+		slot.send('fed_volatile',envelope, peerId)
 }
 
 /**
@@ -97,31 +97,31 @@ export async function publishVolatileToFederation(groupId, payload) {
  * @param {unknown} data 信封
  * @param {string} peerId Trystero peer
  * @param {Map<string, string>} peerToNode peer → nodeId
+ * @param {(subject: string) => boolean} isBlockedPeer 节点拉黑检查
  * @returns {Promise<void>}
  */
-export async function handleIncomingFedVolatile(username, groupId, data, peerId, peerToNode) {
-	if (!isPlainObject(data) || data.groupId !== groupId || !data.nodeId || !data.dedupeId || !data.payload) return
+export async function handleIncomingFedVolatile(username, groupId, data, peerId, peerToNode, isBlockedPeer) {
+	const envelopeNode = String(data?.nodeHash || '').trim()
+	if (!isPlainObject(data) || data.groupId !== groupId || !envelopeNode || !data.dedupeId || !data.payload) return
 	const envelope = data
 	const { payload } = envelope
 	if (!isFederableVolatilePayload(payload)) return
 
-	const { nodeId } = requireDagDeps()
-	if (envelope.nodeId === nodeId) return
+	const nodeHash = federationNodeHash(username)
+	if (envelopeNode === nodeHash) return
 
-	const remoteNodeId = peerToNode.get(peerId) || envelope.nodeId
-	const peers = await loadPeers(username, groupId)
-	if (remoteNodeId && isSubjectBlocked(peers, remoteNodeId)) return
-	if (envelope.nodeId && isSubjectBlocked(peers, envelope.nodeId)) return
+	const remoteNodeHash = peerToNode.get(peerId) || envelopeNode
+	if (remoteNodeHash && isBlockedPeer(remoteNodeHash)) return
+	if (envelopeNode && isBlockedPeer(envelopeNode)) return
 
-	const dedupeKey = `${String(envelope.nodeId || remoteNodeId)}:${String(envelope.dedupeId || '')}`
+	const dedupeKey = `${String(envelopeNode || remoteNodeHash)}:${String(envelope.dedupeId || '')}`
 	if (!takeFedVolatileDedupe(dedupeKey)) return
 
 	const { verifyStreamChunkVolatile } = await import('../stream/signing.mjs')
 	if (!await verifyStreamChunkVolatile(payload)) return
 
 	if (payload.type === 'reputation_slash_alert') {
-		const { applyVolatileSlashAlert } = await import('../governance/reputation.mjs')
-		await applyVolatileSlashAlert(username, groupId, payload)
+		applyVolatileSlashAlert(username, groupId, payload)
 		return
 	}
 

@@ -1,13 +1,9 @@
 /**
- * 【文件】src/chat/lib/wireIngress.mjs
- * 【职责】入站 wire 事件预处理：大小、schema、visibility 统一门禁。
- * 【原理】sanitize → jsonBoundary → visibility → 交 authorizeEvent。
- * 【数据结构】WireIngressResult：accepted、reason、normalizedEvent。
- * 【关联】events/wire、lib/jsonBoundary、dag/remoteIngest。
+ * P2P / Trystero 入站 wire 公共工具（外来网络边界）。
  */
 import { Buffer } from 'node:buffer'
 
-import { isHex64, isSignatureHex128 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { isHex64, isSignatureHex128 } from './hexIds.mjs'
 
 /**
  * @param {unknown} value 待判定值
@@ -18,7 +14,7 @@ export function isPlainObject(value) {
 }
 
 /**
- * 解析 WebSocket / HTTP 入站 JSON 帧。
+ * 解析 WebSocket / Trystero 入站 JSON 帧。
  * @param {unknown} raw `ws` message 或字符串
  * @returns {Record<string, unknown> | null} 解析失败或非对象时为 null
  */

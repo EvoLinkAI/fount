@@ -5,7 +5,7 @@ import { topologicalCanonicalOrder } from '../dag/index.mjs'
  * @param {object[]} events 原始事件
  * @param {Record<string, (state: object, event: object) => object>} reducers 事件类型 → reducer
  * @param {() => object} createInitialState 初始状态工厂
- * @returns {object} 物化结果
+ * @returns {{ state: object, order: string[] }} 物化结果与拓扑序
  */
 export function materializeFromEvents(events, reducers, createInitialState) {
 	const order = topologicalCanonicalOrder(events.map(event => ({
@@ -22,5 +22,5 @@ export function materializeFromEvents(events, reducers, createInitialState) {
 		const reducer = reducers[event.type]
 		if (reducer) state = reducer(state, event)
 	}
-	return state
+	return { state, order }
 }

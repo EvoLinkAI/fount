@@ -9,8 +9,8 @@ import { Buffer } from 'node:buffer'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import { writeJsonAtomic } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { BLOB_STORAGE_LOCATOR_RE, isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
-import { writeJsonAtomic } from '../dag/storage.mjs'
 import { shellChatRoot } from '../lib/paths.mjs'
 
 /**

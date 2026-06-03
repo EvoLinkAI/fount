@@ -2,8 +2,10 @@
 
 ## Trust model
 
-- **Local trust domain**: Social UI、`/api/parts/shells:social/...`、本机 timeline append 与 Chat 联邦 deps 互信。
-- **External untrusted**: `social_timeline_put`、`social_rpc`、mailbox 时间线入站；在 `timeline/canonicalizeEvent.mjs` 与 `timeline/sync.mjs` 门禁。
+- **Local trust domain**: Social UI、`/api/parts/shells:social/...`、本机 timeline append 与 P2P deps 互信。
+- **External untrusted**: `part_timeline_put`、`part_invoke`（Social RPC / timeline pull）；入站在 `timeline/sync.mjs`（`ingestRemoteTimelineEvent`）与 `timeline/federationExport.mjs`（联邦 pull 出站过滤）。
+- **关注列表**: 无 sidecar JSON；从 operator 时间线物化 `following`；反向查询用 `data/social/follower_index/{entityHash}.json` 分片投影（LRU 热缓存）。
+- **拉黑**: 用户级 `settings/blocklist.json`，HTTP `/api/p2p/blocklist`。
 
 ## UI conventions
 
@@ -13,7 +15,7 @@
 
 ## 联邦 Social
 
-- 远端 `interfaces.social` **仅**经 Trystero `social_rpc`（如 `social_on_mention`），不走 `char_rpc`。
+- 远端通知 **仅**经 `part_invoke`（如 `social_on_mention`），不走 `char_rpc`。
 
 ## Related
 

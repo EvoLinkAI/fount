@@ -1,9 +1,5 @@
 /**
  * 【文件】`dag/append.mjs` — 本地 DAG 事件追加主路径。
- * 【职责】为本群分配 HLC、连接 DAG 前驱、验签后写入明文 content 的 `events.jsonl` 并触发广播与联邦发布。
- * 【原理】事件以 DAG 节点形式追加：`prev_event_ids` 指向当前 tip 或调用方指定父集；`nextHlc` 保证混序下的逻辑时钟；通过 `withGroupWriteLock` 串行化写盘；低电量模式拦截部分治理类事件。
- * 【数据结构】输入为未签名事件体；输出为含 `id`、`hlc`、`prev_event_ids`、`signature`、`senderPubKey` 的完整签名载荷。
- * 【关联】`events/hlcPolicy.mjs`、`events/wire.mjs`、`eventPersist.mjs`、`materialize.mjs`、`ingest.mjs`、`remoteIngest.mjs`。
  */
 import { Buffer } from 'node:buffer'
 import { mkdir } from 'node:fs/promises'
@@ -13,23 +9,23 @@ import {
 	computeEventId,
 	signPayloadBytes,
 } from '../../../../../../../scripts/p2p/dag/index.mjs'
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
+import { getNodeHash } from '../../../../../../../scripts/p2p/node_context.mjs'
 import { computeAppendHlcAndPrev } from '../../../../../../../scripts/p2p/timeline/append_core.mjs'
 import {
 	classifyHlcSkewAction,
 	resolveHlcMaxSkewMs,
 } from '../events/hlcPolicy.mjs'
-import { recordEventReceivedAt } from '../events/meta.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
+import { checkMessageRateLimit } from '../governance/messageRateLimit.mjs'
 import { groupDir, eventsPath } from '../lib/paths.mjs'
 
 import { canonicalizeSignedChatEvent } from './canonicalizeEvent.mjs'
-import { broadcastAndPersist } from './eventPersist.mjs'
-import { withGroupWriteLock } from './groupLock.mjs'
+import { commitSignedChatEvent } from './commitSignedEvent.mjs'
 import { validateIngestAuthz } from './ingest.mjs'
 import { resolveLocalEventSigner } from './localSigner.mjs'
 import { getState } from './materialize.mjs'
-import { publishEventToFederation, releaseQuarantinedEvents } from './remoteIngest.mjs'
-import { readJsonl, appendJsonlSynced } from './storage.mjs'
-import { NODE_ID } from './syncScope.mjs'
+import { releaseQuarantinedEvents } from './remoteIngest.mjs'
 import { unsignedEventFields, validateSignature } from './validator.mjs'
 
 /** §2.1 低功耗模式下禁止本地发起的重量级治理变更类型。 */
@@ -50,19 +46,17 @@ const BATTERY_SAVER_BLOCKED_LOCAL_TYPES = new Set([
  * @returns {Promise<object>} 写入后的完整签名载荷对象
  */
 export async function appendEvent(username, groupId, event, secretKey) {
-	if (BATTERY_SAVER_BLOCKED_LOCAL_TYPES.has(event.type)) {
-		const { state } = await getState(username, groupId)
-		if (state.groupSettings?.batterySaver)
-			throw new Error(`batterySaver mode: governance event '${event.type}' is read-only`)
-	}
-	const { state: rateState } = await getState(username, groupId)
-	const { checkMessageRateLimit } = await import('../governance/messageRateLimit.mjs')
-	const rateCheck = await checkMessageRateLimit(username, groupId, rateState, event)
+	const { state } = await getState(username, groupId)
+
+	if (BATTERY_SAVER_BLOCKED_LOCAL_TYPES.has(event.type) && state.groupSettings?.batterySaver)
+		throw new Error(`batterySaver mode: governance event '${event.type}' is read-only`)
+
+	const rateCheck = await checkMessageRateLimit(username, groupId, state, event)
 	if (!rateCheck.ok) throw new Error(rateCheck.reason || 'message rate limit exceeded')
 
-	await validateIngestAuthz(username, groupId, event, { source: 'local' })
+	await validateIngestAuthz(username, groupId, event, { source: 'local', state })
 	await mkdir(groupDir(username, groupId), { recursive: true })
-	const previous = await readJsonl(eventsPath(username, groupId))
+	const previous = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 	const { hlc, prev_event_ids: prevFromCaller } = computeAppendHlcAndPrev(previous, event, { multiTip: true })
 
 	const base = {
@@ -70,7 +64,7 @@ export async function appendEvent(username, groupId, event, secretKey) {
 		groupId,
 		hlc,
 		prev_event_ids: prevFromCaller,
-		node_id: event.node_id || NODE_ID,
+		node_id: event.node_id || getNodeHash(username),
 	}
 	const body = unsignedEventFields(base)
 	const id = computeEventId(body)
@@ -85,24 +79,18 @@ export async function appendEvent(username, groupId, event, secretKey) {
 		if (event.senderPubKey) signPayload.senderPubKey = event.senderPubKey
 	}
 
-	const { state: stateForSignature } = await getState(username, groupId)
-	const maxSkewMs = resolveHlcMaxSkewMs(stateForSignature)
+	const maxSkewMs = resolveHlcMaxSkewMs(state)
 	const hlcAction = classifyHlcSkewAction(signPayload, maxSkewMs, { source: 'local' })
 	if (hlcAction !== 'allow')
 		throw new Error(`event HLC skew too large (${signPayload.type}, max ${maxSkewMs}ms)`)
-	await validateSignature(username, groupId, body, signPayload, event, secretKey, stateForSignature)
+	await validateSignature(username, groupId, body, signPayload, event, secretKey, state)
 
 	const wirePayload = canonicalizeSignedChatEvent(signPayload)
-
-	await withGroupWriteLock(username, groupId, async () => {
-		await appendJsonlSynced(eventsPath(username, groupId), wirePayload)
-		await recordEventReceivedAt(username, groupId, wirePayload.id, Date.now())
-		await broadcastAndPersist(username, groupId, wirePayload, { checkpointOwnerSecretKey: secretKey })
-		await releaseQuarantinedEvents(username, groupId)
+	await commitSignedChatEvent(username, groupId, wirePayload, {
+		checkpointOwnerSecretKey: secretKey,
+		publishFederation: true,
 	})
-	await publishEventToFederation(username, groupId, wirePayload)
-	const { recordMessageRate } = await import('../governance/rateLimitState.mjs')
-	recordMessageRate(username, groupId, wirePayload)
+	await releaseQuarantinedEvents(username, groupId)
 
 	return signPayload
 }

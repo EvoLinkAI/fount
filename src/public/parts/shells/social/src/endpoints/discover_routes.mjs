@@ -1,7 +1,7 @@
+import { loadBlocklist } from '../../../../../../scripts/p2p/blocklist.mjs'
 import { getReplicaFromReq, resolveOperatorEntityHash } from '../../../../../../scripts/p2p/entity/replica.mjs'
 import { authenticate, getUserByReq } from '../../../../../../server/auth.mjs'
-import { loadSocialBlocklist } from '../blocklist.mjs'
-import { discoverWithNetwork } from '../federation/relay.mjs'
+import { discoverWithNetwork } from '../discovery.mjs'
 import { getEntityProfile } from '../feed.mjs'
 import { buildTrendingHashtags } from '../hashtags.mjs'
 import { ensureOperatorSocialReady } from '../lib/bootstrap.mjs'
@@ -55,7 +55,10 @@ export function registerDiscoverRoutes(router) {
 
 	router.get('/api/parts/shells\\:social/blocklist', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		res.status(200).json(await loadSocialBlocklist(username))
+		const blocked = loadBlocklist(username).blocked
+			.filter(entry => entry.scope === 'entity')
+			.map(entry => entry.value)
+		res.status(200).json({ blocked })
 	})
 
 	router.get('/api/parts/shells\\:social/viewer', authenticate, async (req, res) => {

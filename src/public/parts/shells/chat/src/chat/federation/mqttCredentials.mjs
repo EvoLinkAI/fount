@@ -131,9 +131,9 @@ export async function onMqttCredentialsSyncedFromDag(username, groupId, dagCreds
 		clearFederationBootstrap(username, groupId)
 	const { clearMqttCredentialsStale } = await import('./mqttStale.mjs')
 	clearMqttCredentialsStale(username, groupId)
-	const { federationRooms, federationRoomKey } = await import('./registry.mjs')
-	const key = federationRoomKey(username, groupId)
-	const existing = federationRooms.get(key)
+	const { getFederationPartitionSlot } = await import('./registry.mjs')
+	const { LOGIC_SYNC_PARTITION } = await import('./partitions.mjs')
+	const existing = getFederationPartitionSlot(username, groupId, LOGIC_SYNC_PARTITION)
 	if (existing && existing.mqttPassword !== dagCreds.mqttRoomSecret) {
 		const { invalidateFederationRoomCache } = await import('./room.mjs')
 		invalidateFederationRoomCache(username, groupId)

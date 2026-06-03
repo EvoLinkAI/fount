@@ -8,6 +8,7 @@ import { console } from '../scripts/i18n.mjs'
 import { loadJsonFile } from '../scripts/json_loader.mjs'
 import { getLocalizedInfo } from '../scripts/locale.mjs'
 import { nicerWriteFileSync } from '../scripts/nicerWriteFile.mjs'
+import { mapDelete, mapGet, mapSet } from '../scripts/p2p/composite_key.mjs'
 import { doProfile } from '../scripts/profiler.mjs'
 
 import { getAllUsers, getUserByUsername, getUserDictionary } from './auth.mjs'
@@ -291,6 +292,32 @@ export function GetPartPath(username, partpath) {
 	if (fs.existsSync(userPath + '/main.mjs'))
 		return userPath
 	return __dirname + '/src/public/parts/' + partpath
+}
+
+/** @type {Map<string, Map<string, boolean>>} */
+const partMainExistsCache = new Map()
+
+/**
+ * 缓存 part 目录是否存在 main.mjs（供 part_invoke 等高频路径使用）。
+ * @param {string} username 用户
+ * @param {string} partpath 部件路径
+ * @returns {boolean} 是否存在 main.mjs
+ */
+export function hasPartMain(username, partpath) {
+	const cached = mapGet(partMainExistsCache, username, partpath)
+	if (cached !== undefined) return cached
+	const exists = fs.existsSync(GetPartPath(username, partpath) + '/main.mjs')
+	mapSet(partMainExistsCache, username, partpath, exists)
+	return exists
+}
+
+/**
+ * @param {string} username 用户
+ * @param {string} partpath 部件路径
+ * @returns {void}
+ */
+export function invalidatePartMainCache(username, partpath) {
+	mapDelete(partMainExistsCache, username, partpath)
 }
 
 /**

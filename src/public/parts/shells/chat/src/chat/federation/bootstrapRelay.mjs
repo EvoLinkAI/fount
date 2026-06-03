@@ -13,7 +13,7 @@ import {
 	setFederationBootstrap,
 	setPeerMqttHint,
 } from './bootstrapStore.mjs'
-import { loadFederationGroupSettings, loadFederationMaterializedState, requireDagDeps } from './deps.mjs'
+import { federationNodeHash, loadFederationGroupSettings, loadFederationMaterializedState, requireDagDeps } from './deps.mjs'
 import { catchUpGroupFromPeers } from './index.mjs'
 import { mqttCredentialsFromGroupSettings } from './mqttCredentials.mjs'
 import { markMqttCredentialsStale } from './mqttStale.mjs'
@@ -39,13 +39,13 @@ export { parseFedBootstrapRequest, parseFedBootstrapResponse } from './bootstrap
 /**
  * @param {string} username 用户
  * @param {string} groupId 群 ID
- * @param {string} nodeId 本机 nodeId
+ * @param {string} nodeHash 本机 nodeHash
  * @param {object} request 解析后的 bootstrap 请求
  * @param {string} peerId 请求方 Trystero peer
  * @param {(payload: unknown, peerId: string) => void} sendResponse 发送响应
  * @returns {Promise<void>}
  */
-export async function handleFedBootstrapRequest(username, groupId, nodeId, request, peerId, sendResponse) {
+export async function handleFedBootstrapRequest(username, groupId, nodeHash, request, peerId, sendResponse) {
 	if (request.groupId !== groupId) return
 	const { state } = await loadFederationMaterializedState(username, groupId)
 	if (state.members?.[request.requesterPubKeyHash]?.status !== 'active') return
@@ -68,7 +68,7 @@ export async function handleFedBootstrapRequest(username, groupId, nodeId, reque
 	if (!isHex64(memberPubHex)) return
 	sendResponse({
 		requestId: request.requestId,
-		responderNodeId: nodeId,
+		responderNodeHash: nodeHash,
 		settingsEventId,
 		encryptedMqttSecret: encryptUtf8ForMember(JSON.stringify({
 			mqttAppId: creds.mqttAppId,
@@ -98,7 +98,7 @@ export async function applyFedBootstrapResponse(username, groupId, response) {
 
 	setPeerMqttHint(username, groupId, {
 		...creds,
-		fromNodeId: response.responderNodeId,
+		fromNodeId: response.responderNodeHash,
 	})
 	setFederationBootstrap(username, groupId, creds)
 	invalidateFederationRoomCache(username, groupId)
@@ -113,12 +113,12 @@ export async function applyFedBootstrapResponse(username, groupId, response) {
  * @param {object} slot FederationSlot
  * @param {string} username 用户
  * @param {string} groupId 群 ID
- * @param {string} nodeId 本机 nodeId
+ * @param {string} nodeHash 本机 nodeHash
  * @param {string} requesterPubKeyHash 本机成员 pubKeyHash
  * @param {string} [localTipsHash] 本地 tips 摘要
  * @returns {Promise<void>}
  */
-export async function broadcastFedBootstrapRequest(slot, username, groupId, nodeId, requesterPubKeyHash, localTipsHash) {
+export async function broadcastFedBootstrapRequest(slot, username, groupId, nodeHash, requesterPubKeyHash, localTipsHash) {
 	const cooldownKey = bootstrapCooldownKey(username, groupId)
 	const previous = recentBootstrapRequests.get(cooldownKey)
 	if (previous && Date.now() - previous.createdAt < REQUEST_COOLDOWN_MS) return
@@ -135,17 +135,17 @@ export async function broadcastFedBootstrapRequest(slot, username, groupId, node
 		groupId,
 		slot.getRoster(),
 		groupSettings,
-		nodeId,
+		nodeHash,
 	)
 	const body = {
 		requestId: randomUUID(),
-		nodeId,
+		nodeHash,
 		groupId,
 		requesterPubKeyHash,
 		localTipsHash,
 	}
-	if (!targets.length) slot.sendBootstrapRequest(body, null)
-	else for (const peerId of targets) slot.sendBootstrapRequest(body, peerId)
+	if (!targets.length) slot.send('fed_bootstrap_request',body, null)
+	else for (const peerId of targets) slot.send('fed_bootstrap_request',body, peerId)
 }
 
 /**
@@ -164,7 +164,7 @@ export async function maybeRequestBootstrapAfterCatchup(username, groupId, catch
 	markMqttCredentialsStale(username, groupId)
 	if (!slot) return
 
-	const { nodeId } = requireDagDeps()
+	const nodeHash = federationNodeHash(username)
 	const { sender: requesterPubKeyHash } = await resolveLocalEventSigner(username, groupId)
-	await broadcastFedBootstrapRequest(slot, username, groupId, nodeId, requesterPubKeyHash)
+	await broadcastFedBootstrapRequest(slot, username, groupId, nodeHash, requesterPubKeyHash)
 }

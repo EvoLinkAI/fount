@@ -5,26 +5,27 @@
  * 【数据结构】DAG tips/tipScores、events 数组、governance-branch tipId、applied/skipped 计数。
  * 【关联】被 group/endpoints.mjs 注册；依赖 chat/dag/*、chat/governance、localAuthz.mjs、access.mjs。
  */
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/governance_branch.mjs'
 import { HEX_ID_64 as PUB_KEY_HEX_64, isHex64, normalizeHex64 as normalizePubKeyHex } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { isSignedDagEventRow } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 import { getUserByReq } from '../../../../../../../server/auth.mjs'
+import { loadReputation, buildAndApplyUnverifiedSlashAlert } from '../../../../../../scripts/p2p/reputation_user.mjs'
 import { appendSignedLocalEvent } from '../../chat/dag/append.mjs'
 import { mergeDagTips } from '../../chat/dag/lifecycle.mjs'
 import { resolveLocalEventSigner } from '../../chat/dag/localSigner.mjs'
 import { getState } from '../../chat/dag/materialize.mjs'
 import { syncEvents } from '../../chat/dag/queries.mjs'
 import { appendValidatedRemoteEvent } from '../../chat/dag/remoteIngest.mjs'
-import { readJsonl } from '../../chat/dag/storage.mjs'
+import { sanitizeFederatedEvent } from '../../chat/events/wire.mjs'
 import { isGroupFederationActive } from '../../chat/federation/groupFederation.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../../chat/federation/room.mjs'
 import { saveGovernanceBranchTip } from '../../chat/governance/branchStore.mjs'
 import { forkGroupFromBranch } from '../../chat/governance/fork.mjs'
 import { blockOpposingForkBranch } from '../../chat/governance/forkBlockOpposing.mjs'
-import { loadReputation } from '../../chat/governance/reputation.mjs'
 import { buildGshGenerationGrant } from '../../chat/gsh/historicalGrant.mjs'
 import { getCurrentH } from '../../chat/gsh/store.mjs'
 import { eventsPath } from '../../chat/lib/paths.mjs'
-import { isSignedDagEventRow } from '../../chat/lib/wireIngress.mjs'
 import { canGovSlash, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
 import { validateLocalAuthzBatch } from '../localAuthz.mjs'
 
@@ -40,7 +41,7 @@ export function registerDagRoutes(router, authenticate) {
 	router.get(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/dag\/tips$/, authenticate, requireGroupMember(), async (req, res) => {
 		const { username, state, groupId } = req.groupContext
 
-		const events = await readJsonl(eventsPath(username, groupId))
+		const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 		const tips = computeDagTipIdsFromEvents(events)
 		const { checkpoint } = await getState(username, groupId)
 		const { computeLocalTipsHash } = await import('../../../../../../../scripts/p2p/dag/index.mjs')
@@ -48,9 +49,9 @@ export function registerDagRoutes(router, authenticate) {
 		const eventsById = new Map()
 		for (const event of events)
 			if (event?.id) eventsById.set(String(event.id), event)
-		const reputation = await loadReputation(username, groupId)
+		const reputation = loadReputation(username)
 		const reputationBySender = {}
-		for (const [nodeId, row] of Object.entries(reputation?.byNodeId || {}))
+		for (const [nodeId, row] of Object.entries(reputation?.byNodeHash || {}))
 			reputationBySender[String(nodeId).toLowerCase()] = Number(row?.score ?? 0)
 		const tipScores = computeTipAuthzScores(tips, eventsById, reputationBySender)
 		const tipConsensusScores = computeTipConsensusScores(tips, eventsById)
@@ -95,7 +96,7 @@ export function registerDagRoutes(router, authenticate) {
 		const tipId = req.body?.tipId != null ? String(req.body.tipId).trim().toLowerCase() : null
 		if (tipId && !isHex64(tipId))
 			return res.status(400).json({ error: 'invalid tipId' })
-		const tips = state.dagTips || computeDagTipIdsFromEvents(await readJsonl(eventsPath(username, groupId)))
+		const tips = state.dagTips || computeDagTipIdsFromEvents(await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent }))
 		if (tipId && !tips.includes(tipId))
 			return res.status(400).json({ error: 'tipId is not a current DAG tip' })
 		await saveGovernanceBranchTip(username, groupId, tipId)
@@ -162,13 +163,11 @@ export function registerDagRoutes(router, authenticate) {
 				if (!canGovSlash(slashState, slashState.members[memberKey]))
 					throw new Error('ADMIN or MANAGE_ROLES required')
 				const { sender } = await resolveLocalEventSigner(username, groupId)
-				const { buildAndApplyUnverifiedSlashAlert } = await import('../../chat/governance/reputation.mjs')
 				const { publishVolatileToFederation } = await import('../../chat/federation/index.mjs')
 				const { broadcastEvent } = await import('../../chat/stream/groupWsHub.mjs')
 				const { groupWsRoomKeyForReplica } = await import('../../chat/stream/groupWsRooms.mjs')
-				const alert = await buildAndApplyUnverifiedSlashAlert(
+				const alert = buildAndApplyUnverifiedSlashAlert(
 					sender,
-					groupId,
 					content,
 					slashState.groupSettings || {},
 				)

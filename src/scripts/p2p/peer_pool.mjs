@@ -50,11 +50,11 @@ export function resolveFederationPoolLimits(groupSettings = {}) {
 
 /**
  * @param {string} nodeId 节点 id
- * @param {{ byNodeId?: Record<string, { score?: number }> }} rep 信誉表
+ * @param {{ byNodeHash?: Record<string, { score?: number }> }} rep 信誉表
  * @returns {number} 排序分
  */
 function repScore(nodeId, rep) {
-	const score = Number(rep.byNodeId?.[nodeId]?.score ?? 0)
+	const score = Number(rep.byNodeHash?.[nodeId]?.score ?? 0)
 	return clampReputationScore(Number.isFinite(score) ? score : 0)
 }
 
@@ -63,42 +63,42 @@ function repScore(nodeId, rep) {
  * 输出按 Top-K trusted + M random explore + 剩余按信誉补至 maxPeers 的 peerId 列表。
  *
  * @param {{
- *   roster: Array<{ peerId: string, remoteNodeId?: string }>,
+ *   roster: Array<{ peerId: string, remoteNodeHash?: string }>,
  *   peers: { trustedPeers: string[], explorePeers: string[], blockedPeers: string[] },
- *   rep: { byNodeId?: Record<string, { score?: number }> },
+ *   rep: { byNodeHash?: Record<string, { score?: number }> },
  *   limits: ReturnType<typeof resolveFederationPoolLimits>,
- *   selfNodeId: string,
- *   inRoomNodeIds?: Set<string> | string[] 群内在线 node_id；有则优先，仅全不可达时用 explore 中非房内节点
- * }} opts 选取参数（roster、peers、rep、limits、selfNodeId）
+ *   selfNodeHash: string,
+ *   inRoomNodeHashes?: Set<string> | string[] 群内在线 node_id；有则优先，仅全不可达时用 explore 中非房内节点
+ * }} opts 选取参数（roster、peers、rep、limits、selfNodeHash）
  * @returns {string[]} 目标 Trystero peerId 列表（去重，长度 ≤ maxPeers）
  */
-export function selectPeerIdsFromPool({ roster, peers, rep, limits, selfNodeId, inRoomNodeIds }) {
+export function selectPeerIdsFromPool({ roster, peers, rep, limits, selfNodeHash, inRoomNodeHashes }) {
 	const blocked = new Set(peers.blockedPeers)
-	const roomSet = inRoomNodeIds instanceof Set
-		? inRoomNodeIds
-		: new Set(Array.isArray(inRoomNodeIds) ? inRoomNodeIds : [])
+	const roomSet = inRoomNodeHashes instanceof Set
+		? inRoomNodeHashes
+		: new Set(Array.isArray(inRoomNodeHashes) ? inRoomNodeHashes : [])
 	const onlineAll = roster.filter(
 		rosterEntry => rosterEntry.peerId
-			&& rosterEntry.remoteNodeId
-			&& rosterEntry.remoteNodeId !== selfNodeId
-			&& !blocked.has(rosterEntry.remoteNodeId),
+			&& rosterEntry.remoteNodeHash
+			&& rosterEntry.remoteNodeHash !== selfNodeHash
+			&& !blocked.has(rosterEntry.remoteNodeHash),
 	)
 	const onlineInRoom = roomSet.size
-		? onlineAll.filter(rosterEntry => roomSet.has(rosterEntry.remoteNodeId))
+		? onlineAll.filter(rosterEntry => roomSet.has(rosterEntry.remoteNodeHash))
 		: onlineAll
 	const online = onlineInRoom.length ? onlineInRoom : onlineAll
 	if (!online.length) return []
 
-	const peerIdByNodeId = new Map(online.map(rosterEntry => [rosterEntry.remoteNodeId, rosterEntry.peerId]))
-	const trustedSet = new Set(peers.trustedPeers.filter(nodeId => peerIdByNodeId.has(nodeId)))
-	const exploreSet = new Set(peers.explorePeers.filter(nodeId => peerIdByNodeId.has(nodeId) && !trustedSet.has(nodeId)))
+	const peerIdByNodeHash = new Map(online.map(rosterEntry => [rosterEntry.remoteNodeHash, rosterEntry.peerId]))
+	const trustedSet = new Set(peers.trustedPeers.filter(nodeHash => peerIdByNodeHash.has(nodeHash)))
+	const exploreSet = new Set(peers.explorePeers.filter(nodeHash => peerIdByNodeHash.has(nodeHash) && !trustedSet.has(nodeHash)))
 
 	const outPeerIds = new Set()
 	/**
-	 * @param {string} nid 远端节点 ID
+	 * @param {string} nodeHash 远端节点 hash
 	 */
-	const pushNode = nodeId => {
-		const peerId = peerIdByNodeId.get(nodeId)
+	const pushNode = nodeHash => {
+		const peerId = peerIdByNodeHash.get(nodeHash)
 		if (peerId) outPeerIds.add(peerId)
 	}
 
@@ -119,12 +119,12 @@ export function selectPeerIdsFromPool({ roster, peers, rep, limits, selfNodeId, 
 		pushNode(nodeId)
 	}
 
-	const remainingNodeIds = [...peerIdByNodeId.keys()]
-		.filter(nodeId => !trustedSet.has(nodeId) && !exploreSet.has(nodeId))
+	const remainingNodeHashes = [...peerIdByNodeHash.keys()]
+		.filter(nodeHash => !trustedSet.has(nodeHash) && !exploreSet.has(nodeHash))
 		.sort((a, b) => repScore(b, rep) - repScore(a, rep))
-	for (const nodeId of remainingNodeIds) {
+	for (const nodeHash of remainingNodeHashes) {
 		if (outPeerIds.size >= limits.maxPeers) break
-		pushNode(nodeId)
+		pushNode(nodeHash)
 	}
 
 	return [...outPeerIds].slice(0, limits.maxPeers)
@@ -136,7 +136,7 @@ export function selectPeerIdsFromPool({ roster, peers, rep, limits, selfNodeId, 
  *
  * @param {{
  *   peers: { trustedPeers: string[], explorePeers: string[], blockedPeers: string[] },
- *   rep: { byNodeId?: Record<string, { score?: number }> },
+ *   rep: { byNodeHash?: Record<string, { score?: number }> },
  *   hints: string[],
  *   limits: ReturnType<typeof resolveFederationPoolLimits>,
  * }} opts 合并参数（peers、rep、hints、limits）
@@ -166,8 +166,8 @@ export function applyPexHints({ peers, rep, hints, limits }) {
  *
  * @param {{
  *   peers: { trustedPeers: string[], explorePeers: string[], blockedPeers: string[] },
- *   rep: { byNodeId?: Record<string, { score?: number }> },
- *   roster: Array<{ remoteNodeId?: string }>,
+ *   rep: { byNodeHash?: Record<string, { score?: number }> },
+ *   roster: Array<{ remoteNodeHash?: string }>,
  *   limits: ReturnType<typeof resolveFederationPoolLimits>,
  * }} opts roster 更新参数（peers、rep、roster、limits）
  * @returns {{ trustedPeers: string[], explorePeers: string[] }} 更新后的 trusted/explore 列表
@@ -175,7 +175,7 @@ export function applyPexHints({ peers, rep, hints, limits }) {
 export function applyRosterToPeerPool({ peers, rep, roster, limits }) {
 	const explore = new Set(peers.explorePeers)
 	for (const rosterEntry of roster) {
-		const nodeId = rosterEntry.remoteNodeId?.trim()
+		const nodeId = rosterEntry.remoteNodeHash?.trim()
 		if (nodeId && !peers.blockedPeers.includes(nodeId)) explore.add(nodeId)
 	}
 	const newExplorePeers = [...explore]

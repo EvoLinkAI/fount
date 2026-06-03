@@ -28,7 +28,7 @@ Deno.test('parseFedBootstrapRequest rejects invalid wire', () => {
 	assertEquals(parseFedBootstrapRequest({ requestId: 'r1' }), null)
 	const ok = parseFedBootstrapRequest({
 		requestId: 'r1',
-		nodeId: 'n1',
+		nodeHash: 'n1',
 		groupId: 'g1',
 		requesterPubKeyHash: 'a'.repeat(64),
 	})

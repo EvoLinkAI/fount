@@ -114,9 +114,9 @@ export async function decryptEventContent(username, groupId, channelId, content)
 	const encryptedEnvelope = /** @type {{ gsh: { scheme: string, generation?: number } }} */ content
 	const keyGeneration = encryptedEnvelope.gsh.generation ?? null
 	let groupKey = keyGeneration != null ? await getHByGeneration(username, groupId, keyGeneration) : null
-	if (!groupKey) {
+	if (!groupKey) 
 		groupKey = (await getCurrentH(username, groupId))?.h ?? null
-	}
+	
 	if (!groupKey) {
 		recordGshPendingDecrypt(username, groupId, keyGeneration)
 		return {

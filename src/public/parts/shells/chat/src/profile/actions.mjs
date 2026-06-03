@@ -9,6 +9,9 @@ import {
 } from '../../../../../../scripts/p2p/entity/profile.mjs'
 import { getOperatorEntityHash } from '../../../../../../scripts/p2p/entity/replica.mjs'
 
+/**
+ *
+ */
 export const actions = {
 	/**
 	 * @param {object} params 参数

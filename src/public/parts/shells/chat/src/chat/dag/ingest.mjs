@@ -5,23 +5,23 @@
  * 【数据结构】入参为 DAG 事件对象；`opts.source` 为 `'local' | 'federation'`。
  * 【关联】`authorizeEvent.mjs`、`materialize.mjs`、`sessionEventValidate.mjs`、`../federation/acl.mjs`。
  */
+import { isPubKeyHashBlocked } from '../../../../../../../scripts/p2p/blocklist.mjs'
 import { sortedPrevEventIds } from '../../../../../../../scripts/p2p/dag/index.mjs'
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/governance_branch.mjs'
 import { assertHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { resolveActiveMemberKey } from '../../group/access.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import {
-	hasMaterializedAclSnapshot,
-	isAuthzGatedEventType,
+	federationIngestBlockedWithoutSnapshot,
 	shouldDeferFederatedRelay,
 } from '../federation/acl.mjs'
-import { isPubKeyHashBlocked } from '../governance/blocklist.mjs'
 import { validateJoinPolicy } from '../governance/joinPolicy.mjs'
 import { eventsPath } from '../lib/paths.mjs'
 
 import { assertEventPermission } from './authorizeEvent.mjs'
 import { getState } from './materialize.mjs'
 import { validateSessionEventContent } from './sessionEventValidate.mjs'
-import { readJsonl } from './storage.mjs'
 import { PUB_KEY_HASH_HEX } from './validator.mjs'
 
 /**
@@ -57,17 +57,14 @@ function resolveSenderPubKeyHash(state, sender, replicaUsername) {
  * @param {string} replicaUsername replica 所有者
  * @param {string} groupId 群 ID
  * @param {object} event 待校验事件
- * @param {{ source?: 'local' | 'federation' }} [opts] 入站来源（联邦路径要求 pubKeyHash sender）
+ * @param {{ source?: 'local' | 'federation', state?: object }} [opts] 入站来源；可传入已物化 state 避免重复加载
  * @returns {Promise<void>}
  */
 export async function validateIngestAuthz(replicaUsername, groupId, event, opts = {}) {
-	const { state } = await getState(replicaUsername, groupId)
+	const state = opts.state ?? (await getState(replicaUsername, groupId)).state
 
 	if (opts.source === 'federation') {
-		const type = event?.type
-		if (!hasMaterializedAclSnapshot(state)
-			&& isAuthzGatedEventType(type)
-			&& type !== 'member_join')
+		if (federationIngestBlockedWithoutSnapshot(state, event))
 			throw new Error('federated event dropped: no ACL snapshot')
 		if (shouldDeferFederatedRelay(state, event))
 			return
@@ -99,7 +96,7 @@ export async function validateIngestAuthz(replicaUsername, groupId, event, opts 
 	}
 
 	if (event.type === 'dag_tip_merge') {
-		const rows = await readJsonl(eventsPath(replicaUsername, groupId))
+		const rows = await readJsonl(eventsPath(replicaUsername, groupId), { sanitize: sanitizeFederatedEvent })
 		const tips = computeDagTipIdsFromEvents(rows)
 		if (tips.length < 2) throw new Error('dag_tip_merge: no fork')
 		const expected = sortedPrevEventIds(tips)
@@ -115,11 +112,10 @@ export async function validateIngestAuthz(replicaUsername, groupId, event, opts 
 		return
 	}
 
-	const activeCount = Object.values(state.members || {}).filter(member => member?.status === 'active').length
-	if (activeCount === 0 && new Set([
-		'group_meta_update', 'channel_create', 'group_settings_update',
-		'role_create', 'member_join',
-	]).has(event.type)) return
+	const bootstrapTypes = ['group_meta_update', 'channel_create', 'group_settings_update', 'role_create', 'member_join']
+	if (!Object.values(state.members).some(member => member?.status === 'active')
+		&& bootstrapTypes.includes(event.type))
+		return
 
 	const senderHash = resolveSenderPubKeyHash(state, event.sender, replicaUsername)
 	if (!senderHash) throw new Error('requires pubKeyHash sender')

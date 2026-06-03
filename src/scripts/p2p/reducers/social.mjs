@@ -12,6 +12,7 @@ export function createSocialTimelineState() {
 		deletedPostIds: new Set(),
 		likes: new Map(),
 		reposts: [],
+		followEvents: [],
 		following: new Set(),
 	}
 }
@@ -83,8 +84,10 @@ function reduceRepost(state, event) {
  * @returns {object} 更新后状态
  */
 function reduceFollow(state, event) {
-	if (event.content?.targetEntityHash)
+	if (event.content?.targetEntityHash) {
 		state.following.add(String(event.content.targetEntityHash).toLowerCase())
+		state.followEvents.push(event)
+	}
 	return state
 }
 
@@ -134,6 +137,7 @@ export function finalizeSocialTimelineView(state, order) {
 		postById: Object.fromEntries(state.posts),
 		likes: [...state.likes.values()],
 		reposts: state.reposts,
+		followEvents: state.followEvents,
 		following: [...state.following],
 		tipIds: order.length ? [order[order.length - 1]] : [],
 	}

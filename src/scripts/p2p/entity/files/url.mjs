@@ -12,7 +12,7 @@ export function entityFileUrl(entityHash, logicalPath) {
 /**
  * profile 头像 EVFS 路径 URL。
  * @param {string} entityHash 128 hex
- * @returns {string}
+ * @returns {string} profile 头像 HTTP URL
  */
 export function profileAvatarFileUrl(entityHash) {
 	return entityFileUrl(entityHash, 'profile/avatar')

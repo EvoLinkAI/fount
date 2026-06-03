@@ -62,7 +62,7 @@ export function partitionRoomName(baseRoomId, partitionId) {
 export function partitionForOutboundEvent(eventType, channelId, groupSettings = {}) {
 	const count = channelPartitionCount(groupSettings)
 	const slowTypes = new Set([
-		'gossip_request', 'mailbox_put', 'mailbox_want', 'discovery_announce',
+		'gossip_request', 'part_invoke', 'discovery_announce',
 	])
 	if (slowTypes.has(eventType)) return LOGIC_SYNC_PARTITION
 	if (eventType === 'message' || eventType === 'message_edit' || eventType === 'message_delete')

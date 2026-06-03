@@ -23,6 +23,7 @@ import {
 	wrapContentKey,
 } from '../../../../../../../scripts/p2p/gsh.mjs'
 import { BLOB_STORAGE_LOCATOR_RE, isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { penalizeChunkStorageFailure } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import { createLocalStoragePlugin } from '../../../../../../../scripts/p2p/storage_plugins.mjs'
 import { resolveActiveMemberKeyForLocalUser } from '../../group/access.mjs'
 import { appendFileDeleteEvent, appendFileSystemUpdateEvent, appendFileUploadEvent } from '../dag/channelOps.mjs'
@@ -33,7 +34,6 @@ import {
 	replicateChunkToFederation,
 } from '../federation/chunks.mjs'
 import { ensureFederationRoom } from '../federation/room.mjs'
-import { penalizeChunkStorageFailure } from '../governance/reputation.mjs'
 import { getCurrentH, getHByGeneration } from '../gsh/store.mjs'
 import { shellChatRoot } from '../lib/paths.mjs'
 import { getFederatedChunkStorage, getStorageForGroup } from '../storage.mjs'

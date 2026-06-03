@@ -2,20 +2,20 @@
  * 群发现联邦线消息解析（入站）。
  */
 import {
-	assertDiscoveryNodeId,
+	assertDiscoveryNodeHash,
 	assertDiscoveryRequestId,
 } from '../../../../../../../scripts/p2p/schemas/discovery_wire.mjs'
-import { isPlainObject } from '../lib/wireIngress.mjs'
+import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 
 /**
  * @param {unknown} payload 载荷
- * @returns {{ nodeId: string, advertisements: object[] } | null} 解析结果
+ * @returns {{ nodeHash: string, advertisements: object[] } | null} 解析结果
  */
 export function parseDiscoveryAnnounce(payload) {
 	if (!isPlainObject(payload)) return null
 	try {
 		return {
-			nodeId: assertDiscoveryNodeId(payload.nodeId),
+			nodeHash: assertDiscoveryNodeHash(payload.nodeHash),
 			advertisements: Array.isArray(payload.advertisements) ? payload.advertisements : [],
 		}
 	}
@@ -26,13 +26,13 @@ export function parseDiscoveryAnnounce(payload) {
 
 /**
  * @param {unknown} payload 载荷
- * @returns {{ nodeId: string, requestId: string, limit: number } | null} 解析结果
+ * @returns {{ nodeHash: string, requestId: string, limit: number } | null} 解析结果
  */
 export function parseDiscoveryQuery(payload) {
 	if (!isPlainObject(payload)) return null
 	try {
 		return {
-			nodeId: assertDiscoveryNodeId(payload.nodeId),
+			nodeHash: assertDiscoveryNodeHash(payload.nodeHash),
 			requestId: assertDiscoveryRequestId(payload.requestId),
 			limit: Math.min(64, Math.max(1, Number(payload.limit) || 32)),
 		}
@@ -44,14 +44,14 @@ export function parseDiscoveryQuery(payload) {
 
 /**
  * @param {unknown} payload 载荷
- * @returns {{ requestId: string, nodeId: string, advertisements: object[] } | null} 解析结果
+ * @returns {{ requestId: string, nodeHash: string, advertisements: object[] } | null} 解析结果
  */
 export function parseDiscoveryQueryResponse(payload) {
 	if (!isPlainObject(payload)) return null
 	try {
 		return {
 			requestId: assertDiscoveryRequestId(payload.requestId),
-			nodeId: assertDiscoveryNodeId(payload.nodeId),
+			nodeHash: assertDiscoveryNodeHash(payload.nodeHash),
 			advertisements: Array.isArray(payload.advertisements) ? payload.advertisements : [],
 		}
 	}

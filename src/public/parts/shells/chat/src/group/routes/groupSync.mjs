@@ -9,6 +9,8 @@ import { localesFromRequest } from '../../../../../../../scripts/p2p/entity/loca
 import { getProfile } from '../../../../../../../scripts/p2p/entity/profile.mjs'
 import { PERMISSIONS } from '../../../../../../../scripts/p2p/permissions.mjs'
 import { getUserByReq } from '../../../../../../../server/auth.mjs'
+import { loadPeerPoolView } from '../../../../../../scripts/p2p/network.mjs'
+import { loadReputation, buildAndApplyUnverifiedSlashAlert } from '../../../../../../scripts/p2p/reputation_user.mjs'
 import { appendSignedLocalEvent } from '../../chat/dag/append.mjs'
 import { resolveLocalEventSigner } from '../../chat/dag/localSigner.mjs'
 import { getState } from '../../chat/dag/materialize.mjs'
@@ -18,8 +20,6 @@ import { catchUpGroupFromPeers, listFederationPeersForGroup, requestJoinSnapshot
 import { mintMqttRoomSecret } from '../../chat/federation/mqttCredentials.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../../chat/federation/room.mjs'
 import { listActiveFilesFromState } from '../../chat/files/groupFiles.mjs'
-import { loadPeers } from '../../chat/governance/peers.mjs'
-import { loadReputation } from '../../chat/governance/reputation.mjs'
 import { getGshBufferStats } from '../../chat/gsh/buffer.mjs'
 import { memberEntityHash } from '../../chat/lib/entityId.mjs'
 import { getGroupMemberEntityHash } from '../../chat/lib/replica.mjs'
@@ -59,13 +59,11 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			if (!canGovSlash(slashState, member))
 				return res.status(403).json({ error: 'ADMIN or MANAGE_ROLES required' })
 			const { sender } = await resolveLocalEventSigner(username, groupId)
-			const { buildAndApplyUnverifiedSlashAlert } = await import('../../chat/governance/reputation.mjs')
 			const { publishVolatileToFederation } = await import('../../chat/federation/index.mjs')
 			const { broadcastEvent } = await import('../../chat/stream/groupWsHub.mjs')
 			const { groupWsRoomKeyForReplica } = await import('../../chat/stream/groupWsRooms.mjs')
-			const alert = await buildAndApplyUnverifiedSlashAlert(
+			const alert = buildAndApplyUnverifiedSlashAlert(
 				sender,
-				groupId,
 				content,
 				slashState.groupSettings || {},
 			)
@@ -100,7 +98,7 @@ export function registerGroupSyncRoutes(router, authenticate) {
 		const { username, groupId } = req.groupContext
 		const { state } = await getState(username, groupId)
 
-		const reputation = await loadReputation(username, groupId)
+		const reputation = loadReputation(username)
 		res.status(200).json({ reputation })
 	})
 
@@ -109,9 +107,9 @@ export function registerGroupSyncRoutes(router, authenticate) {
 		const { state } = await getState(username, groupId)
 
 		const roster = await listFederationPeersForGroup(username, groupId)
-		const stored = await loadPeers(username, groupId)
+		const stored = loadPeerPoolView(username, groupId)
 		res.status(200).json({
-			selfNodeId: roster.selfNodeId,
+			selfNodeHash: roster.selfNodeHash,
 			federationEnabled: roster.federationEnabled,
 			peers: roster.peers,
 			trustedPeers: stored.trustedPeers,

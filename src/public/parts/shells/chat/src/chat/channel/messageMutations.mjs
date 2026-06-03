@@ -12,11 +12,12 @@
  * 【数据结构】content { targetId, newContent? }；JSONL 行含 eventId、channelId。
  * 【关联】dag/append、materialize、lib/messageMerge、paths messagesPath、channel/postMessage。
  */
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { HEX_ID_64 as EVENT_ID_HEX } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { appendSignedLocalEvent } from '../dag/append.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 import { getState } from '../dag/materialize.mjs'
-import { readJsonl } from '../dag/storage.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { messagesPath } from '../lib/paths.mjs'
 
 /**
@@ -54,7 +55,7 @@ export async function findChannelMessageRow(username, groupId, channelId, eventI
 			content: { charOwner: indexed.charOwner || null },
 		}
 
-	const lines = await readJsonl(messagesPath(username, groupId, channelId))
+	const lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
 	return lines.find(row =>
 		row.type === 'message' && String(row.eventId).toLowerCase() === eventIdNorm,
 	) || null

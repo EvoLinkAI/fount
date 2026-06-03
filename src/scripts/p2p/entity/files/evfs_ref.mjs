@@ -35,6 +35,3 @@ export function parseEvfsRef(ref) {
 		return null
 	}
 }
-
-/** @deprecated 使用 EVFS_SCHEME */
-export const EVFS_REF_PREFIX = EVFS_SCHEME

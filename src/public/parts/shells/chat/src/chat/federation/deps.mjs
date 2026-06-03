@@ -5,9 +5,11 @@
  * 【数据结构】FederationDagDeps：nodeId、readJsonl、appendValidatedRemoteEvent、ingestRemoteEvent、可选 getStateForFederation；物化 state 含 members、groupSettings、channels。
  * 【关联】dag/index.mjs、materialize.mjs、remoteIngest.mjs；被 room、gossip、index、volatile 等广泛引用。
  */
+import { getNodeHash } from '../../../../../../scripts/p2p/node_context.mjs'
+
 /**
  * @typedef {{
- *   nodeId: string
+ *   getNodeHash: (username: string) => string
  *   readJsonl: (path: string) => Promise<object[]>
  *   appendValidatedRemoteEvent: (username: string, groupId: string, signPayload: object, opts?: { logFailures?: boolean }) => Promise<'ok' | 'dup' | 'invalid' | 'quarantined'>
  *   ingestRemoteEvent: (username: string, groupId: string, payload: unknown) => Promise<void>
@@ -31,6 +33,14 @@ export function initFederationDagDeps(deps) {
 export function requireDagDeps() {
 	if (!dagDeps) throw new Error('federation: initFederationDagDeps must run before federation features')
 	return dagDeps
+}
+
+/**
+ * @param {string} username replica 登录名
+ * @returns {string} 64 hex nodeHash
+ */
+export function federationNodeHash(username) {
+	return getNodeHash(username)
 }
 
 /**

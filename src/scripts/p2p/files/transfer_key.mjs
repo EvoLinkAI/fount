@@ -80,8 +80,8 @@ export async function assembleManifestPlaintext(manifest, partBytes, deps = {}) 
 		plains.push(plain)
 	}
 	const merged = Buffer.concat(plains)
-	if (manifest.contentHash) {
+	if (manifest.contentHash) 
 		if (createHash('sha256').update(merged).digest('hex') !== manifest.contentHash.toLowerCase()) return null
-	}
+	
 	return merged
 }

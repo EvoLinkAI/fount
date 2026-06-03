@@ -18,13 +18,14 @@ import { FEDERATION_CHUNK_MAX_BYTES } from '../../../../../../../scripts/p2p/con
 import { handleIncomingChunkGet, resolvePendingChunkFetch } from '../../../../../../../scripts/p2p/files/chunk_fetch.mjs'
 import { getChunk, hasChunk } from '../../../../../../../scripts/p2p/files/chunk_store.mjs'
 import { HEX_ID_64, LOCAL_CHUNK_FILE_RE } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { bumpChunkStorageReputation } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import { isFederationActionAllowedUnderLoad } from '../../../../../../../scripts/p2p/rtc_connection_budget.mjs'
 import { createLocalStoragePlugin } from '../../../../../../../scripts/p2p/storage_plugins.mjs'
+import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
+import { consumeWireRateBucket } from '../../../../../../../scripts/p2p/wire_rate_bucket.mjs'
 import { bumpChunkLocalRef } from '../files/chunkRefcount.mjs'
 import { beginChunkReplicationWait, recordChunkReplicationAck } from '../files/chunkReplicationAck.mjs'
-import { bumpChunkStorageReputation } from '../governance/reputation.mjs'
 import { shellChatRoot } from '../lib/paths.mjs'
-import { isPlainObject } from '../lib/wireIngress.mjs'
 
 const FETCH_TIMEOUT_MS = 14_000
 const DEFAULT_FETCH_CONCURRENCY = 6
@@ -32,28 +33,17 @@ const CHUNK_HASH_RE = HEX_ID_64
 const CHUNK_REPLICATE_MAX_PER_MIN = 60
 const CHUNK_REPLICATE_BYTES_PER_MIN = 8 * 1024 * 1024
 
-/** @type {Map<string, { count: number, bytes: number, windowStart: number }>} */
-const chunkRateBuckets = new Map()
-
 /**
  * @param {string} bucketKey 房间键
  * @param {number} byteCount 字节数
- * @param {{ outbound?: boolean }} [opts] 出站复制为 true
  * @returns {boolean} 是否允许
  */
 function consumeChunkRate(bucketKey, byteCount) {
-	const now = Date.now()
-	let bucket = chunkRateBuckets.get(bucketKey)
-	if (!bucket || now - bucket.windowStart >= 60_000)
-		bucket = { count: 0, bytes: 0, windowStart: now }
-	if (bucket.count >= CHUNK_REPLICATE_MAX_PER_MIN || bucket.bytes + byteCount > CHUNK_REPLICATE_BYTES_PER_MIN) {
-		chunkRateBuckets.set(bucketKey, bucket)
-		return false
-	}
-	bucket.count++
-	bucket.bytes += byteCount
-	chunkRateBuckets.set(bucketKey, bucket)
-	return true
+	return consumeWireRateBucket(bucketKey, {
+		maxCount: CHUNK_REPLICATE_MAX_PER_MIN,
+		byteCount,
+		maxBytesPerWindow: CHUNK_REPLICATE_BYTES_PER_MIN,
+	})
 }
 
 /**
@@ -455,7 +445,7 @@ export function attachFedChunkHandlers(fedRoom) {
 		})().catch(error => console.warn('federation: fed_chunk_get handler failed', error))
 	})
 
-	getChunkData((data, peerId) => {
+	getChunkData((data) => {
 		if (!isPlainObject(data)) return
 		const hash = String(data.chunkHash || '').trim().toLowerCase()
 		if (!CHUNK_HASH_RE.test(hash)) return
@@ -472,7 +462,6 @@ export function attachFedChunkHandlers(fedRoom) {
 		catch (error) {
 			pending.reject(error instanceof Error ? error : new Error(String(error)))
 		}
-		void peerId
 	})
 
 	/**

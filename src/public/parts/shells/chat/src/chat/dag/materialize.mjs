@@ -11,6 +11,7 @@ import { buildCheckpointPayload, signCheckpoint } from '../../../../../../../scr
 import { EPOCH_CHAIN_MAX } from '../../../../../../../scripts/p2p/constants.mjs'
 import { pubKeyHash, publicKeyFromSeed } from '../../../../../../../scripts/p2p/crypto.mjs'
 import { computeLocalTipsHash } from '../../../../../../../scripts/p2p/dag/index.mjs'
+import { readJsonl, writeJsonAtomicSynced } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import {
 	buildOrderCachePayload,
 	deleteOrderCache,
@@ -33,20 +34,21 @@ import {
 	serializeReactionsOverlay,
 	serializeVotesOverlay,
 } from '../../../../../../../scripts/p2p/materialized_state.mjs'
+import { loadReputation } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import {
 	invalidateTopologicalOrderMemo,
 	resolveTopologicalOrderMemoCached,
 } from '../../../../../../../scripts/p2p/topo_order_memo.mjs'
 import { findStaleUnreachableChannels } from '../channel/gc.mjs'
 import { enforceEventRetention } from '../events/retention.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { flushPendingRelay } from '../federation/pendingRelay.mjs'
 import { loadGovernanceBranchTip } from '../governance/branchStore.mjs'
-import { loadReputation } from '../governance/reputation.mjs'
 import { mergeChannelMessagesForDisplay } from '../lib/messageMerge.mjs'
 import { eventsOrderCachePath, groupDir, eventsPath, messagesPath, snapshotPath } from '../lib/paths.mjs'
 import { safeReadJson } from '../lib/utils.mjs'
 
-import { readJsonl, writeJsonAtomicSynced } from './storage.mjs'
+
 import { verifyEventsSnapshotWAL } from './wal.mjs'
 
 /**
@@ -67,7 +69,7 @@ export async function getStateForFederation(username, groupId) {
  * @returns {Promise<{ events: object[], state: object, order: string[], checkpoint: object | null }>} 事件、物化状态与检查点
  */
 export async function getState(username, groupId, opts = {}) {
-	const events = await readJsonl(eventsPath(username, groupId))
+	const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 	const checkpoint = await safeReadJson(snapshotPath(username, groupId))
 
 	let wal = { ok: true }
@@ -106,12 +108,12 @@ export async function getState(username, groupId, opts = {}) {
 
 	const dagTips = computeDagTipIdsFromEvents(events)
 	const [reputationFile, preferredBranchTip] = await Promise.all([
-		loadReputation(username, groupId),
+		loadReputation(username),
 		loadGovernanceBranchTip(username, groupId),
 	])
 	/** @type {Record<string, number>} */
 	const reputationBySender = {}
-	for (const [senderKey, entry] of Object.entries(reputationFile.byNodeId || {}))
+	for (const [senderKey, entry] of Object.entries(reputationFile.byNodeHash || {}))
 		reputationBySender[senderKey] = Number(entry?.score ?? 0)
 
 	const consensusBranchTip = selectConsensusBranchTip(dagTips, byId)
@@ -245,7 +247,7 @@ export async function buildAndSaveCheckpoint(username, groupId, opts = {}) {
 
 	state.channelMergedMessages = {}
 	for (const channelId of Object.keys(state.channels || {})) {
-		const lines = await readJsonl(messagesPath(username, groupId, channelId))
+		const lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
 		state.channelMergedMessages[channelId] = mergeChannelMessagesForDisplay(lines)
 	}
 

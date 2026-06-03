@@ -4,7 +4,9 @@ HTTP 前缀：`/api/parts/shells:social/`。账号与 Chat 联邦 P2P 实体相�
 
 WebSocket：`/ws/parts/shells:social/feed`（推送 feed 更新，客户端收到后刷新首页）。
 
-联邦传输：经 Chat Trystero 房间 action `social_timeline_put`、`social_rpc` / `social_rpc_response`（Chat shell Load 时注册 federation hooks + `TrustGraphProvider`）。Chat 未 Load 时 explore 仅本地结果。
+联邦传输：经用户级 Trystero 房间 `fount-node-{nodeHash}` action `part_timeline_put`、`part_invoke` / `part_invoke_response`（`scripts/p2p/user_room.mjs` + `trust_graph.mjs`）。Social RPC 体在 `part_invoke.invoke` 内带 `type` 字段。**不**依赖 Chat shell Load 即可 fanout；群 Chat 仍用 `fount-fed-{groupId}` DAG。
+
+用户级拉黑/网络：`GET|POST /api/p2p/blocklist`、`GET|PUT /api/p2p/network`（`settings/blocklist.json`、`settings/network.json`）。Social `/blocklist` 路由转发至 p2p API。
 
 ---
 
@@ -41,7 +43,7 @@ Query：`limit`。账户发现（本地 + 邻居 RPC 合并）。
 Query：`limit`、`mediaOnly=true`。帖子发现。
 
 ### `GET /api/parts/shells:social/notifications`
-Query：`limit`（默认 30）。类型：`reply` | `mention` | `like` | `follow`。每条含 `authorName`。
+Query：`limit`（默认 30）。类型：`reply` | `mention` | `like` | `repost` | `follow`。每条含 `authorName`。
 
 ### `GET /api/parts/shells:social/mentions/suggest`
 Query：`q`、`limit`。返回 `{ suggestions: [{ entityHash, displayName, kind }] }`（self / following / agent）。
@@ -107,7 +109,7 @@ Body：`followerPubKeyHex` — 为关注者签发 GSH vault H（仅关注者可�
 | POST | `/translate` | body: `{ text, targetLang }` |
 | POST | `/files` | 注册 vault 文件并写入 `file_share` 事件 |
 | GET | `/files/:shareId?owner=` | 文件元数据 |
-| GET | `/blocklist` | Social 拉黑表 |
+| GET | `/blocklist` | 转发 `/api/p2p/blocklist`（用户级拉黑表） |
 
 ---
 

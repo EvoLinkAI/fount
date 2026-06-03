@@ -16,7 +16,7 @@ import {
 import { registerGroupRuntime } from '../chat/session/runtime.mjs'
 import { groupMetadatas } from '../chat/session/wsLifecycle.mjs'
 
-import { optionalChannelId, resolveGroupChannel } from './_shared.mjs'
+import { optionalChannelId, resolveGroupChannel } from './shared.mjs'
 
 /**
  * @param {import('npm:express').Router} router Express 路由

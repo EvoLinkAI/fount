@@ -1,6 +1,6 @@
 import { normalizeHex64 } from '../../../../../../scripts/p2p/hexIds.mjs'
+import { parseInboundJson } from '../../../../../../scripts/p2p/wire_ingress.mjs'
 import { authenticate } from '../../../../../../server/auth.mjs'
-import { parseInboundJson } from '../chat/lib/wireIngress.mjs'
 import {
 	handleClientWsControlFrame,
 	registerGroupUiSocket,

@@ -1,9 +1,10 @@
 /**
  * 联邦补拉 HPKE 响应构建与应用。
  */
+import { writeJsonAtomicSynced } from '../../../../../../../scripts/p2p/dag/storage.mjs'
+import { extractInboundSignedEvent, isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 import { getState } from '../dag/materialize.mjs'
 import { mergeChannelHistories } from '../dag/queries.mjs'
-import { writeJsonAtomicSynced } from '../dag/storage.mjs'
 import {
 	encryptMessageLineForWire,
 	encryptSignedEventForWire,
@@ -11,22 +12,16 @@ import {
 import { applyGshGenerationGrant, buildGshGenerationGrant } from '../gsh/historicalGrant.mjs'
 import { verifyRemoteCheckpoint } from '../lib/checkpointVerifier.mjs'
 import { snapshotPath } from '../lib/paths.mjs'
-import { extractInboundSignedEvent, isPlainObject } from '../lib/wireIngress.mjs'
 
 import { requireDagDeps } from './deps.mjs'
 import { wrapPullResponseInner, unwrapPullResponseEnvelope } from './pullResponse.mjs'
-
-/**
- * 联邦补拉 HPKE 响应信封包装与解包（自 pullResponse 再导出）。
- */
-export { wrapPullResponseInner, unwrapPullResponseEnvelope } from './pullResponse.mjs'
 
 /**
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
  * @param {object} opts 响应参数
  * @param {string} opts.requestId 请求 ID
- * @param {string} opts.requesterNodeId 请求方 nodeId
+ * @param {string} opts.requesterNodeHash 请求方 nodeId
  * @param {string} opts.requesterPubKeyHash 请求方 pubKeyHash
  * @param {string} opts.recipientEdPubKeyHex 接收方 Ed25519 公钥 hex
  * @param {object[]} [opts.events] DAG 事件
@@ -39,7 +34,7 @@ export { wrapPullResponseInner, unwrapPullResponseEnvelope } from './pullRespons
 export async function buildPullResponseEnvelope(username, groupId, opts) {
 	const {
 		requestId,
-		requesterNodeId,
+		requesterNodeHash,
 		requesterPubKeyHash,
 		recipientEdPubKeyHex,
 		events = [],
@@ -72,7 +67,7 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 	return {
 		requestId,
 		requesterPubKeyHash,
-		requesterNodeId,
+		requesterNodeHash,
 		...wrapped,
 	}
 }

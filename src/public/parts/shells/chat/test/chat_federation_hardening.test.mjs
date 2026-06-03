@@ -27,11 +27,11 @@ import {
 import { PERMISSIONS } from '../../../../../scripts/p2p/permissions.mjs'
 import { retentionStartIndex } from '../../../../../scripts/p2p/retention_policy.mjs'
 import { findStaleUnreachableChannels } from '../src/chat/channel/gc.mjs'
-import { parsePullResponseEnvelope } from '../src/chat/federation/fedPullWire.mjs'
 import {
 	parseJoinSnapshotRequest,
 	parseJoinSnapshotResponse,
-} from '../src/chat/federation/joinSnapshotWire.mjs'
+	parsePullResponseEnvelope,
+} from '../src/chat/federation/fedPullWire.mjs'
 import {
 	partitionForOutboundEvent,
 	resolveNodePartitionIds,
@@ -105,7 +105,7 @@ Deno.test('joinSnapshot wire parse', () => {
 	}
 	const req = parseJoinSnapshotRequest({
 		requestId: 'r1',
-		requesterNodeId: 'node-a',
+		requesterNodeHash: 'node-a',
 		groupId: 'g1',
 		attestation: attBody,
 	})
@@ -114,7 +114,7 @@ Deno.test('joinSnapshot wire parse', () => {
 	assertEquals(parseJoinSnapshotResponse({
 		requestId: 'r1',
 		requesterPubKeyHash: sender,
-		requesterNodeId: 'node-a',
+		requesterNodeHash: 'node-a',
 		ephemPub: 'x',
 		iv: 'y',
 		ciphertext: 'z',
@@ -122,19 +122,19 @@ Deno.test('joinSnapshot wire parse', () => {
 	}), null)
 	assertEquals(parseJoinSnapshotResponse({
 		requestId: 'r1',
-		requesterNodeId: 'node-a',
+		requesterNodeHash: 'node-a',
 		requesterPubKeyHash: sender,
 		ephemPub: 'aa',
 		iv: 'bb',
 		ciphertext: 'cc',
 		authTag: 'dd',
 		scheme: 'fed_pull_v1',
-	})?.requesterNodeId, 'node-a')
+	})?.requesterNodeHash, 'node-a')
 })
 
 Deno.test('gossip request requires attestation', () => {
 	const eventId = 'a'.repeat(64)
-	assertEquals(parseGossipRequest({ wantIds: [eventId], ttl: 2, requesterId: 'n1' }), null)
+	assertEquals(parseGossipRequest({ wantIds: [eventId], ttl: 2, requesterNodeHash: 'n1' }), null)
 	const sender = 'b'.repeat(64)
 	const att = {
 		requesterPubKeyHash: sender,
@@ -147,7 +147,7 @@ Deno.test('gossip request requires attestation', () => {
 	assertEquals(parseGossipRequest({
 		wantIds: [eventId],
 		ttl: 2,
-		requesterId: 'n1',
+		requesterNodeHash: 'n1',
 		attestation: att,
 	})?.wantIds.length, 1)
 })
@@ -214,7 +214,7 @@ Deno.test('pull response rejects legacy plaintext gossip shape', () => {
 	assertEquals(parsePullResponseEnvelope({ events: [{ id: eventId }], checkpoint: {} }), null)
 	assertEquals(parsePullResponseEnvelope({
 		channelHistories: { default: [{ type: 'message' }] },
-		requesterNodeId: 'n1',
+		requesterNodeHash: 'n1',
 	}), null)
 })
 
@@ -225,7 +225,7 @@ Deno.test('HPKE pull envelope roundtrip', async () => {
 	const envelope = {
 		requestId: 'r1',
 		requesterPubKeyHash: 'a'.repeat(64),
-		requesterNodeId: 'node-1',
+		requesterNodeHash: 'node-1',
 		...wrapped,
 	}
 	assertEquals(parsePullResponseEnvelope(envelope)?.requestId, 'r1')

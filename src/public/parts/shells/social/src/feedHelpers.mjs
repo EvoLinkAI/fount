@@ -1,20 +1,53 @@
-import { resolveOperatorEntityHash } from '../../../../../scripts/p2p/entity/replica.mjs'
+import { readdir } from 'node:fs/promises'
 
-import { loadSocialBlocklist } from './blocklist.mjs'
-import { loadFollowing } from './following.mjs'
+import { resolveOperatorEntityHash } from '../../../../../scripts/p2p/entity/replica.mjs'
+import { isEntityHash128 } from '../../../../../scripts/p2p/entity_id.mjs'
+import { getUserDictionary } from '../../../../../server/auth.mjs'
+
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
+
+/**
+ * 列出磁盘上全部时间线 owner（探索/热搜用）。
+ * @param {string} username 用户
+ * @returns {Promise<string[]>} 本地 timelines 目录下的 entityHash
+ */
+export async function listLocalTimelineOwners(username) {
+	const root = `${getUserDictionary(username)}/shells/social/timelines`
+	try {
+		const entries = await readdir(root, { withFileTypes: true })
+		return entries.filter(entry => entry.isDirectory())
+			.map(entry => entry.name.toLowerCase())
+			.filter(isEntityHash128)
+			.sort()
+	}
+	catch {
+		return []
+	}
+}
 
 /**
  * 列出观看者已知的时间线 owner（关注 + 自身）。
  * @param {string} username 用户
- * @returns {Promise<string[]>} 已知时间线 owner（关注 + 自身）
+ * @returns {Promise<string[]>} 已知时间线 owner
  */
 export async function listKnownTimelineOwners(username) {
-	const { following } = await loadFollowing(username)
-	const self = resolveOperatorEntityHash(username)
-	const set = new Set(following)
-	if (self) set.add(self.toLowerCase())
+	const operator = resolveOperatorEntityHash(username)
+	if (!operator) return []
+	const view = await getTimelineMaterialized(username, operator)
+	const set = new Set(view.following.map(id => String(id).toLowerCase()))
+	set.add(operator.toLowerCase())
 	return [...set]
+}
+
+/**
+ * @param {string} username 用户
+ * @param {'known' | 'local'} [scope='known'] known=关注+自己；local=磁盘全部
+ * @returns {Promise<string[]>} 时间线 owner 列表
+ */
+export async function listTimelineOwners(username, scope = 'known') {
+	return scope === 'local'
+		? listLocalTimelineOwners(username)
+		: listKnownTimelineOwners(username)
 }
 
 /**
@@ -81,26 +114,31 @@ export async function buildViewerLikedSet(username) {
 	const self = resolveOperatorEntityHash(username)
 	if (!self) return new Set()
 	const view = await getTimelineMaterialized(username, self)
-	/** @type {Set<string>} */
-	const liked = new Set()
-	for (const like of view.likes) {
-		const key = `${String(like.content?.targetEntityHash || '').toLowerCase()}:${like.content?.targetPostId}`
-		if (key.includes(':')) liked.add(key)
-	}
-	return liked
+	return new Set(view.likes.map(like =>
+		`${String(like.content?.targetEntityHash || '').toLowerCase()}:${like.content?.targetPostId}`,
+	))
 }
 
 /**
- * 加载观看者上下文（拉黑、关注、自身 entityHash）。
  * @param {string} username 用户
- * @returns {Promise<{ blocked: Set<string>, following: Set<string>, viewerEntityHash: string | null }>} 观看者上下文
+ * @returns {Promise<{ viewerEntityHash: string | null, blocked: Set<string>, following: Set<string> }>} 观看者上下文
  */
 export async function loadViewerContext(username) {
-	const { following } = await loadFollowing(username)
-	const { blocked: blockedList } = await loadSocialBlocklist(username)
+	const { loadBlocklist } = await import('../../../../../scripts/p2p/blocklist.mjs')
+	const viewerEntityHash = resolveOperatorEntityHash(username)
+	const blocked = new Set(
+		loadBlocklist(username).blocked
+			.filter(entry => entry.scope === 'entity')
+			.map(entry => entry.value),
+	)
+	const following = new Set(
+		viewerEntityHash
+			? (await getTimelineMaterialized(username, viewerEntityHash)).following.map(id => String(id).toLowerCase())
+			: [],
+	)
 	return {
-		blocked: new Set(blockedList),
-		following: new Set(following),
-		viewerEntityHash: resolveOperatorEntityHash(username),
+		viewerEntityHash,
+		blocked,
+		following,
 	}
 }

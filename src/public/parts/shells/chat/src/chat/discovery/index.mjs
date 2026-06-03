@@ -73,10 +73,10 @@ function signMessage(advertisement) {
  * 为本机公开群构建签名广告。
  * @param {string} username 用户
  * @param {string} groupId 群 ID
- * @param {string} nodeId 本机 nodeId
+ * @param {string} nodeHash 本机 nodeHash
  * @returns {Promise<object | null>} 签名广告
  */
-export async function buildSignedDiscoveryAdvertisement(username, groupId, nodeId) {
+export async function buildSignedDiscoveryAdvertisement(username, groupId, nodeHash) {
 	const { state } = await getState(username, groupId)
 	if (!state.groupSettings?.discoveryPublic) return null
 	const signer = await resolveLocalEventSigner(username, groupId)
@@ -87,7 +87,7 @@ export async function buildSignedDiscoveryAdvertisement(username, groupId, nodeI
 		title,
 		blurb,
 		advertiserPubKeyHash: signer.sender,
-		advertiserNodeHash: nodeId,
+		advertiserNodeHash: nodeHash,
 		observedAt: Date.now(),
 	}
 	const signature = Buffer.from(await sign(Buffer.from(signMessage(body), 'hex'), signer.secretKey)).toString('hex')
@@ -166,14 +166,14 @@ export async function queryDiscoveryIndex(username, opts = {}) {
 /**
  * 查询响应：本机公开群广告 + 本地索引条目。
  * @param {string} username 用户
- * @param {string} nodeId 本机 nodeId
+ * @param {string} nodeHash 本机 nodeHash
  * @param {number} limit 条数上限
  * @returns {Promise<object[]>} 签名广告列表
  */
-export async function buildDiscoveryQueryResponse(username, nodeId, limit = 32) {
+export async function buildDiscoveryQueryResponse(username, nodeHash, limit = 32) {
 	const advertisements = []
 	for (const groupId of await listUserGroups(username)) {
-		const advertisement = await buildSignedDiscoveryAdvertisement(username, groupId, nodeId)
+		const advertisement = await buildSignedDiscoveryAdvertisement(username, groupId, nodeHash)
 		if (advertisement) advertisements.push(advertisement)
 	}
 	for (const entry of await queryDiscoveryIndex(username, { limit })) {

@@ -22,13 +22,13 @@ export function clampReputationScore(x) {
 }
 
 /**
- * @param {{ byNodeId?: Record<string, { score?: number }> }} data 信誉表
+ * @param {{ byNodeHash?: Record<string, { score?: number }> }} data 信誉表
  * @returns {number} `max(已链邻居最大信誉, ε)`（§0.1 `rep_max_eff`）
  */
 export function computeRepMaxEff(data) {
 	let maxScore = /** @type {number | null} */ null
-	for (const nodeId of Object.keys(data.byNodeId || {})) {
-		const score = Number(data.byNodeId[nodeId]?.score)
+	for (const nodeId of Object.keys(data.byNodeHash || {})) {
+		const score = Number(data.byNodeHash[nodeId]?.score)
 		if (Number.isFinite(score)) maxScore = maxScore === null ? score : Math.max(maxScore, score)
 	}
 	return Math.max(maxScore === null ? 0 : clampReputationScore(maxScore), REP_MAX_EFF_EPS)

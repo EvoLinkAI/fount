@@ -7,11 +7,12 @@
  * 【关联】group 路由或 endpoints 调用 listAuditLogEntries；依赖 dag/materialize、dag/storage、p2p/governance_branch。
  */
 import { topologicalCanonicalOrder } from '../../../../../../scripts/p2p/dag/index.mjs'
+import { readJsonl } from '../../../../../../scripts/p2p/dag/storage.mjs'
 import { GOVERNANCE_AUTHZ_TYPES } from '../../../../../../scripts/p2p/event_types.mjs'
 import { authzFoldOrderIds } from '../../../../../../scripts/p2p/governance_branch.mjs'
 
 import { getState } from './dag/materialize.mjs'
-import { readJsonl } from './dag/storage.mjs'
+import { sanitizeFederatedEvent } from './events/wire.mjs'
 import { eventsPath } from './lib/paths.mjs'
 
 /** 管理员审计日志包含的 DAG 类型（治理 + 常见 moderation）。 */
@@ -89,7 +90,7 @@ function toAuditEntry(event, state) {
  */
 async function buildAuditRows(username, groupId, types) {
 	const { state } = await getState(username, groupId)
-	const events = await readJsonl(eventsPath(username, groupId))
+	const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 	const order = topologicalCanonicalOrder(events.map(event => ({
 		id: event.id,
 		prev_event_ids: event.prev_event_ids,

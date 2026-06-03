@@ -1,9 +1,10 @@
-import { readFile } from 'node:fs/promises'
-
+import { isEntityHashBlocked } from '../../../../../scripts/p2p/blocklist.mjs'
 import { isEntityHash128 } from '../../../../../scripts/p2p/entity_id.mjs'
-import { getUserDictionary } from '../../../../../server/auth.mjs'
 
-import { isBlocked } from './blocklist.mjs'
+import {
+	buildPostFeedItem,
+	createEngagementForPost,
+} from './feed/buildItem.mjs'
 import {
 	buildEngagementIndex,
 	buildViewerLikedSet,
@@ -11,26 +12,10 @@ import {
 	listKnownTimelineOwners,
 	loadViewerContext,
 } from './feedHelpers.mjs'
-import { maybeDecryptPostContent } from './gsh/vault.mjs'
+import { compareFeedItems } from './feedMerge.mjs'
 import { createAuthorProfileLoader } from './lib/authorProfileSummary.mjs'
 import { postMatchesQuery } from './lib/postQuery.mjs'
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
-
-/**
- * 判断本地是否持有可读时间线 events.jsonl。
- * @param {string} username 用户
- * @param {string} entityHash 时间线 owner
- * @returns {Promise<boolean>} 本地是否持有可读时间线
- */
-async function timelineExists(username, entityHash) {
-	try {
-		await readFile(`${getUserDictionary(username)}/shells/social/timelines/${entityHash}/events.jsonl`, 'utf8')
-		return true
-	}
-	catch {
-		return false
-	}
-}
 
 /**
  * 在已知时间线中搜索可见帖子（关注 + 自身）。
@@ -50,58 +35,27 @@ export async function searchPosts(username, options = {}) {
 	const engagement = await buildEngagementIndex(username)
 	const viewerLiked = await buildViewerLikedSet(username)
 	const authorProfile = createAuthorProfileLoader(username)
-
-	/**
-	 * 查询指定帖子的互动计数与观看者点赞状态。
-	 * @param {string} targetEntityHash 原帖作者
-	 * @param {string} targetPostId 原帖 id
-	 * @returns {object} 互动计数
-	 */
-	function engagementForPost(targetEntityHash, targetPostId) {
-		const key = `${targetEntityHash.toLowerCase()}:${targetPostId}`
-		return {
-			likeCount: engagement.likes.get(key) || 0,
-			repostCount: engagement.reposts.get(key) || 0,
-			replyCount: engagement.replies.get(key) || 0,
-			viewerLiked: viewerLiked.has(key),
-			targetEntityHash: targetEntityHash.toLowerCase(),
-			targetPostId,
-		}
-	}
+	const engagementForPost = createEngagementForPost(engagement, viewerLiked)
+	const itemCtx = { authorProfile, engagementForPost }
 
 	/** @type {object[]} */
 	const items = []
 	for (const entityHash of await listKnownTimelineOwners(username)) {
 		if (!isEntityHash128(entityHash)) continue
-		if (await isBlocked(username, entityHash)) continue
-		if (!await timelineExists(username, entityHash)) continue
+		if (isEntityHashBlocked(username, entityHash)) continue
 		const view = await getTimelineMaterialized(username, entityHash)
+		if (!view.posts?.length) continue
 		for (const post of view.posts) {
 			if (!postMatchesQuery(post, query)) continue
 			const enriched = { ...post, entityHash, senderEntityHash: entityHash }
 			if (!canViewPost(enriched, viewerContext.viewerEntityHash, viewerContext.blocked, viewerContext.following))
 				continue
-			const decrypted = await maybeDecryptPostContent(username, entityHash, post.content)
-			const postOut = { ...post, content: decrypted ?? post.content }
-			if (!postMatchesQuery({ ...postOut, entityHash }, query)) continue
-			items.push({
-				kind: 'post',
-				entityHash,
-				postId: post.id,
-				post: postOut,
-				hlc: post.hlc,
-				authorProfile: await authorProfile(entityHash),
-				...engagementForPost(entityHash, post.id),
-			})
+			const item = await buildPostFeedItem(username, entityHash, post, itemCtx)
+			if (!postMatchesQuery({ ...item.post, entityHash }, query)) continue
+			items.push(item)
 		}
 	}
 
-	items.sort((left, right) => {
-		const lw = Number(left.hlc?.wall) || 0
-		const rw = Number(right.hlc?.wall) || 0
-		if (lw !== rw) return rw - lw
-		return String(right.postId).localeCompare(String(left.postId))
-	})
-
+	items.sort((left, right) => compareFeedItems(left, right) * -1)
 	return { query, items: items.slice(0, limit) }
 }

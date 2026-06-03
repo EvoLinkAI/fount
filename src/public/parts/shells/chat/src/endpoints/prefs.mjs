@@ -1,9 +1,9 @@
+import { addBlocklistEntry, loadBlocklist } from '../../../../../../scripts/p2p/blocklist.mjs'
 import { authenticate, getUserByReq } from '../../../../../../server/auth.mjs'
 import { assignShellData, loadShellData } from '../../../../../../server/setting_loader.mjs'
 import { loadTrustedAuthorHashes, saveTrustedAuthorHashes } from '../../../../../../server/trustedAuthors.mjs'
-import { addBlocklistEntry, loadBlocklist } from '../chat/governance/blocklist.mjs'
 
-import { optionalChannelId } from './_shared.mjs'
+import { optionalChannelId } from './shared.mjs'
 
 /**
  * @param {import('npm:express').Router} router Express 路由

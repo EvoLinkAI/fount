@@ -1,12 +1,11 @@
 import { randomUUID } from 'node:crypto'
 
+import { setEntityBlocked } from '../../../../../../scripts/p2p/blocklist.mjs'
 import { resolveOperatorEntityHash } from '../../../../../../scripts/p2p/entity/replica.mjs'
 import { isEntityHash128 } from '../../../../../../scripts/p2p/entity_id.mjs'
 import { ensureFederationDefaults } from '../../../../../../scripts/p2p/federation/identity.mjs'
 import { authenticate, getUserByReq } from '../../../../../../server/auth.mjs'
-import { setBlock } from '../blocklist.mjs'
 import { dispatchFollowEvent, dispatchPostFollowerUpdates, dispatchPostMentions } from '../dispatch.mjs'
-import { syncTimelineForEntity } from '../federation/relay.mjs'
 import { buildProfileFeedItems, getEntityProfile, listReplies } from '../feed.mjs'
 import { setFollow, loadFollowing } from '../following.mjs'
 import { autoApproveFollower } from '../gsh/followApprove.mjs'
@@ -14,9 +13,9 @@ import { buildFollowApprovePayload, maybeEncryptPostContent } from '../gsh/vault
 import { ensureEntitySocialReady, ensureOperatorSocialReady } from '../lib/bootstrap.mjs'
 import { resolveSocialEntity } from '../lib/entityResolve.mjs'
 import { updateSocialMeta } from '../socialMeta.mjs'
-import { appendTimelineEvent } from '../timeline/append.mjs'
+import { commitTimelineEvent } from '../timeline/append.mjs'
 import { getTimelineMaterialized } from '../timeline/materialize.mjs'
-import { fanoutTimelineEvent } from '../timeline/publish.mjs'
+import { syncTimelineForEntity } from '../timeline/sync.mjs'
 import { pushFeedUpdate } from '../ws/feedHub.mjs'
 
 /**
@@ -97,12 +96,11 @@ export function registerProfileRoutes(router) {
 			lang: req.body?.lang || 'zh-CN',
 			visibility,
 		}
-		const signed = await appendTimelineEvent(username, entityHash, {
+		const signed = await commitTimelineEvent(username, entityHash, {
 			type: 'post',
 			charId,
 			content: await maybeEncryptPostContent(username, entityHash, postKeyId, draftContent, visibility),
 		})
-		await fanoutTimelineEvent(username, entityHash, signed)
 		await dispatchPostMentions(username, entityHash, signed)
 		await dispatchPostFollowerUpdates(entityHash, signed)
 		pushFeedUpdate(username, { type: 'post', entityHash, postId: signed.id })
@@ -115,13 +113,9 @@ export function registerProfileRoutes(router) {
 		if (!isEntityHash128(target))
 			return res.status(400).json({ error: 'invalid entityHash' })
 		const follow = req.body?.follow !== false
-		const following = await setFollow(username, target, follow)
+		await setFollow(username, target, follow, { rep_edge: req.body?.rep_edge ?? 1 })
 		const self = resolveOperatorEntityHash(username)
 		if (self && follow) {
-			await appendTimelineEvent(username, self, {
-				type: 'follow',
-				content: { targetEntityHash: target, rep_edge: req.body?.rep_edge ?? 1 },
-			})
 			await dispatchFollowEvent(username, self, target)
 			const targetEntity = resolveSocialEntity(target)
 			if (targetEntity?.local && targetEntity.replicaUsername) {
@@ -131,13 +125,8 @@ export function registerProfileRoutes(router) {
 			}
 			await syncTimelineForEntity(username, target)
 		}
-		if (self && !follow)
-			await appendTimelineEvent(username, self, {
-				type: 'unfollow',
-				content: { targetEntityHash: target },
-			})
 
-		res.status(200).json({ following })
+		res.status(200).json({ entityHash: target, following: follow })
 	})
 
 	router.post('/api/parts/shells\\:social/profile/like', authenticate, async (req, res) => {
@@ -146,14 +135,13 @@ export function registerProfileRoutes(router) {
 		if (!self) return res.status(403).json({ error: 'identity required' })
 		const body = req.body
 		const like = body.like !== false
-		const event = await appendTimelineEvent(username, self, {
+		const event = await commitTimelineEvent(username, self, {
 			type: like ? 'like' : 'unlike',
 			content: {
 				targetEntityHash: String(body.entityHash).toLowerCase(),
 				targetPostId: String(body.postId),
 			},
 		})
-		await fanoutTimelineEvent(username, self, event)
 		res.status(200).json({ event })
 	})
 
@@ -166,11 +154,10 @@ export function registerProfileRoutes(router) {
 		const targetPostId = String(body.postId)
 		if (!isEntityHash128(targetEntityHash) || !targetPostId)
 			return res.status(400).json({ error: 'invalid params' })
-		const event = await appendTimelineEvent(username, self, {
+		const event = await commitTimelineEvent(username, self, {
 			type: 'repost',
 			content: { targetEntityHash, targetPostId, comment: String(body.comment) },
 		})
-		await fanoutTimelineEvent(username, self, event)
 		res.status(200).json({ event })
 	})
 
@@ -180,11 +167,10 @@ export function registerProfileRoutes(router) {
 		if (!self) return res.status(403).json({ error: 'identity required' })
 		const targetPostId = String(req.body?.postId)
 		if (!targetPostId) return res.status(400).json({ error: 'postId required' })
-		const event = await appendTimelineEvent(username, self, {
+		const event = await commitTimelineEvent(username, self, {
 			type: 'post_delete',
 			content: { targetPostId },
 		})
-		await fanoutTimelineEvent(username, self, event)
 		res.status(200).json({ event })
 	})
 
@@ -193,8 +179,8 @@ export function registerProfileRoutes(router) {
 		const target = String(req.body?.entityHash).toLowerCase()
 		if (!isEntityHash128(target))
 			return res.status(400).json({ error: 'invalid entityHash' })
-		const blocked = await setBlock(username, target, req.body?.block !== false)
-		res.status(200).json({ blocked })
+		const blocked = await setEntityBlocked(username, target, req.body?.block !== false)
+		res.status(200).json({ entityHash: target, blocked })
 	})
 
 	router.post('/api/parts/shells\\:social/profile/follow-approve', authenticate, async (req, res) => {
@@ -204,11 +190,10 @@ export function registerProfileRoutes(router) {
 		if (!self || !followerPubKeyHex)
 			return res.status(400).json({ error: 'invalid request' })
 		const payload = await buildFollowApprovePayload(username, self, followerPubKeyHex)
-		const event = await appendTimelineEvent(username, self, {
+		const event = await commitTimelineEvent(username, self, {
 			type: 'follow_approve',
 			content: payload,
 		})
-		await fanoutTimelineEvent(username, self, event)
 		res.status(200).json({ event })
 	})
 

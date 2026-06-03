@@ -1,11 +1,21 @@
 /**
- * syncFollowing 模块冒烟（避免 import 整条联邦链）。
+ * following 薄层：无 following.json，从时间线物化读取。
  */
 /* global Deno */
 import { assert } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 
-Deno.test('syncFollowingTimelines is defined in source', async () => {
-	const url = new URL('../src/federation/syncFollowing.mjs', import.meta.url)
+Deno.test('following.mjs reads from timeline materialize not JSON sidecar', async () => {
+	const url = new URL('../src/following.mjs', import.meta.url)
 	const text = await Deno.readTextFile(url)
-	assert(text.includes('export async function syncFollowingTimelines'))
+	assert(!text.includes('following.json'))
+	assert(text.includes('getTimelineMaterialized'))
+	assert(text.includes('p2p/social/follower_index.mjs'))
+})
+
+Deno.test('follower index lives in p2p social layer', async () => {
+	const url = new URL('../../../../../scripts/p2p/social/follower_index.mjs', import.meta.url)
+	const text = await Deno.readTextFile(url)
+	assert(text.includes('listReplicaUsernamesFollowing'))
+	assert(text.includes('follower_index'))
+	assert(text.includes('followerEntryCache'))
 })

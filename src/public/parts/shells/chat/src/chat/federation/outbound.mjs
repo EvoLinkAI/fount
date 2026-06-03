@@ -59,3 +59,26 @@ export function createFedOutQueue() {
 		},
 	}
 }
+
+/**
+ * 绑定 Trystero 原始 send 为 fedOut 优先级出站。
+ * @param {{ enqueue: (priority: number, run: () => void) => void }} fedOut 出站队列
+ * @param {number} priority 优先级
+ * @param {string} label 日志标签
+ * @param {Function} sendRaw Trystero send
+ * @param {() => boolean} [guard] 返回 false 时跳过发送
+ * @returns {(payload: unknown, peerId: string | null) => void} 绑定后的发送函数
+ */
+export function bindFedSender(fedOut, priority, label, sendRaw, guard) {
+	return (payload, peerId) => {
+		fedOut.enqueue(priority, () => {
+			if (guard && !guard()) return
+			try {
+				sendRaw(payload, peerId)
+			}
+			catch (error) {
+				console.error(`federation: ${label} failed`, error)
+			}
+		})
+	}
+}

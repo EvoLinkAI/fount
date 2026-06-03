@@ -3,7 +3,7 @@
  * 【职责】按群设置的深度与时间窗口裁剪 `events.jsonl`，同时保留权限锚点事件与 checkpoint tip 可达后缀。
  * 【原理】在拓扑序上计算 `retentionStartIndex`：不早于时间 cutoff、不裁掉 checkpoint 之前必要链、不裁断 `PERMISSION_ANCHOR_TYPES` 锚点；`materialize` 重建 checkpoint 后调用。
  * 【数据结构】`retentionStartIndex(order, byId, { maxDepth, cutoffWall, checkpointTipId? })` 纯函数；`enforceEventRetention` 返回 `{ pruned, kept, dropped }`。
- * 【关联】`materialize.mjs`、`queries.mjs`、`dag/storage.mjs`。
+ * 【关联】`materialize.mjs`、`queries.mjs`、`p2p/dag/storage.mjs`。
  */
 /**
  * §7.1：按 `event_retention_depth` / `event_retention_ms` 裁剪 `events.jsonl`，并保留权限锚点后缀。
@@ -12,9 +12,10 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 import { topologicalCanonicalOrder } from '../../../../../../../scripts/p2p/dag/index.mjs'
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { retentionStartIndex } from '../../../../../../../scripts/p2p/retention_policy.mjs'
 import { invalidateTopologicalOrderMemo } from '../../../../../../../scripts/p2p/topo_order_memo.mjs'
-import { readJsonl } from '../dag/storage.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { eventsPath, snapshotPath } from '../lib/paths.mjs'
 
 /**
@@ -48,7 +49,7 @@ async function readCheckpoint(username, groupId, checkpoint) {
  */
 export async function enforceEventRetention(username, groupId, checkpointHint = null, groupSettings = {}) {
 	const eventsFilePath = eventsPath(username, groupId)
-	const events = await readJsonl(eventsFilePath)
+	const events = await readJsonl(eventsFilePath, { sanitize: sanitizeFederatedEvent })
 	if (!events.length) return { pruned: false, kept: 0, dropped: 0 }
 
 	const maxDepth = Math.max(256, Number(groupSettings.event_retention_depth) || 200_000)

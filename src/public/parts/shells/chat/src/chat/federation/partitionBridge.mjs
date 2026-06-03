@@ -1,21 +1,15 @@
-/**
- * 跨 MQTT 分区桥接（应用层中继，带去重/TTL）。
- */
 import { createHash } from 'node:crypto'
 
+import { createDedupeSlot } from '../../../../../../../scripts/p2p/dedupe_slot.mjs'
 import { isRtcRoomOverloaded } from '../../../../../../../scripts/p2p/rtc_connection_budget.mjs'
 
-/** @type {Map<string, number>} */
-const bridgeDedupe = new Map()
-const DEDUPE_MS = 30_000
+const takeBridgeDedupeSlot = createDedupeSlot({ maxSize: 5000, ttlMs: 30_000 })
 const DEFAULT_BRIDGE_TTL = 2
 
 /** 桥接优先级：数字越小越关键（过载时丢弃高数字） */
 const BRIDGE_ACTION_PRIORITY = {
 	dag_event: 0,
-	mailbox_give: 2,
-	mailbox_put: 4,
-	mailbox_want: 4,
+	part_invoke: 4,
 	gossip_request: 5,
 	gossip_response: 5,
 	fed_chunk_data: 6,
@@ -32,13 +26,7 @@ const bridgeForwardBuckets = new Map()
  * @returns {boolean} 首次见到为 true
  */
 export function takePartitionBridgeSlot(key) {
-	const now = Date.now()
-	if (bridgeDedupe.size > 5000)
-		for (const [k, t] of bridgeDedupe)
-			if (now - t > DEDUPE_MS) bridgeDedupe.delete(k)
-	if (bridgeDedupe.has(key)) return false
-	bridgeDedupe.set(key, now)
-	return true
+	return takeBridgeDedupeSlot(key)
 }
 
 /**
@@ -75,7 +63,7 @@ export function buildPartitionBridgeEnvelope(opts) {
  * @returns {number} 优先级（越大越先丢弃）
  */
 export function partitionBridgeActionPriority(actionName) {
-	return BRIDGE_ACTION_PRIORITY[String(actionName || '')] ?? 5
+	return BRIDGE_ACTION_PRIORITY[actionName] ?? 5
 }
 
 /**
@@ -94,17 +82,16 @@ export function shouldDropPartitionBridgeUnderLoad(roomKey, actionName, rtcLimit
  * @returns {boolean} 是否允许继续转发桥接包
  */
 export function takePartitionBridgeForwardSlot(roomKey) {
-	const key = String(roomKey || '')
 	const now = Date.now()
-	let bucket = bridgeForwardBuckets.get(key)
+	let bucket = bridgeForwardBuckets.get(roomKey)
 	if (!bucket || now - bucket.windowStart >= 60_000)
 		bucket = { count: 0, windowStart: now }
 	if (bucket.count >= BRIDGE_FORWARD_MAX_PER_MIN) {
-		bridgeForwardBuckets.set(key, bucket)
+		bridgeForwardBuckets.set(roomKey, bucket)
 		return false
 	}
 	bucket.count++
-	bridgeForwardBuckets.set(key, bucket)
+	bridgeForwardBuckets.set(roomKey, bucket)
 	return true
 }
 
@@ -120,7 +107,7 @@ export function takePartitionBridgeForwardSlot(roomKey) {
  * @returns {boolean} 是否已发送
  */
 export function sendPartitionBridgeFromSlot(slot, opts) {
-	if (!slot?.sendPartitionBridge) return false
+	if (!slot?.send) return false
 	const envelope = buildPartitionBridgeEnvelope({
 		sourcePartition: slot.partitionId,
 		targetPartition: opts.targetPartition,
@@ -128,6 +115,6 @@ export function sendPartitionBridgeFromSlot(slot, opts) {
 		payload: opts.payload,
 		ttl: opts.ttl,
 	})
-	slot.sendPartitionBridge(envelope, opts.peerId ?? null)
+	slot.send('fed_partition_bridge', envelope, opts.peerId ?? null)
 	return true
 }

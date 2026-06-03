@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
+import { setImmediate } from 'node:timers'
 
 import { FEDERATION_CHUNK_MAX_BYTES } from '../constants.mjs'
 import {
@@ -85,7 +86,23 @@ export function encryptPlaintextToMultiParts(plaintext, ceMode = 'convergent') {
  * @returns {Promise<{ contentHash: string, parts: Array<{ hash: string, size: number, raw: Buffer }>, contentKey?: Buffer }>} 分块加密结果
  */
 export async function encryptPlaintextToMultiPartsAsync(plaintext, ceMode = 'convergent') {
-	return encryptPlaintextToMultiParts(plaintext, ceMode)
+	const plain = Buffer.from(plaintext)
+	const contentHash = createHash('sha256').update(plain).digest('hex')
+	if (plain.length <= FEDERATION_CHUNK_MAX_BYTES)
+		return encryptPlaintextToParts(plain, ceMode)
+
+	/** @type {Array<{ hash: string, size: number, raw: Buffer }>} */
+	const parts = []
+	let contentKey = null
+	for (let offset = 0; offset < plain.length; offset += FEDERATION_CHUNK_MAX_BYTES) {
+		if (offset > 0) await new Promise(resolve => setImmediate(resolve))
+		const slice = plain.subarray(offset, offset + FEDERATION_CHUNK_MAX_BYTES)
+		const strategy = ENCRYPTION_STRATEGIES[ceMode] || ENCRYPTION_STRATEGIES.convergent
+		const enc = strategy(slice)
+		if (ceMode === 'random') contentKey = enc.contentKey
+		parts.push({ hash: enc.ciphertextHash, size: enc.raw.length, raw: enc.raw })
+	}
+	return { contentHash, parts, contentKey: contentKey || undefined }
 }
 
 /**

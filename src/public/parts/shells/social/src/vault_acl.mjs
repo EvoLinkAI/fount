@@ -3,7 +3,7 @@
  * @param {string} replicaUsername 观看者 replica
  * @param {string} ownerEntityHash vault owner
  * @param {import('../../../../../scripts/p2p/files/manifest.mjs').FileManifest} manifest manifest
- * @returns {Promise<boolean>}
+ * @returns {Promise<boolean>} 观看者是否可读该 vault 文件
  */
 export async function canViewVaultFile(replicaUsername, ownerEntityHash, manifest) {
 	const visibility = String(manifest.meta?.visibility || 'followers')

@@ -1,8 +1,8 @@
 /** @type {Map<string, import('./trust_graph_registry.mjs').TrustGraphProvider>} */
 const providersByOwner = new Map()
 
-/** Chat shell 为默认 TrustGraph 提供方 */
-export const DEFAULT_TRUST_GRAPH_OWNER = 'chat'
+/** 用户级 P2P trust graph（scripts/p2p/trust_graph.mjs 注册） */
+export const DEFAULT_TRUST_GRAPH_OWNER = 'default'
 
 /**
  * @param {string} ownerId 注册方（如 chat）

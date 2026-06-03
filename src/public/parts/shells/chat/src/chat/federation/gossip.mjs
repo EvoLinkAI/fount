@@ -5,28 +5,33 @@
  * 【数据结构】请求 { wantIds, ttl, requesterId, archiveSummary }；响应 { events, checkpoint?, channelHistories? }；pendingGossipRequests 按排序后的 wantIds 键等待。
  * 【关联】room.mjs、archiveHandshake.mjs、registry.mjs、peerPool.mjs、checkpointVerifier.mjs、index catchUpGroupFromPeers。
  */
+import { createDedupeSlot } from '../../../../../../../scripts/p2p/dedupe_slot.mjs'
 import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { resolveFederationPoolLimits } from '../../../../../../../scripts/p2p/peer_pool.mjs'
 import {
 	batchWantIds,
 	takeOutgoingWantIdsSlot,
 } from '../../../../../../../scripts/p2p/want_ids.mjs'
+import { extractInboundSignedEvent } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
+import {
+	finishMultiWireWaiters,
+	notifyMultiWireWaitersByPrefix,
+	registerMultiWireWait,
+} from '../../../../../../../scripts/p2p/wire_wait.mjs'
 import { pickFederationTargetPeerIds } from '../governance/peerPool.mjs'
 import { eventsPath } from '../lib/paths.mjs'
-import { extractInboundSignedEvent } from '../lib/wireIngress.mjs'
 
 import { loadLocalFederationArchive, wireArchiveSummary } from './archiveHandshake.mjs'
-import { loadFederationGroupSettings, requireDagDeps } from './deps.mjs'
+import { loadFederationGroupSettings, federationNodeHash, requireDagDeps } from './deps.mjs'
 import { parsePullResponseEnvelope } from './fedPullWire.mjs'
 import { signPullAttestation } from './pullAttestation.mjs'
 import {
 	applyPullInner,
 	unwrapPullEnvelopeForLocalMember,
 } from './pullEnvelope.mjs'
-import { pendingGossipRequests } from './registry.mjs'
+import { gossipWaitPrefix, pendingGossipRequests } from './registry.mjs'
 
-const gossipRequestDedupe = new Map()
-const GOSSIP_DEDUPE_MS = 30_000
+const takeGossipRequestDedupeSlot = createDedupeSlot({ maxSize: 2000, ttlMs: 30_000 })
 const GOSSIP_RESPONSE_WAIT_MS = 3000
 
 /**
@@ -36,10 +41,9 @@ const GOSSIP_RESPONSE_WAIT_MS = 3000
  */
 export function wantIdsLimitsFromSettings(groupSettings) {
 	const budget = Number(groupSettings?.wantIdsBudget)
-	return {
-		inMaxBatch: Number.isFinite(budget) ? Math.max(4, Math.min(128, budget)) : undefined,
-		outMaxBatch: Number.isFinite(budget) ? Math.max(4, Math.min(128, budget)) : undefined,
-	}
+	if (!Number.isFinite(budget)) return {}
+	const batch = Math.max(4, Math.min(128, budget))
+	return { inMaxBatch: batch, outMaxBatch: batch }
 }
 
 /**
@@ -47,23 +51,61 @@ export function wantIdsLimitsFromSettings(groupSettings) {
  * @returns {boolean} 首次处理为 true
  */
 export function takeGossipRequestSlot(dedupeKey) {
-	const now = Date.now()
-	if (gossipRequestDedupe.size > 2000)
-		for (const [key, expiresAt] of gossipRequestDedupe)
-			if (expiresAt < now - GOSSIP_DEDUPE_MS) gossipRequestDedupe.delete(key)
-	if (gossipRequestDedupe.has(dedupeKey)) return false
-	gossipRequestDedupe.set(dedupeKey, now)
-	return true
+	return takeGossipRequestDedupeSlot(dedupeKey)
 }
 
 /**
- * @param {string} username 用户名
- * @param {string} groupId 群组 ID
- * @param {string[]} wantIds 缺失事件 ID 列表
- * @returns {string} pending gossip 等待表键
+ * 构造 gossip 中继转发载荷。
+ * @param {object} parsed parseGossipRequest 结果
+ * @param {object} groupSettings 群设置
+ * @returns {{ forwardPayload: object, forwardTtl: number } | null} 可转发时返回载荷与 ttl
  */
-function gossipWaitKey(username, groupId, wantIds) {
-	return `${username}\0${groupId}\0${[...wantIds].sort().join(',')}`
+export function buildGossipForwardPlan(parsed, groupSettings) {
+	const { wantIds, ttl, requesterNodeHash, archiveSummary, attestation } = parsed
+	const { gossipTtl: maxTtl } = resolveFederationPoolLimits(groupSettings)
+	const forwardTtl = Math.min(ttl, maxTtl)
+	if (forwardTtl <= 0) return null
+	return {
+		forwardPayload: {
+			wantIds,
+			ttl: forwardTtl - 1,
+			requesterNodeHash,
+			archiveSummary,
+			attestation,
+		},
+		forwardTtl,
+	}
+}
+
+/**
+ * 将 gossip_request 入队转发到目标 peer（或广播）。
+ * @param {object} fedOut 出站队列
+ * @param {{ send: Function }} gossipRequest gossip_request send
+ * @param {object} forwardPayload 转发载荷
+ * @param {string[]} forwardPeers 目标 peerId 列表
+ * @returns {void}
+ */
+export function enqueueGossipForward(fedOut, gossipRequest, forwardPayload, forwardPeers) {
+	fedOut.enqueue(1, () => {
+		try {
+			if (forwardPeers.length)
+				for (const forwardPeerId of forwardPeers)
+					gossipRequest.send(forwardPayload, forwardPeerId)
+			else
+				gossipRequest.send(forwardPayload, null)
+		}
+		catch (error) {
+			console.error('federation: gossip_request forward failed', error)
+		}
+	})
+}
+
+/**
+ * @param {string[]} wantIds 缺失事件 ID 列表
+ * @returns {string} 等待表后缀键
+ */
+function gossipWaitSuffix(wantIds) {
+	return [...wantIds].sort().join(',')
 }
 
 /**
@@ -74,34 +116,13 @@ function gossipWaitKey(username, groupId, wantIds) {
  * @returns {Promise<void>}
  */
 function waitForGossipProgress(username, groupId, wantIds) {
-	const key = gossipWaitKey(username, groupId, wantIds)
-	return new Promise(resolve => {
-		const timer = setTimeout(() => {
-			removeGossipWaiter(key, resolve, timer)
-			resolve()
-		}, GOSSIP_RESPONSE_WAIT_MS)
-		let waiters = pendingGossipRequests.get(key)
-		if (!waiters) {
-			waiters = []
-			pendingGossipRequests.set(key, waiters)
-		}
-		waiters.push({ resolve, timer })
-	})
-}
-
-/**
- * @param {string} key gossipWaitKey
- * @param {() => void} resolve Promise resolve
- * @param {ReturnType<typeof setTimeout>} timer 超时句柄
- * @returns {void}
- */
-function removeGossipWaiter(key, resolve, timer) {
-	clearTimeout(timer)
-	const waiters = pendingGossipRequests.get(key)
-	if (!waiters) return
-	const index = waiters.findIndex(entry => entry.resolve === resolve && entry.timer === timer)
-	if (index >= 0) waiters.splice(index, 1)
-	if (!waiters.length) pendingGossipRequests.delete(key)
+	return registerMultiWireWait(
+		pendingGossipRequests,
+		gossipWaitPrefix(username, groupId),
+		gossipWaitSuffix(wantIds),
+		GOSSIP_RESPONSE_WAIT_MS,
+		() => {},
+	)
 }
 
 /**
@@ -112,14 +133,11 @@ function removeGossipWaiter(key, resolve, timer) {
  * @returns {void}
  */
 export function forceResolveGossipWait(username, groupId, wantIds) {
-	const key = gossipWaitKey(username, groupId, wantIds)
-	const waiters = pendingGossipRequests.get(key)
-	if (!waiters?.length) return
-	for (const { resolve, timer } of [...waiters]) {
-		clearTimeout(timer)
-		removeGossipWaiter(key, resolve, timer)
-		resolve()
-	}
+	finishMultiWireWaiters(
+		pendingGossipRequests,
+		gossipWaitPrefix(username, groupId),
+		gossipWaitSuffix(wantIds),
+	)
 }
 
 /**
@@ -130,27 +148,12 @@ export function forceResolveGossipWait(username, groupId, wantIds) {
  * @returns {void}
  */
 export function notifyGossipWaiters(username, groupId, receivedIds) {
-	if (!receivedIds.size) return
-	const prefix = `${username}\0${groupId}\0`
-	for (const [key, waiters] of [...pendingGossipRequests]) {
-		if (!key.startsWith(prefix)) continue
-		const idsPart = key.slice(prefix.length)
-		if (!idsPart) continue
-		const wanted = new Set(idsPart.split(','))
-		let hit = false
-		for (const eventId of receivedIds)
-			if (wanted.has(eventId)) {
-				hit = true
-				break
-			}
-
-		if (!hit) continue
-		for (const { resolve, timer } of [...waiters]) {
-			clearTimeout(timer)
-			removeGossipWaiter(key, resolve, timer)
-			resolve()
-		}
-	}
+	notifyMultiWireWaitersByPrefix(
+		pendingGossipRequests,
+		gossipWaitPrefix(username, groupId),
+		receivedIds,
+		suffix => suffix.split(','),
+	)
 }
 
 /**
@@ -161,9 +164,9 @@ export function notifyGossipWaiters(username, groupId, receivedIds) {
  * @returns {Promise<void>}
  */
 export async function handleGossipResponse(username, groupId, data) {
-	const { nodeId } = requireDagDeps()
+	const nodeHash = federationNodeHash(username)
 	const envelope = parsePullResponseEnvelope(data)
-	if (!envelope || envelope.requesterNodeId !== nodeId) return
+	if (!envelope || envelope.requesterNodeHash !== nodeHash) return
 
 	const inner = await unwrapPullEnvelopeForLocalMember(username, groupId, envelope)
 	if (!inner) return
@@ -175,8 +178,7 @@ export async function handleGossipResponse(username, groupId, data) {
 			if (signedEvent?.id) receivedIds.add(signedEvent.id)
 		}
 
-	const { eventsApplied } = await applyPullInner(username, groupId, inner)
-	void eventsApplied
+	await applyPullInner(username, groupId, inner)
 	notifyGossipWaiters(username, groupId, receivedIds)
 }
 
@@ -188,7 +190,8 @@ export async function handleGossipResponse(username, groupId, data) {
  * @returns {Promise<{ found: boolean, events: object[], stillMissing: string[], mergedFromPeer: number, rateLimited: boolean }>} 补洞结果
  */
 export async function requestMissingEventsGossip(username, groupId, query = {}) {
-	const { nodeId, readJsonl, appendValidatedRemoteEvent } = requireDagDeps()
+	const { readJsonl, appendValidatedRemoteEvent } = requireDagDeps()
+	const nodeHash = federationNodeHash(username)
 	const wantIds = [...new Set(
 		(query.wantIds || []).filter(isHex64),
 	)]
@@ -220,7 +223,7 @@ export async function requestMissingEventsGossip(username, groupId, query = {}) 
 		const waitPromise = waitForGossipProgress(username, groupId, stillMissing)
 		const { ensureFederationRoom } = await import('./room.mjs')
 		const slot = await ensureFederationRoom(username, groupId)
-		if (!slot?.sendGossipRequest)
+		if (!slot?.send)
 			forceResolveGossipWait(username, groupId, stillMissing)
 		else {
 			const groupSettings = await loadFederationGroupSettings(username, groupId)
@@ -236,7 +239,7 @@ export async function requestMissingEventsGossip(username, groupId, query = {}) 
 					groupId,
 					slot.getRoster(),
 					groupSettings,
-					nodeId,
+					nodeHash,
 				)
 				try {
 					const batchedWantIds = batchWantIds(stillMissing, wantIdsBudget)
@@ -244,15 +247,15 @@ export async function requestMissingEventsGossip(username, groupId, query = {}) 
 					const payload = {
 						wantIds: batchedWantIds,
 						ttl: gossipTtl,
-						requesterId: nodeId,
+						requesterNodeHash: nodeHash,
 						archiveSummary: wireArchiveSummary(localArchive.summary),
 						attestation,
 					}
 					if (targets.length)
 						for (const peerId of targets)
-							slot.sendGossipRequest(payload, peerId)
+							slot.send('gossip_request', payload, peerId)
 					else
-						slot.sendGossipRequest(payload, null)
+						slot.send('gossip_request', payload, null)
 				}
 				catch (error) {
 					console.error('federation: gossip_request failed', error)

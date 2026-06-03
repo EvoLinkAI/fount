@@ -13,18 +13,17 @@ import { adminPubKeyHashes } from '../../../../../../../scripts/p2p/materialized
 import { verifyOwnerSuccessionThreshold } from '../../../../../../../scripts/p2p/owner_succession_ballot.mjs'
 import { calculateMemberPermissions, hasPermission, PERMISSIONS } from '../../../../../../../scripts/p2p/permissions.mjs'
 import { getUserByReq } from '../../../../../../../server/auth.mjs'
+import { addBlocklistFromBanContent, addGroupBlockedPeers, removeGroupBlockedPeer } from '../../../../../../scripts/p2p/blocklist.mjs'
 import { appendSignedLocalEvent } from '../../chat/dag/append.mjs'
 import { appendKeyRotateEvent } from '../../chat/dag/channelOps.mjs'
 import { getState } from '../../chat/dag/materialize.mjs'
 import { registerGroupFileRoutes } from '../../chat/files/groupFiles.mjs'
 import {
+	blockEntriesFromBanContent,
 	buildMemberBanContent,
-	blockKeysFromBanContent,
 	isBanScope,
 } from '../../chat/governance/banRules.mjs'
-import { addBlocklistFromBanContent } from '../../chat/governance/blocklist.mjs'
 import { signOwnerSuccessionAsLocalAdmin } from '../../chat/governance/ownerSuccessionSign.mjs'
-import { addBlockedPeers, removeBlockedPeer } from '../../chat/governance/peers.mjs'
 import { getCurrentH } from '../../chat/gsh/store.mjs'
 import {
 	canInChannel,
@@ -258,9 +257,13 @@ export function registerGovernanceRoutes(router, authenticate) {
 			})
 			const { unbanTargetsFromMember } = await import('../../chat/governance/banRules.mjs')
 			const cleared = unbanTargetsFromMember(state, unbanPubKeyHash)
-			const keys = [cleared.pubKeyHash, cleared.entityHash, cleared.nodeHash].filter(Boolean)
-			for (const key of keys)
-				await removeBlockedPeer(username, groupId, key)
+			/** @type {Array<{ scope: 'subject' | 'entity' | 'node', value: string }>} */
+			const clearedEntries = []
+			if (cleared.pubKeyHash) clearedEntries.push({ scope: 'subject', value: cleared.pubKeyHash })
+			if (cleared.entityHash) clearedEntries.push({ scope: 'entity', value: cleared.entityHash })
+			if (cleared.nodeHash) clearedEntries.push({ scope: 'node', value: cleared.nodeHash })
+			for (const entry of clearedEntries)
+				await removeGroupBlockedPeer(username, groupId, entry.scope, entry.value)
 			return res.status(200).json({})
 		}
 
@@ -294,7 +297,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 				timestamp: Date.now(),
 				content: banContent,
 			})
-			await addBlockedPeers(username, groupId, blockKeysFromBanContent(banContent))
+			await addGroupBlockedPeers(username, groupId, blockEntriesFromBanContent(banContent))
 			await addBlocklistFromBanContent(username, banContent, groupId)
 			return res.status(200).json({})
 		}
@@ -317,7 +320,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 				})
 				const newH = deriveNewH(hEntry.h, kickEvent.id, nonce)
 				await appendH(username, groupId, newGen, newH)
-				await addBlockedPeers(username, groupId, [targetPubKeyHash])
+				await addGroupBlockedPeers(username, groupId, [{ scope: 'subject', value: targetPubKeyHash }])
 				return res.status(200).json({})
 			}
 		}
@@ -327,7 +330,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 			timestamp: Date.now(),
 			content,
 		})
-		await addBlockedPeers(username, groupId, [targetPubKeyHash])
+		await addGroupBlockedPeers(username, groupId, [{ scope: 'subject', value: targetPubKeyHash }])
 		res.status(200).json({})
 	})
 

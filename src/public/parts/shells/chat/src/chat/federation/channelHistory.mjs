@@ -1,28 +1,27 @@
 /**
  * 【文件】federation/channelHistory.mjs
  * 【职责】经 Trystero channel_history_want/response 向联邦邻居拉取频道 JSONL 历史，并合并入本地频道消息存储。
- * 【原理】广播 want（requesterId=本 nodeId），在 pendingChannelHistory 注册 2s 等待；入站 response 校验 requesterId 后 resolve 并 mergeChannelHistoryRows。新鲜加入时 room 亦可在 gossip_response 附带 channelHistories。
- * 【数据结构】want { requestId, channelId, before?, limit, requesterId }；等待键 username\0groupId\0channelId\0requestId。
- * 【关联】room.mjs、registry.mjs、deps.mjs、dag/queries.mjs；与 gossip 并行互补的频道级补全通道。
  */
 import { randomUUID } from 'node:crypto'
 
-import { isPlainObject } from '../lib/wireIngress.mjs'
+import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
+import { registerWireWait } from '../../../../../../../scripts/p2p/wire_wait.mjs'
 
-import { requireDagDeps } from './deps.mjs'
+import { federationNodeHash } from './deps.mjs'
+import { signPullAttestation } from './pullAttestation.mjs'
 import { EVENT_ID_HEX, pendingChannelHistory } from './registry.mjs'
 
 const CHANNEL_HISTORY_WAIT_MS = 2000
 
 /**
- * @param {string} username 用户名
+ * @param {string} username 用户
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID
  * @param {string} requestId 请求 id
  * @returns {string} 等待表键
  */
 function channelHistoryWaitKey(username, groupId, channelId, requestId) {
-	return `${username}\0${groupId}\0${channelId}\0${requestId}`
+	return `${username}:${groupId}:${channelId}:${requestId}`
 }
 
 /**
@@ -36,39 +35,24 @@ function channelHistoryWaitKey(username, groupId, channelId, requestId) {
 export async function requestChannelHistoryFromPeers(username, groupId, channelId, opts = {}) {
 	const { ensureFederationRoom } = await import('./room.mjs')
 	const slot = await ensureFederationRoom(username, groupId)
-	if (!slot?.sendChannelHistoryWant) return []
+	if (!slot?.send) return []
 
-	const { nodeId } = requireDagDeps()
+	const nodeHash = federationNodeHash(username)
 	const requestId = randomUUID()
 	const key = channelHistoryWaitKey(username, groupId, channelId, requestId)
-	const waitPromise = new Promise(resolve => {
-		const timer = setTimeout(() => {
-			pendingChannelHistory.delete(key)
-			resolve([])
-		}, CHANNEL_HISTORY_WAIT_MS)
-		pendingChannelHistory.set(key, {
-			/**
-			 * @param {object[]} rows 对端消息行
-			 * @returns {void}
-			 */
-			resolve: rows => {
-				clearTimeout(timer)
-				pendingChannelHistory.delete(key)
-				resolve(Array.isArray(rows) ? rows : [])
-			},
-			timer,
-		})
-	})
+	const { promise } = registerWireWait(pendingChannelHistory, key, CHANNEL_HISTORY_WAIT_MS, () => [])
 
 	const limit = Math.min(500, Math.max(1, Number(opts.limit) || 50))
 	const before = EVENT_ID_HEX.test(String(opts.before || '')) ? opts.before : null
+	const attestation = await signPullAttestation(username, groupId, { requestId })
 	try {
-		slot.sendChannelHistoryWant({
+		slot.send('channel_history_want',{
 			requestId,
 			channelId,
 			before,
 			limit,
-			requesterId: nodeId,
+			requesterNodeHash: nodeHash,
+			attestation,
 		}, null)
 	}
 	catch (error) {
@@ -76,7 +60,7 @@ export async function requestChannelHistoryFromPeers(username, groupId, channelI
 		pendingChannelHistory.delete(key)
 		return []
 	}
-	return waitPromise
+	return promise
 }
 
 /**
@@ -87,8 +71,8 @@ export async function requestChannelHistoryFromPeers(username, groupId, channelI
  */
 export async function handleChannelHistoryResponse(username, groupId, data) {
 	if (!isPlainObject(data)) return
-	const { nodeId } = requireDagDeps()
-	if (data.requesterId !== nodeId) return
+	const nodeHash = federationNodeHash(username)
+	if (data.requesterNodeHash !== nodeHash) return
 
 	const requestId = String(data.requestId || '').trim()
 	const channelId = String(data.channelId || '').trim()

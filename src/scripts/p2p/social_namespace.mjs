@@ -45,4 +45,8 @@ export const SOCIAL_RPC_TYPES = new Set([
 	'social_post_discover_response',
 	'social_follow_graph_request',
 	'social_follow_graph_response',
+	'social_on_mention',
+	'social_on_mention_response',
+	'social_timeline_pull_request',
+	'social_timeline_pull_response',
 ])

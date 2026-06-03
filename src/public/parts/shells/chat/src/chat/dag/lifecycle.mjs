@@ -11,10 +11,12 @@ import { access, mkdir } from 'node:fs/promises'
 import { geti18nForUser } from '../../../../../../../scripts/i18n.mjs'
 import { DEFAULT_STREAM_GENERATING_IDLE_MS } from '../../../../../../../scripts/p2p/constants.mjs'
 import { sortedPrevEventIds } from '../../../../../../../scripts/p2p/dag/index.mjs'
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/governance_branch.mjs'
 import { createDefaultRoles } from '../../../../../../../scripts/p2p/permissions.mjs'
 import { syncEntityProfileFromPersona } from '../../profile/syncFromPersona.mjs'
 import { DEFAULT_HLC_MAX_SKEW_MS } from '../events/hlcPolicy.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { isGroupFederationActive } from '../federation/groupFederation.mjs'
 import { DEFAULT_MQTT_APP_ID, mintMqttRoomSecret } from '../federation/mqttCredentials.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../federation/room.mjs'
@@ -29,7 +31,6 @@ import { dropGroupReplicaRegistration } from '../stream/groupWsRooms.mjs'
 import { appendEvent } from './append.mjs'
 import { getLocalSignerForNewGroup } from './localSigner.mjs'
 import { getState } from './materialize.mjs'
-import { readJsonl } from './storage.mjs'
 
 /**
  * 将当前所有 DAG 叶合并为单条多父事件（§0 多父汇合）。
@@ -40,7 +41,7 @@ import { readJsonl } from './storage.mjs'
  * @returns {Promise<object>} 签名后事件
  */
 export async function mergeDagTips(username, groupId, sender, secretKey) {
-	const rows = await readJsonl(eventsPath(username, groupId))
+	const rows = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 	const tips = computeDagTipIdsFromEvents(rows)
 	if (tips.length < 2) throw new Error('dag_tip_merge: fewer than 2 tips')
 	return appendEvent(username, groupId, {

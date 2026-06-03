@@ -12,13 +12,14 @@
  * 【数据结构】返回 { blocked: pubKeyHash[] }；acceptedTipId 须为当前 tip。
  * 【关联】blocklist addBlocklistEntry、governance_branch；fork 后用户确认选支。
  */
+import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { GOVERNANCE_AUTHZ_TYPES } from '../../../../../../../scripts/p2p/event_types.mjs'
 import {
 	ancestorClosureFromTip,
 	computeDagTipIdsFromEvents,
 } from '../../../../../../../scripts/p2p/governance_branch.mjs'
 import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
-import { readJsonl } from '../dag/storage.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { eventsPath } from '../lib/paths.mjs'
 
 
@@ -35,7 +36,7 @@ export async function blockOpposingForkBranch(username, groupId, acceptedTipId) 
 	const tip = String(acceptedTipId || '').trim().toLowerCase()
 	if (!isHex64(tip)) throw new Error('acceptedTipId must be 64 hex chars')
 
-	const events = await readJsonl(eventsPath(username, groupId))
+	const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
 	const byId = new Map()
 	for (const event of events)
 		if (event?.id) byId.set(String(event.id), event)

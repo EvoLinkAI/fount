@@ -12,13 +12,14 @@ import { join } from 'node:path'
 
 import { buildCheckpointPayload } from '../../../../../../../scripts/p2p/checkpoint.mjs'
 import { computeLocalTipsHash } from '../../../../../../../scripts/p2p/dag/index.mjs'
+import { readJsonl, writeJsonAtomic } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/governance_branch.mjs'
 import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { appendSignedLocalEvent } from '../dag/append.mjs'
 import { createGroup } from '../dag/lifecycle.mjs'
 import { getLocalSignerForNewGroup } from '../dag/localSigner.mjs'
 import { getState } from '../dag/materialize.mjs'
-import { readJsonl, writeJsonAtomic } from '../dag/storage.mjs'
+import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { groupDir, eventsPath, gshPath, messagesPath, snapshotPath } from '../lib/paths.mjs'
 
 import { saveGovernanceBranchTip } from './branchStore.mjs'
@@ -92,7 +93,7 @@ export async function forkGroupFromBranch(username, sourceGroupId, opts = {}) {
 		},
 	})
 
-	const newEvents = await readJsonl(eventsPath(username, forkGroupId))
+	const newEvents = await readJsonl(eventsPath(username, forkGroupId), { sanitize: sanitizeFederatedEvent })
 	const last = newEvents[newEvents.length - 1]
 	const tips = computeDagTipIdsFromEvents(newEvents)
 	const forkState = {

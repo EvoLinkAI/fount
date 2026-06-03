@@ -8,6 +8,8 @@
 
 import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 
+import { EVENT_ID_HEX, getPendingTipExchange } from './registry.mjs'
+
 const DEFAULT_CAP = 50_000
 const MAX_BUCKET_COUNT = 2_000
 const BUCKET_EVICT_COUNT = 500
@@ -78,4 +80,18 @@ export function warmSeenFromLocalEvents(username, groupId, events) {
 		bucket.set.add(event.id)
 		bucket.order.push(event.id)
 	}
+}
+
+/**
+ * @param {string} username 用户
+ * @param {string} groupId 群 ID
+ * @param {unknown} tips 对端 tips 数组
+ * @returns {void}
+ */
+export function ingestRemoteTipsForExchange(username, groupId, tips) {
+	const pending = getPendingTipExchange(username, groupId)
+	if (!pending || !Array.isArray(tips)) return
+	for (const tipId of tips)
+		if (EVENT_ID_HEX.test(String(tipId)))
+			pending.collected.add(String(tipId).trim().toLowerCase())
 }

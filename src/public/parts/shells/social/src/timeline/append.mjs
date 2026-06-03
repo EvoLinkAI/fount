@@ -1,14 +1,19 @@
+import { Buffer } from 'node:buffer'
+
 import { pubKeyHash, publicKeyFromSeed } from '../../../../../../scripts/p2p/crypto.mjs'
 import { appendJsonlSynced, readJsonl } from '../../../../../../scripts/p2p/dag/storage.mjs'
 import { resolveAgentCharPartName } from '../../../../../../scripts/p2p/entity/agentResolve.mjs'
 import { getLocalNodeHash } from '../../../../../../scripts/p2p/entity/replica.mjs'
 import { parseEntityHash } from '../../../../../../scripts/p2p/entity_id.mjs'
 import { getFederationIdentitySecret } from '../../../../../../scripts/p2p/federation/identity.mjs'
+import { publishTimelineEvent } from '../../../../../../scripts/p2p/part_wire.mjs'
+import { projectFollowerIndexFromTimelineEvent } from '../../../../../../scripts/p2p/social/follower_index.mjs'
 import { computeAppendHlcAndPrev, signTimelineEvent } from '../../../../../../scripts/p2p/timeline/append_core.mjs'
 import { groupIdForTimeline, timelineEventsPath } from '../paths.mjs'
 
 
-import { canonicalizeSignedTimelineEvent } from './canonicalizeEvent.mjs'
+import { canonicalizeLocalTimelineEvent } from './canonicalizeEvent.mjs'
+import { invalidateTimelineMaterializedCache } from './materialize.mjs'
 
 const NODE_ID = 'social-local'
 
@@ -32,19 +37,24 @@ export async function ensureSocialMeta(username, entityHash) {
 }
 
 /**
+ * @param {string} username replica 登录名
+ * @returns {Uint8Array | null} 联邦 identity 私钥
+ */
+function loadFederationIdentitySecretKey(username) {
+	const secretHex = getFederationIdentitySecret(username)
+	if (!secretHex || secretHex.length !== 64) return null
+	return new Uint8Array(Buffer.from(secretHex, 'hex'))
+}
+
+/**
  * 解析本 replica 时间线事件的签名者身份与密钥。
  * @param {string} username replica 登录名
  * @returns {{ sender: string, secretKey: Uint8Array }} 时间线签名者
  */
 function resolveTimelineSigner(username) {
-	const secretHex = getFederationIdentitySecret(username)
-	if (!secretHex || secretHex.length !== 64)
-		throw new Error('configure federation identity before posting')
-	const secretKey = new Uint8Array(32)
-	for (let index = 0; index < 32; index++)
-		secretKey[index] = Number.parseInt(secretHex.slice(index * 2, index * 2 + 2), 16)
-	const sender = pubKeyHash(publicKeyFromSeed(secretKey))
-	return { sender, secretKey }
+	const secretKey = loadFederationIdentitySecretKey(username)
+	if (!secretKey) throw new Error('configure federation identity before posting')
+	return { sender: pubKeyHash(publicKeyFromSeed(secretKey)), secretKey }
 }
 
 /**
@@ -57,7 +67,9 @@ function resolveTimelineSigner(username) {
 export function canWriteTimeline(username, entityHash) {
 	const parsed = parseEntityHash(entityHash)
 	if (!parsed || parsed.nodeHash !== getLocalNodeHash(username)) return false
-	const { sender } = resolveTimelineSigner(username)
+	const secretKey = loadFederationIdentitySecretKey(username)
+	if (!secretKey) return false
+	const sender = pubKeyHash(publicKeyFromSeed(secretKey))
 	if (parsed.subjectHash === sender) return true
 	return resolveAgentCharPartName(username, parsed.entityHash) !== null
 }
@@ -101,8 +113,10 @@ export async function appendTimelineEvent(username, entityHash, event) {
 		node_id: NODE_ID,
 	}
 	const signed = await signTimelineEvent(base, secretKey)
-	const row = canonicalizeSignedTimelineEvent(signed)
+	const row = canonicalizeLocalTimelineEvent(signed)
 	await appendJsonlSynced(timelineEventsPath(username, entityHash), row)
+	invalidateTimelineMaterializedCache(username, entityHash)
+	await projectFollowerIndexFromTimelineEvent(username, entityHash, row)
 	return row
 }
 
@@ -114,4 +128,19 @@ export async function appendTimelineEvent(username, entityHash, event) {
  */
 export async function readTimelineEvents(username, entityHash) {
 	return readJsonl(timelineEventsPath(username, entityHash))
+}
+
+/**
+ * 签名写盘并按需联邦 fanout。
+ * @param {string} username 用户
+ * @param {string} entityHash 时间线 owner
+ * @param {object} event 未签名事件
+ * @param {{ fanout?: boolean }} [options] 默认 fanout=true
+ * @returns {Promise<object>} 签名事件
+ */
+export async function commitTimelineEvent(username, entityHash, event, options = {}) {
+	const signed = await appendTimelineEvent(username, entityHash, event)
+	if (options.fanout !== false)
+		await publishTimelineEvent(username, entityHash, signed)
+	return signed
 }

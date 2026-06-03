@@ -19,7 +19,7 @@ export async function suggestMentions(username, query = '', limit = 20) {
 
 	/**
 	 * 将 @ 提及候选加入结果集（去重与关键词过滤）。
-	 * @param {object} row 候选
+	 * @param {{ entityHash?: string, displayName?: string, charPartName?: string }} suggestion 候选条目
 	 * @returns {void}
 	 */
 	function pushSuggestion(suggestion) {

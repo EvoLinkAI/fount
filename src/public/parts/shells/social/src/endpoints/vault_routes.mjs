@@ -1,7 +1,7 @@
 import { resolveOperatorEntityHash } from '../../../../../../scripts/p2p/entity/replica.mjs'
 import { isEntityHash128 } from '../../../../../../scripts/p2p/entity_id.mjs'
 import { authenticate, getUserByReq } from '../../../../../../server/auth.mjs'
-import { appendTimelineEvent } from '../timeline/append.mjs'
+import { commitTimelineEvent } from '../timeline/append.mjs'
 import { cacheTranslation, getCachedTranslation, translatePostText } from '../translate.mjs'
 import { getVaultFileByShareId, registerVaultFile } from '../vault.mjs'
 
@@ -28,7 +28,7 @@ export function registerVaultRoutes(router) {
 		const self = resolveOperatorEntityHash(username)
 		if (!self) return res.status(403).json({ error: 'identity required' })
 		const entry = await registerVaultFile(username, self, req.body)
-		const event = await appendTimelineEvent(username, self, {
+		const event = await commitTimelineEvent(username, self, {
 			type: 'file_share',
 			content: {
 				shareId: entry.shareId,
@@ -38,7 +38,7 @@ export function registerVaultRoutes(router) {
 				size: entry.size,
 				visibility: entry.visibility,
 			},
-		})
+		}, { fanout: false })
 		res.status(200).json({ entry, event })
 	})
 

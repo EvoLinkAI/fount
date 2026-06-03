@@ -1,42 +1,28 @@
-import { readdir } from 'node:fs/promises'
-
 import { ensureLocalEntityProfile, getProfile } from '../../../../../scripts/p2p/entity/profile.mjs'
-import { isEntityHash128 } from '../../../../../scripts/p2p/entity_id.mjs'
-import { getUserDictionary } from '../../../../../server/auth.mjs'
+import { collectSocialRpcMerged } from '../../../../../scripts/p2p/part_wire.mjs'
+import { SOCIAL_RPC_TYPES } from '../../../../../scripts/p2p/social_namespace.mjs'
 
+import { listLocalTimelineOwners } from './feedHelpers.mjs'
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
-
-/**
- * 列出本机已知的时间线 owner entityHash。
- * @param {string} username 用户
- * @returns {Promise<string[]>} 本地已知时间线 entityHash
- */
-export async function listLocalTimelineOwners(username) {
-	const root = `${getUserDictionary(username)}/shells/social/timelines`
-	try {
-		const entries = await readdir(root, { withFileTypes: true })
-		return entries.filter(entry => entry.isDirectory())
-			.map(entry => entry.name.toLowerCase())
-			.filter(isEntityHash128)
-	}
-	catch {
-		return []
-	}
-}
+import { buildFederatedTimelinePullResponse } from './timeline/sync.mjs'
 
 /**
  * 探索页推荐公开账户（跳过受保护时间线）。
  * @param {string} username 用户
  * @param {object} [options] 探索选项
  * @param {number} [options.n=20] 返回账户数
+ * @param {string} [options.cursor] 分页游标（entityHash）
  * @returns {Promise<{ accounts: object[], nextCursor: string | null }>} 推荐账户
  */
 export async function discoverAccounts(username, options = {}) {
 	const accountLimit = Math.min(Math.max(Number(options.n) || 20, 1), 100)
+	const cursor = String(options.cursor || '').toLowerCase()
 	const owners = await listLocalTimelineOwners(username)
+	const start = cursor ? Math.max(0, owners.indexOf(cursor) + 1) : 0
+	const slice = owners.slice(start, start + accountLimit)
 	/** @type {object[]} */
 	const accounts = []
-	for (const entityHash of owners.slice(0, accountLimit)) {
+	for (const entityHash of slice) {
 		const view = await getTimelineMaterialized(username, entityHash)
 		if (view.socialMeta?.isProtected) continue
 		let profile = null
@@ -45,7 +31,6 @@ export async function discoverAccounts(username, options = {}) {
 			profile = await getProfile(entityHash, username)
 		}
 		catch {
-			// 本地时间线可能包含远端 owner；探索页应降级跳过而非 500
 			continue
 		}
 		accounts.push({
@@ -55,16 +40,22 @@ export async function discoverAccounts(username, options = {}) {
 			avatarUrl: profile?.avatarUrl || null,
 		})
 	}
-	return { accounts, nextCursor: owners.length > accountLimit ? owners[accountLimit] : null }
+	const nextIndex = start + slice.length
+	return {
+		accounts,
+		nextCursor: nextIndex < owners.length ? owners[nextIndex] : null,
+	}
 }
 
+/** 遍历 owner 时多采样的倍数，供后续 shuffle 截断以保证随机性。 */
+const POST_DISCOVER_SAMPLE_MULTIPLIER = 3
+
 /**
- * 从本地可见时间线随机采样公开帖子。
  * @param {string} username 用户
  * @param {object} [options] 探索选项
  * @param {number} [options.n=20] 返回帖子数
  * @param {boolean} [options.mediaOnly=false] 仅含媒体
- * @returns {Promise<{ posts: object[], nextCursor: string | null }>} 随机帖子
+ * @returns {Promise<{ posts: object[] }>} 随机帖子样本
  */
 export async function discoverPosts(username, options = {}) {
 	const postLimit = Math.min(Math.max(Number(options.n) || 20, 1), 100)
@@ -74,6 +65,7 @@ export async function discoverPosts(username, options = {}) {
 	const posts = []
 
 	for (const entityHash of owners) {
+		if (posts.length >= postLimit * POST_DISCOVER_SAMPLE_MULTIPLIER) break
 		const view = await getTimelineMaterialized(username, entityHash)
 		if (view.socialMeta?.isProtected) continue
 		for (const post of view.posts) {
@@ -95,32 +87,68 @@ export async function discoverPosts(username, options = {}) {
 	}
 
 	const sampledPosts = posts.slice(0, postLimit)
-	return {
-		posts: sampledPosts,
-		nextCursor: posts.length > postLimit
-			? `${sampledPosts[sampledPosts.length - 1]?.entityHash}:${sampledPosts[sampledPosts.length - 1]?.postId}`
-			: null,
-	}
+	return { posts: sampledPosts }
 }
 
 /**
- * 读取指定 entity 的 following 列表（本地物化视图）。
+ * 读取指定 entity 的 following 列表（本地物化视图；受保护账户对外 RPC 返回空）。
  * @param {string} username 用户
  * @param {string} entityHash 目标
+ * @param {{ requesterNodeHash?: string | null }} [ingress] 联邦入站
  * @returns {Promise<string[]>} 本地可见 following 列表
  */
-export async function discoverFollowGraph(username, entityHash) {
-	const view = await getTimelineMaterialized(username, entityHash)
+export async function discoverFollowGraph(username, entityHash, ingress = {}) {
+	const id = String(entityHash).toLowerCase()
+	const view = await getTimelineMaterialized(username, id)
+	if (view.socialMeta?.isProtected) {
+		const { getNodeHash } = await import('../../../../../scripts/p2p/node_context.mjs')
+		const { resolveOperatorEntityHash } = await import('../../../../../scripts/p2p/entity/replica.mjs')
+		const requesterNode = String(ingress.requesterNodeHash || '').trim().toLowerCase()
+		const operator = resolveOperatorEntityHash(username)
+		const isOwnerRequest = requesterNode === getNodeHash(username) || operator?.toLowerCase() === id
+		if (!isOwnerRequest) return []
+	}
 	return view.following
+}
+
+/**
+ * 探索页：合并本地 + 邻居 RPC 结果。
+ * @param {string} username 用户
+ * @param {object} rpc RPC 请求体
+ * @returns {Promise<object>} 合并结果
+ */
+export async function discoverWithNetwork(username, rpc) {
+	const local = await handleSocialRpc(username, rpc, {})
+	const { data: remote, errors: remoteErrors } = await collectSocialRpcMerged(username, rpc)
+	if (remoteErrors.length)
+		console.warn('social: neighbor RPC errors', { type: rpc.type, count: remoteErrors.length })
+	const merged = { ...local }
+	if (rpc.type === 'social_discover_request') {
+		const accountMap = new Map((local.accounts || []).map(account => [account.entityHash, account]))
+		for (const row of remote)
+			for (const account of row.accounts || [])
+				accountMap.set(account.entityHash, account)
+		merged.accounts = [...accountMap.values()].slice(0, rpc.n || 20)
+	}
+	if (rpc.type === 'social_post_discover_request') {
+		const postMap = new Map((local.posts || []).map(post => [`${post.entityHash}:${post.postId}`, post]))
+		for (const row of remote)
+			for (const post of row.posts || [])
+				postMap.set(`${post.entityHash}:${post.postId}`, post)
+		merged.posts = [...postMap.values()].slice(0, rpc.n || 20)
+	}
+	return merged
 }
 
 /**
  * P2P RPC 处理器（供联邦层调用）。
  * @param {string} username 本地用户
  * @param {object} rpc RPC 体
+ * @param {{ requesterNodeHash?: string | null }} [ingress] 联邦入站
  * @returns {Promise<object | null>} RPC 响应体
  */
-export async function handleSocialRpc(username, rpc) {
+export async function handleSocialRpc(username, rpc, ingress = {}) {
+	if (!SOCIAL_RPC_TYPES.has(String(rpc?.type || ''))) return null
 	switch (rpc?.type) {
 		case 'social_discover_request':
 			return { type: 'social_discover_response', ...await discoverAccounts(username, rpc) }
@@ -130,8 +158,22 @@ export async function handleSocialRpc(username, rpc) {
 			return {
 				type: 'social_follow_graph_response',
 				entityHash: rpc.entityHash,
-				following: await discoverFollowGraph(username, String(rpc.entityHash)),
+				following: await discoverFollowGraph(username, String(rpc.entityHash), ingress),
 			}
+		case 'social_timeline_pull_request': {
+			const entityHash = String(rpc.entityHash || '').toLowerCase()
+			const events = await buildFederatedTimelinePullResponse(
+				username,
+				entityHash,
+				rpc.afterEventId,
+				ingress.requesterNodeHash,
+			)
+			return {
+				type: 'social_timeline_pull_response',
+				entityHash,
+				events,
+			}
+		}
 		case 'social_on_mention': {
 			const { processSocialOnMentionRpc } = await import('./dispatch.mjs')
 			return {

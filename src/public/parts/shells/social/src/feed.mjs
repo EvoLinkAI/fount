@@ -1,10 +1,13 @@
-import { readFile } from 'node:fs/promises'
-
+import { isEntityHashBlocked } from '../../../../../scripts/p2p/blocklist.mjs'
 import { ensureLocalEntityProfile, getProfile } from '../../../../../scripts/p2p/entity/profile.mjs'
 import { isEntityHash128 } from '../../../../../scripts/p2p/entity_id.mjs'
-import { getUserDictionary } from '../../../../../server/auth.mjs'
 
-import { isBlocked } from './blocklist.mjs'
+import {
+	buildPostFeedItem,
+	buildRepostFeedItem,
+	createEngagementForPost,
+	withDecryptedPostContent,
+} from './feed/buildItem.mjs'
 import {
 	buildEngagementIndex,
 	buildViewerLikedSet,
@@ -12,30 +15,13 @@ import {
 	listKnownTimelineOwners,
 	loadViewerContext,
 } from './feedHelpers.mjs'
-import { compareFeedItems } from './feedMerge.mjs'
+import { compareFeedItems, kWayMergeFeedStreams, pickNextFeedStreamIndex } from './feedMerge.mjs'
 import { loadFollowing } from './following.mjs'
-import { maybeDecryptPostContent } from './gsh/vault.mjs'
 import { createAuthorProfileLoader } from './lib/authorProfileSummary.mjs'
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
 
 /**
- * 判断本地是否持有可读时间线 events.jsonl。
- * @param {string} username 用户
- * @param {string} entityHash 时间线 owner
- * @returns {Promise<boolean>} 本地是否持有可读时间线
- */
-async function timelineExists(username, entityHash) {
-	try {
-		await readFile(`${getUserDictionary(username)}/shells/social/timelines/${entityHash}/events.jsonl`, 'utf8')
-		return true
-	}
-	catch {
-		return false
-	}
-}
-
-/**
- * 解析并校验对观看者可见的帖子。
+ * 解析并校验对观看者可见的帖子（含解密）。
  * @param {string} username 用户
  * @param {string} entityHash 作者
  * @param {string} postId 帖子 id
@@ -43,14 +29,14 @@ async function timelineExists(username, entityHash) {
  * @returns {Promise<object | null>} 可见帖子或 null
  */
 async function resolveVisiblePost(username, entityHash, postId, viewerContext) {
-	if (!await timelineExists(username, entityHash)) return null
 	const view = await getTimelineMaterialized(username, entityHash)
+	if (!view.posts?.length && !view.postById) return null
 	const post = view.postById?.[postId]
 	if (!post) return null
 	const enriched = { ...post, entityHash, senderEntityHash: entityHash }
 	if (!canViewPost(enriched, viewerContext.viewerEntityHash, viewerContext.blocked, viewerContext.following))
 		return null
-	return post
+	return withDecryptedPostContent(username, entityHash, post)
 }
 
 /**
@@ -73,32 +59,16 @@ export async function buildHomeFeed(username, options = {}) {
 	const engagement = await buildEngagementIndex(username, feedSources)
 	const viewerLiked = await buildViewerLikedSet(username)
 	const authorProfile = createAuthorProfileLoader(username)
-
-	/**
-	 * 查询指定帖子的互动计数与观看者点赞状态。
-	 * @param {string} targetEntityHash 原帖作者
-	 * @param {string} targetPostId 原帖 id
-	 * @returns {object} 互动计数与点赞状态
-	 */
-	function engagementForPost(targetEntityHash, targetPostId) {
-		const key = `${targetEntityHash.toLowerCase()}:${targetPostId}`
-		return {
-			likeCount: engagement.likes.get(key) || 0,
-			repostCount: engagement.reposts.get(key) || 0,
-			replyCount: engagement.replies.get(key) || 0,
-			viewerLiked: viewerLiked.has(key),
-			targetEntityHash: targetEntityHash.toLowerCase(),
-			targetPostId,
-		}
-	}
+	const engagementForPost = createEngagementForPost(engagement, viewerLiked)
+	const itemCtx = { authorProfile, engagementForPost }
 
 	/** @type {{ candidates: object[], index: number }[]} */
 	const streams = []
 	for (const entityHash of feedSources) {
 		if (!isEntityHash128(entityHash)) continue
-		if (await isBlocked(username, entityHash)) continue
-		if (!await timelineExists(username, entityHash)) continue
+		if (isEntityHashBlocked(username, entityHash)) continue
 		const view = await getTimelineMaterialized(username, entityHash)
+		if (!view.posts?.length && !view.reposts?.length) continue
 		/** @type {object[]} */
 		const candidates = []
 		for (const post of view.posts) {
@@ -137,14 +107,7 @@ export async function buildHomeFeed(username, options = {}) {
 	let hasMore = false
 
 	while (collecting ? items.length < limit : true) {
-		let best = -1
-		for (let index = 0; index < streams.length; index++) {
-			const stream = streams[index]
-			if (stream.index >= stream.candidates.length) continue
-			const head = stream.candidates[stream.index]
-			if (best < 0 || compareFeedItems(head, streams[best].candidates[streams[best].index]) > 0)
-				best = index
-		}
+		const best = pickNextFeedStreamIndex(streams)
 		if (best < 0) break
 
 		const stream = streams[best]
@@ -156,29 +119,10 @@ export async function buildHomeFeed(username, options = {}) {
 		if (head.kind === 'repost') {
 			const originalPost = await resolveVisiblePost(username, head.originalEntityHash, head.originalPostId, viewerContext)
 			if (originalPost)
-				item = {
-					kind: 'repost',
-					entityHash: head.entityHash,
-					postId: head.postId,
-					post: originalPost,
-					repostComment: String(head.repost.content?.comment || ''),
-					hlc: head.hlc,
-					authorProfile: await authorProfile(head.entityHash),
-					...engagementForPost(head.originalEntityHash, head.originalPostId),
-				}
-
+				item = await buildRepostFeedItem(head, originalPost, itemCtx)
 		}
 		else
-			item = {
-				kind: 'post',
-				entityHash: head.entityHash,
-				postId: head.postId,
-				post: head.post,
-				hlc: head.hlc,
-				authorProfile: await authorProfile(head.entityHash),
-				...engagementForPost(head.entityHash, head.postId),
-			}
-
+			item = await buildPostFeedItem(username, head.entityHash, head.post, itemCtx)
 
 		if (!item) continue
 		const key = `${item.entityHash}:${item.postId}`
@@ -190,15 +134,8 @@ export async function buildHomeFeed(username, options = {}) {
 	}
 
 	if (items.length === limit) {
-		let peekBest = -1
-		for (let index = 0; index < streams.length; index++) {
-			const stream = streams[index]
-			if (stream.index >= stream.candidates.length) continue
-			const head = stream.candidates[stream.index]
-			if (peekBest < 0 || compareFeedItems(head, streams[peekBest].candidates[streams[peekBest].index]) > 0)
-				peekBest = index
-		}
-		hasMore = peekBest >= 0
+		const peek = kWayMergeFeedStreams(streams.map(s => ({ ...s })), 1)
+		hasMore = peek.length > 0
 	}
 
 	const next = hasMore && items.length
@@ -221,52 +158,14 @@ export async function buildProfileFeedItems(username, entityHash) {
 	const viewerContext = await loadViewerContext(username)
 	const engagement = await buildEngagementIndex(username)
 	const viewerLiked = await buildViewerLikedSet(username)
-
-	/**
-	 * 加载作者资料摘要（displayName、avatarUrl）。
-	 * @param {string} hash 作者
-	 * @returns {Promise<object | null>} 资料摘要
-	 */
-	async function authorProfile(hash) {
-		const profile = await getEntityProfile(username, hash)
-		return profile
-			? { displayName: profile.displayName || profile.name, avatarUrl: profile.avatarUrl || null }
-			: null
-	}
-
-	/**
-	 * 查询指定帖子的互动计数与观看者点赞状态。
-	 * @param {string} targetEntityHash 原帖作者
-	 * @param {string} targetPostId 原帖 id
-	 * @returns {object} 互动计数与点赞状态
-	 */
-	function engagementForPost(targetEntityHash, targetPostId) {
-		const key = `${targetEntityHash.toLowerCase()}:${targetPostId}`
-		return {
-			likeCount: engagement.likes.get(key) || 0,
-			repostCount: engagement.reposts.get(key) || 0,
-			replyCount: engagement.replies.get(key) || 0,
-			viewerLiked: viewerLiked.has(key),
-			targetEntityHash: targetEntityHash.toLowerCase(),
-			targetPostId,
-		}
-	}
-
-	/**
-	 * 解密帖子 content 并返回副本（失败时标记受保护）。
-	 * @param {object} post 物化帖子
-	 * @returns {Promise<object>} 解密后的帖子副本
-	 */
-	async function withDecryptedContent(post) {
-		const decrypted = await maybeDecryptPostContent(username, entityHash, post.content)
-		return { ...post, content: decrypted ?? { protected: true } }
-	}
-
-	if (!await timelineExists(username, entityHash))
-		return { entityHash, items: [] }
+	const authorProfile = createAuthorProfileLoader(username)
+	const engagementForPost = createEngagementForPost(engagement, viewerLiked)
+	const itemCtx = { authorProfile, engagementForPost }
 
 	const view = await getTimelineMaterialized(username, entityHash)
-	const author = await authorProfile(entityHash)
+	if (!view.posts?.length)
+		return { entityHash, items: [] }
+
 	/** @type {object[]} */
 	const items = []
 
@@ -274,24 +173,10 @@ export async function buildProfileFeedItems(username, entityHash) {
 		const enriched = { ...post, entityHash, senderEntityHash: entityHash }
 		if (!canViewPost(enriched, viewerContext.viewerEntityHash, viewerContext.blocked, viewerContext.following))
 			continue
-		items.push({
-			kind: 'post',
-			entityHash,
-			postId: post.id,
-			post: await withDecryptedContent(post),
-			hlc: post.hlc,
-			authorProfile: author,
-			...engagementForPost(entityHash, post.id),
-		})
+		items.push(await buildPostFeedItem(username, entityHash, post, itemCtx))
 	}
 
-	items.sort((left, right) => {
-		const lw = Number(left.hlc?.wall) || 0
-		const rw = Number(right.hlc?.wall) || 0
-		if (lw !== rw) return rw - lw
-		return String(right.postId).localeCompare(String(left.postId))
-	})
-
+	items.sort((left, right) => compareFeedItems(left, right) * -1)
 	return { entityHash, items }
 }
 
@@ -309,8 +194,8 @@ export async function listReplies(username, entityHash, postId) {
 
 	for (const author of await listKnownTimelineOwners(username)) {
 		if (viewerContext.blocked.has(author)) continue
-		if (!await timelineExists(username, author)) continue
 		const view = await getTimelineMaterialized(username, author)
+		if (!view.posts?.length) continue
 		for (const post of view.posts) {
 			const replyTo = post.content?.replyTo
 			if (!replyTo) continue

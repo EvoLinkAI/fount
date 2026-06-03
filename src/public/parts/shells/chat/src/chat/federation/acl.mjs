@@ -24,7 +24,8 @@ export function isAuthzGatedEventType(type) {
  * @returns {boolean} 至少一名 active 成员则为 true
  */
 export function hasMaterializedAclSnapshot(state) {
-	return Object.values(state?.members || {}).some(member => member.status === 'active')
+	if (!state) return false
+	return Object.values(state.members).some(member => member?.status === 'active')
 }
 
 /**
@@ -38,29 +39,16 @@ export function shouldDeferFederatedRelay(state, event) {
 }
 
 /**
- * 是否允许写入本节点 `events.jsonl`。
+ * 联邦入站：无成员快照时拒绝 gated 类型（`member_join` 除外）。
  * @param {object | null | undefined} state 物化群状态
- * @param {{ type?: string, sender?: string }} event DAG 事件
- * @returns {boolean} 允许落盘则为 true
+ * @param {{ type?: string }} event DAG 事件
+ * @returns {boolean} 应拒绝落盘则为 true
  */
-export function canAcceptFederatedEvent(state, event) {
+export function federationIngestBlockedWithoutSnapshot(state, event) {
 	const type = event?.type
-	if (!hasMaterializedAclSnapshot(state))
-		if (isAuthzGatedEventType(type) && type !== 'member_join') return false
-
-	if (shouldDeferFederatedRelay(state, event)) return true
-	return canRelayFederatedEvent(state, event)
-}
-
-/**
- * 是否可立即向邻居中继（否则入 `pending_relay.jsonl`）。
- * @param {object | null | undefined} state 物化群状态
- * @param {{ type?: string, sender?: string }} event DAG 事件
- * @returns {boolean} 可立即中继则为 true
- */
-export function canRelayFederatedEventNow(state, event) {
-	if (shouldDeferFederatedRelay(state, event)) return false
-	return canRelayFederatedEvent(state, event)
+	return !hasMaterializedAclSnapshot(state)
+		&& isAuthzGatedEventType(type)
+		&& type !== 'member_join'
 }
 
 /**

@@ -1,3 +1,8 @@
+import {
+	addBlocklistEntry,
+	loadBlocklist,
+	setEntityBlocked,
+} from '../../scripts/p2p/blocklist.mjs'
 import { localesFromRequest } from '../../scripts/p2p/entity/localized.mjs'
 import {
 	computeEffectiveStatus,
@@ -16,7 +21,9 @@ import {
 import { isEntityHash128 } from '../../scripts/p2p/entity_id.mjs'
 import { ensureFederationDefaults, saveFederationSettings } from '../../scripts/p2p/federation/identity.mjs'
 import { isHex64 } from '../../scripts/p2p/hexIds.mjs'
+import { loadNetwork, saveNetwork } from '../../scripts/p2p/network.mjs'
 import { resolveGroupMemberEntityHash } from '../../scripts/p2p/p2p_viewer_registry.mjs'
+import '../../scripts/p2p/trust_graph.mjs'
 import { authenticate, getUserByReq } from '../auth.mjs'
 
 import { registerP2pFileEndpoints } from './p2p_file_endpoints.mjs'
@@ -52,6 +59,44 @@ export function registerP2pEndpoints(router) {
 		const dmIntroNonce = String(body.dmIntroNonce || '').trim()
 		if (dmIntroNonce.length >= 16) patch.dmIntroNonce = dmIntroNonce
 		res.status(200).json(saveFederationSettings(username, patch))
+	})
+
+	router.get('/api/p2p/network', authenticate, async (req, res) => {
+		const { username } = getUserByReq(req)
+		res.status(200).json(loadNetwork(username))
+	})
+
+	router.put('/api/p2p/network', authenticate, async (req, res) => {
+		const { username } = getUserByReq(req)
+		const body = req.body || {}
+		const net = loadNetwork(username)
+		if (Array.isArray(body.trustedPeers)) net.trustedPeers = body.trustedPeers
+		if (Array.isArray(body.explorePeers)) net.explorePeers = body.explorePeers
+		saveNetwork(username, net)
+		res.status(200).json(loadNetwork(username))
+	})
+
+	router.get('/api/p2p/blocklist', authenticate, async (req, res) => {
+		const { username } = getUserByReq(req)
+		res.status(200).json(loadBlocklist(username))
+	})
+
+	router.post('/api/p2p/blocklist', authenticate, async (req, res) => {
+		const { username } = getUserByReq(req)
+		const body = req.body || {}
+		if (body.entityHash != null) {
+			const entityHash = String(body.entityHash).toLowerCase()
+			const blocked = await setEntityBlocked(username, entityHash, body.block !== false)
+			return res.status(200).json({ entityHash, blocked })
+		}
+		if (body.scope && body.value) 
+			await addBlocklistEntry(username, {
+				scope: body.scope,
+				value: body.value,
+				groupId: body.groupId,
+			})
+		
+		res.status(200).json({ ok: true })
 	})
 
 	router.get('/api/p2p/viewer', authenticate, async (req, res) => {
