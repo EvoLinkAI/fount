@@ -1,6 +1,7 @@
 import { loadData, saveData } from '../../server/setting_loader.mjs'
 import { createLruMap } from '../memo.mjs'
 
+import { compositeKey } from './composite_key.mjs'
 import { parseEntityHash } from './entity_id.mjs'
 import { isHex64, normalizeHex64 } from './hexIds.mjs'
 
@@ -56,7 +57,7 @@ function isEntityHash128(value) {
  * @returns {string} 索引键
  */
 function blockKey(scope, groupId, value) {
-	return `${scope}:${groupId}:${value}`
+	return compositeKey(scope, groupId, value)
 }
 
 /**

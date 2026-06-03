@@ -4,6 +4,7 @@
  * 【原理】分区槽按 username→groupId→partitionId 嵌套 Map 缓存；inflight 合并并发 join；rebindGeneration 使进行中的 join 作废。
  */
 import {
+	compositeKey,
 	mapDelete,
 	mapDeleteByPrefix,
 	mapForEachUnder,
@@ -220,5 +221,5 @@ export function deletePendingTipExchange(username, groupId) {
  * @returns {string} gossip 多 waiter 表前缀键
  */
 export function gossipWaitPrefix(username, groupId) {
-	return `${username}:${groupId}:`
+	return compositeKey(username, groupId)
 }

@@ -14,8 +14,8 @@ const BUCKET_HEX_PREFIX_LEN = 2
 /** @type {ReturnType<typeof createLruMap<string, string[]>>} */
 const followerEntryCache = createLruMap(FOLLOWER_ENTRY_CACHE_MAX)
 
-/** @type {Promise<void>} */
-let mutationChain = Promise.resolve()
+/** @type {Map<string, Promise<void>>} */
+const mutationChainsByTarget = new Map()
 
 /**
  * @returns {string} follower 索引根目录
@@ -133,13 +133,20 @@ async function writeFollowerEntry(target, followers) {
 }
 
 /**
- * 串行化索引突变，避免并发覆盖。
+ * 按 target 串行化索引突变，避免同桶 JSON 并发覆盖；不同 target 可并行。
+ * @param {string} target 128 hex
  * @param {() => Promise<void>} task 突变任务
  * @returns {Promise<void>}
  */
-function queueFollowerIndexMutation(task) {
-	const run = mutationChain.catch(() => { }).then(task)
-	mutationChain = run.catch(err => { console.error('follower_index: mutation failed', err) })
+function queueFollowerIndexMutation(target, task) {
+	const prev = mutationChainsByTarget.get(target) || Promise.resolve()
+	const run = prev.catch(() => { }).then(task)
+	const final = run.catch(err => { console.error('follower_index: mutation failed', err) })
+	mutationChainsByTarget.set(target, final)
+	final.finally(() => {
+		if (mutationChainsByTarget.get(target) === final)
+			mutationChainsByTarget.delete(target)
+	})
 	return run
 }
 
@@ -153,7 +160,7 @@ function queueFollowerIndexMutation(task) {
 export async function updateFollowerIndex(username, targetEntityHash, follow) {
 	const target = String(targetEntityHash || '').toLowerCase()
 	if (!parseEntityHash(target)) return
-	await queueFollowerIndexMutation(async () => {
+	await queueFollowerIndexMutation(target, async () => {
 		const set = new Set(await readFollowerEntry(target))
 		if (follow) set.add(username)
 		else set.delete(username)

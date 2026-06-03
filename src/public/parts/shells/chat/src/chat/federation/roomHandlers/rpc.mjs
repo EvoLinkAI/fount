@@ -45,17 +45,9 @@ export function registerRpcHandlers(roomContext) {
 	function onGroupPartAction(name, handler) {
 		getActionReceiver(name)(handler)
 	}
-	/**
-	 * @param {object} data part_invoke 载荷
-	 * @returns {boolean} 是否允许
-	 */
-	function allowGroupPartInvoke(data) {
-		const kind = String(data?.invoke?.kind || '')
-		if (!kind.startsWith('mailbox_')) return true
-		return isFederationActionAllowedUnderLoad(key, 'part_invoke', rtcLimits)
-	}
 	attachGroupPartWire(username, groupId, { send: sendGroupPartAction, on: onGroupPartAction }, {
-		allowPartInvoke: allowGroupPartInvoke,
+		/** @returns {boolean} 过载时是否仍接受 part_invoke */
+		allowPartInvoke: () => isFederationActionAllowedUnderLoad(key, 'part_invoke', rtcLimits),
 	})
 
 	attachTrustGraphChunkHandlers(username, room, fedOut, rtcLimits, key)

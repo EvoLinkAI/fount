@@ -13,6 +13,7 @@ import { timelineEventsPath } from '../paths.mjs'
 import { canonicalizeSignedTimelineEvent } from './canonicalizeEvent.mjs'
 import { filterEventsForFederatedPull } from './federationExport.mjs'
 import { invalidateTimelineMaterializedCache } from './materialize.mjs'
+import { invalidateTimelineOwnerIndex } from './ownerIndex.mjs'
 
 /** 联邦 RPC 单次 pull 响应上限（客户端循环 afterEventId 直至空批）。 */
 export const FEDERATED_TIMELINE_PULL_BATCH = 200
@@ -44,6 +45,7 @@ export async function ingestRemoteTimelineEvent(username, entityHash, event) {
 	}
 	await appendJsonlSynced(timelineEventsPath(username, entityHash), row)
 	invalidateTimelineMaterializedCache(username, entityHash)
+	invalidateTimelineOwnerIndex(username)
 	await tryImportFollowApproveVault(username, entityHash, event)
 	await projectFollowerIndexFromTimelineEvent(username, entityHash, row)
 	return true

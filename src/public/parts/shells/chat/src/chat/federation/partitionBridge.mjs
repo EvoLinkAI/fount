@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { createDedupeSlot } from '../../../../../../../scripts/p2p/dedupe_slot.mjs'
 import { isRtcRoomOverloaded } from '../../../../../../../scripts/p2p/rtc_connection_budget.mjs'
+import { consumeWireRateBucket } from '../../../../../../../scripts/p2p/wire_rate_bucket.mjs'
 
 const takeBridgeDedupeSlot = createDedupeSlot({ maxSize: 5000, ttlMs: 30_000 })
 const DEFAULT_BRIDGE_TTL = 2
@@ -18,8 +19,6 @@ const BRIDGE_ACTION_PRIORITY = {
 }
 
 const BRIDGE_FORWARD_MAX_PER_MIN = 120
-/** @type {Map<string, { count: number, windowStart: number }>} */
-const bridgeForwardBuckets = new Map()
 
 /**
  * @param {string} key 去重键
@@ -82,17 +81,9 @@ export function shouldDropPartitionBridgeUnderLoad(roomKey, actionName, rtcLimit
  * @returns {boolean} 是否允许继续转发桥接包
  */
 export function takePartitionBridgeForwardSlot(roomKey) {
-	const now = Date.now()
-	let bucket = bridgeForwardBuckets.get(roomKey)
-	if (!bucket || now - bucket.windowStart >= 60_000)
-		bucket = { count: 0, windowStart: now }
-	if (bucket.count >= BRIDGE_FORWARD_MAX_PER_MIN) {
-		bridgeForwardBuckets.set(roomKey, bucket)
-		return false
-	}
-	bucket.count++
-	bridgeForwardBuckets.set(roomKey, bucket)
-	return true
+	return consumeWireRateBucket(`partition_bridge_fwd:${roomKey}`, {
+		maxCount: BRIDGE_FORWARD_MAX_PER_MIN,
+	})
 }
 
 /**

@@ -9,26 +9,24 @@
 import './src/chat/dag/index.mjs'
 import './src/chat/federation/config.mjs'
 import { registerMaterializedSessionProvider, unregisterMaterializedSessionProvider } from '../../../../scripts/p2p/entity/session_snapshot_registry.mjs'
-import { normalizeHex64 } from '../../../../scripts/p2p/hexIds.mjs'
+import {
+	registerMailboxHandlers,
+	unregisterMailboxHandlers,
+} from '../../../../scripts/p2p/mailbox/handler_registry.mjs'
 import { registerGroupMemberEntityResolver, unregisterGroupMemberEntityResolver } from '../../../../scripts/p2p/p2p_viewer_registry.mjs'
 import {
 	registerShellPartpath,
 	unregisterShellPartpath,
 } from '../../../../scripts/p2p/part_path_registry.mjs'
-import { isPlainObject } from '../../../../scripts/p2p/wire_ingress.mjs'
 
 import { registerChatChunkProviders, unregisterChatChunkProviders } from './src/chat/chunkProviders.mjs'
 import { registerChatFederationRoomProvider, unregisterChatFederationRoomProvider } from './src/chat/federation/trustGraphRooms.mjs'
 import { registerChatGroupEntityIndex, unregisterChatGroupEntityIndex } from './src/chat/groupEntityIndex.mjs'
 import { getGroupMemberEntityHash } from './src/chat/lib/replica.mjs'
 import {
-	getMailboxRecords,
 	ingestMailboxGive,
 	ingestMailboxPut,
-	parseMailboxGive,
-	parseMailboxPut,
-	parseMailboxWant,
-	takeMailboxForRecipient,
+	respondMailboxWant,
 } from './src/chat/mailbox/delivery.mjs'
 import { registerChatManifestAcl, unregisterChatManifestAcl } from './src/chat/manifestAcl.mjs'
 import { registerChatManifestTransfer, unregisterChatManifestTransfer } from './src/chat/manifestTransfer.mjs'
@@ -40,71 +38,6 @@ import { setGroupEndpoints } from './src/group/endpoints.mjs'
 const { info } = (await import('./locales.json', { with: { type: 'json' } })).default
 
 let loadCount = 0
-
-/**
- * @param {string} user replica 登录名
- * @param {object} data invoke 体（含 wire）
- * @returns {Promise<{ ok: boolean }>} put 成功
- */
-async function handleMailboxPut(user, data) {
-	const put = parseMailboxPut(data.wire)
-	if (!put) throw new Error('invalid_mailbox_put')
-	await ingestMailboxPut(user, put)
-	return { ok: true }
-}
-
-/**
- * @param {string} user replica 登录名
- * @param {object} data invoke 体（含 wire）
- * @returns {Promise<{ kind: string, wire: object }>} want 应答或 follow-up give
- */
-async function handleMailboxWant(user, data) {
-	const want = parseMailboxWant(data.wire)
-	if (!want) throw new Error('invalid_mailbox_want')
-	const recipient = normalizeHex64(want.toPubKeyHash)
-	if (!recipient) throw new Error('invalid_recipient')
-	const ids = Array.isArray(want.ids) ? want.ids : []
-	const rows = (ids.length
-		? await getMailboxRecords(user, ids)
-		: await takeMailboxForRecipient(user, recipient)
-	).filter(row => row.toPubKeyHash === recipient && row.tier !== 'quarantine')
-	if (!rows.length) throw new Error('mailbox_empty')
-	return {
-		kind: 'mailbox_give',
-		wire: { toPubKeyHash: recipient, records: rows.slice(0, 32) },
-	}
-}
-
-/**
- * @param {string} user replica 登录名
- * @param {object} data invoke 体（含 wire、可选 groupId）
- * @returns {Promise<{ ok: boolean }>} give ingest 成功
- */
-async function handleMailboxGive(user, data) {
-	const give = parseMailboxGive(data.wire)
-	if (!give) throw new Error('invalid_mailbox_give')
-	await ingestMailboxGive(user, String(data.groupId || ''), give)
-	return { ok: true }
-}
-
-/** @type {Record<string, (user: string, data: object) => Promise<object | null>>} */
-const p2pInvokeHandlers = {
-	mailbox_put: handleMailboxPut,
-	mailbox_want: handleMailboxWant,
-	mailbox_give: handleMailboxGive,
-}
-
-/**
- * P2P part_invoke 入站 mailbox put/want/give。
- * @param {string} user replica 登录名
- * @param {object} data invoke 体（kind + wire + 可选 groupId）
- * @returns {Promise<object | null>} want 时返回 follow-up invoke 体
- */
-async function handleChatP2PInvoke(user, data) {
-	const kind = String(data?.kind || '')
-	const handler = p2pInvokeHandlers[kind]
-	return handler ? handler(user, data) : null
-}
 
 /**
  * 处理传入的聊天动作请求。
@@ -161,6 +94,11 @@ export default {
 		registerGroupMemberEntityResolver('chat', getGroupMemberEntityHash)
 		registerMaterializedSessionProvider('chat', getMaterializedSession)
 		registerChatFederationRoomProvider()
+		registerMailboxHandlers({
+			ingestPut: ingestMailboxPut,
+			respondWant: respondMailboxWant,
+			ingestGive: ingestMailboxGive,
+		})
 		setGroupEndpoints(router)
 		setEndpoints(router)
 	},
@@ -179,6 +117,7 @@ export default {
 			unregisterChatGroupEntityIndex()
 			unregisterMaterializedSessionProvider('chat')
 			unregisterChatFederationRoomProvider()
+			unregisterMailboxHandlers()
 		}
 	},
 	interfaces: {
@@ -260,17 +199,6 @@ export default {
 			IPCInvokeHandler: async (user, data) => {
 				const { command, ...params } = data
 				return handleAction(user, command, params)
-			},
-			/**
-			 * P2P part_invoke 入站 mailbox put/want/give。
-			 * @param {string} user replica 登录名
-			 * @param {object} data invoke 体（kind + wire + 可选 groupId）
-			 * @param {{ requesterNodeHash?: string | null }} [ingress] 联邦入站元数据（Chat 未使用）
-			 * @returns {Promise<object | null>} want 时返回 follow-up invoke 体
-			 */
-			P2PInvokeHandler: async (user, data) => {
-				if (!isPlainObject(data.wire)) throw new Error('invalid_wire')
-				return handleChatP2PInvoke(user, data)
 			},
 		}
 	}

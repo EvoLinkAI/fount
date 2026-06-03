@@ -4,6 +4,7 @@ import { getFederationSettings } from './federation/identity.mjs'
 import {
 	USER_ROOM_SCOPE,
 } from './identity_announce.mjs'
+import { attachMailboxWire } from './mailbox/wire.mjs'
 import { joinMqttRoomWithDefaults } from './mqtt_room.mjs'
 import { recordExplorePeersFromRoster } from './network.mjs'
 import { getNodeHash } from './node_context.mjs'
@@ -119,6 +120,7 @@ export async function ensureUserRoom(username) {
 			}
 
 			attachPartWire(username, actions)
+			attachMailboxWire(username, actions)
 			userRooms.set(username, slot)
 			recordExplorePeersFromRoster(username, slot.getRoster(), '', 'user_room')
 			return slot

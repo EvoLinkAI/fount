@@ -1,7 +1,5 @@
-import { stat } from 'node:fs/promises'
-
 import { createLruMap } from '../../../../../../scripts/memo.mjs'
-import { writeJsonAtomicSynced } from '../../../../../../scripts/p2p/dag/storage.mjs'
+import { readJsonlTipId, writeJsonAtomicSynced } from '../../../../../../scripts/p2p/dag/storage.mjs'
 import { parseEntityHash } from '../../../../../../scripts/p2p/entity_id.mjs'
 import {
 	createSocialTimelineState,
@@ -15,13 +13,13 @@ import { readTimelineEvents } from './append.mjs'
 
 const TIMELINE_VIEW_CACHE_MAX = 256
 
-/** @type {ReturnType<typeof createLruMap<Map<string, { mtime: number, size: number, view: object }>>>} */
+/** @type {ReturnType<typeof createLruMap<Map<string, { tipId: string | null, view: object }>>>} */
 const timelineViewCache = createLruMap(TIMELINE_VIEW_CACHE_MAX)
 
 /**
  * @param {string} username 用户
  * @param {string} entityHash 时间线 owner
- * @returns {Map<string, { mtime: number, size: number, view: object }>} 该用户的 entity 物化缓存桶
+ * @returns {Map<string, { tipId: string | null, view: object }>} 该用户的 entity 物化缓存桶
  */
 function timelineCacheBucket(username) {
 	let bucket = timelineViewCache.get(username)
@@ -74,16 +72,15 @@ export async function loadTimelineSnapshot(username, entityHash) {
 
 /**
  * @param {object | null} cached 磁盘快照
- * @param {import('node:fs').Stats} fileStat events.jsonl stat
- * @returns {boolean} 快照是否与 events 文件一致
+ * @param {string | null} tipId 当前 events.jsonl DAG tip
+ * @returns {boolean} 快照是否与 tip 一致
  */
-function snapshotMatchesEventsFile(cached, fileStat) {
-	return cached?.events_mtime === fileStat.mtimeMs
-		&& cached?.events_size === fileStat.size
+function snapshotMatchesTip(cached, tipId) {
+	return cached?.checkpoint_event_id === tipId
 }
 
 /**
- * 读取并物化时间线；events.jsonl 未变则命中 snapshot（先 stat，避免全量 JSONL parse）。
+ * 读取并物化时间线；tip 未变则命中 snapshot / 内存缓存。
  * @param {string} username 用户
  * @param {string} entityHash 时间线 owner
  * @returns {Promise<object>} 物化视图
@@ -92,46 +89,31 @@ export async function getTimelineMaterialized(username, entityHash) {
 	if (!parseEntityHash(entityHash)) throw new Error('invalid entityHash')
 	const eventsPath = timelineEventsPath(username, entityHash)
 	const entityKey = String(entityHash).toLowerCase()
-	/** @type {import('node:fs').Stats | null} */
-	let fileStat = null
-	try {
-		fileStat = await stat(eventsPath)
-	}
-	catch {
-		invalidateTimelineMaterializedCache(username, entityHash)
-		return materializeTimeline([])
-	}
+	const tipId = await readJsonlTipId(eventsPath)
 
 	const bucket = timelineCacheBucket(username)
 	const memoryHit = bucket.get(entityKey)
-	if (memoryHit?.mtime === fileStat.mtimeMs && memoryHit?.size === fileStat.size)
+	if (memoryHit && memoryHit.tipId === tipId)
 		return memoryHit.view
 
 	const cached = await loadTimelineSnapshot(username, entityHash)
-	if (snapshotMatchesEventsFile(cached, fileStat)) {
-		const entry = { mtime: fileStat.mtimeMs, size: fileStat.size, view: cached }
+	if (snapshotMatchesTip(cached, tipId)) {
+		const entry = { tipId, view: cached }
 		bucket.set(entityKey, entry)
 		timelineViewCache.touch(username, bucket)
 		return entry.view
 	}
 
 	const events = await readTimelineEvents(username, entityHash)
-	const tipId = events.length ? events[events.length - 1].id : null
 	const view = materializeTimeline(events)
 	const snapshot = {
-		entityHash: entityHash.toLowerCase(),
+		entityHash: entityKey,
 		checkpoint_event_id: tipId,
-		events_mtime: fileStat.mtimeMs,
-		events_size: fileStat.size,
 		materializedAt: Date.now(),
 		...view,
 	}
 	await writeJsonAtomicSynced(timelineSnapshotPath(username, entityHash), snapshot)
-	bucket.set(entityKey, {
-		mtime: fileStat.mtimeMs,
-		size: fileStat.size,
-		view: snapshot,
-	})
+	bucket.set(entityKey, { tipId, view: snapshot })
 	timelineViewCache.touch(username, bucket)
 	return view
 }

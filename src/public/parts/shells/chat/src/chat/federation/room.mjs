@@ -31,7 +31,7 @@ import {
 	setFederationPartitionSlot,
 } from './registry.mjs'
 import { attachFederationRoomHandlers } from './roomHandlers/index.mjs'
-import { createFederationRoomContext } from './roomHandlers/roomContext.mjs'
+import { createFederationRoomHandlerBundle } from './roomHandlers/roomContext.mjs'
 import { warmSeenFromLocalEvents } from './seen.mjs'
 
 /** @typedef {import('./federationSlot.mjs').FederationSlot} FederationSlot */
@@ -176,7 +176,7 @@ export async function ensureFederationPartitionRoom(username, groupId, partition
 			 */
 			const isBlockedPeer = subject => isPeerPoolKeyBlocked(peersSnap, subject)
 
-			attachFederationRoomHandlers(createFederationRoomContext({
+			attachFederationRoomHandlers(createFederationRoomHandlerBundle({
 				username,
 				groupId,
 				key: rtcRoomKey,

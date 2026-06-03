@@ -1,5 +1,5 @@
 /**
- * 联邦房间 handler 依赖：按子域拆分 typedef，避免 roomContext 上帝对象无文档膨胀。
+ * 联邦房间 handler 依赖：按子域拆分 typedef + 构造期 pick，避免 handler 接触无关可变状态。
  */
 
 /**
@@ -20,8 +20,6 @@
 
 /**
  * @typedef {FederationRoomWireContext & {
- *   username: string,
- *   groupId: string,
  *   nodeHash: string,
  *   fedOut: object,
  *   isBlockedPeer: (subject: string) => boolean,
@@ -30,12 +28,9 @@
 
 /**
  * @typedef {FederationRoomWireContext & {
- *   username: string,
- *   groupId: string,
  *   key: string,
  *   nodeHash: string,
  *   groupSettings: object,
- *   room: object,
  *   fedOut: object,
  *   rtcLimits: object,
  *   peerToNode: Map<string, string>,
@@ -47,8 +42,6 @@
 
 /**
  * @typedef {FederationRoomWireContext & {
- *   username: string,
- *   groupId: string,
  *   nodeHash: string,
  *   groupSettings: object,
  *   fedOut: object,
@@ -59,19 +52,105 @@
 
 /**
  * @typedef {FederationRoomWireContext & {
- *   username: string,
- *   groupId: string,
  *   key: string,
- *   room: object,
  *   fedOut: object,
  *   rtcLimits: object,
  * }} FederationRpcContext
  */
 
 /**
- * @param {FederationIdentityContext & FederationRelayContext & FederationSyncContext & FederationRpcContext} params 房间 join 期组装的依赖
- * @returns {typeof params} 完整房间 handler 上下文
+ * @typedef {object} FederationRoomHandlerBundle
+ * @property {FederationIdentityContext} identity
+ * @property {FederationRelayContext} relay
+ * @property {FederationSyncContext} sync
+ * @property {FederationRpcContext} rpc
  */
-export function createFederationRoomContext(params) {
-	return params
+
+/**
+ * @param {FederationRoomWireContext} ctx 房间 join 期 wire 绑定
+ * @returns {FederationRoomWireContext} Trystero wire 最小子集
+ */
+export function pickWireContext(ctx) {
+	return {
+		username: ctx.username,
+		groupId: ctx.groupId,
+		room: ctx.room,
+		wireActions: ctx.wireActions,
+		senderRegistry: ctx.senderRegistry,
+		getActionSender: ctx.getActionSender,
+		getActionReceiver: ctx.getActionReceiver,
+	}
+}
+
+/**
+ * @param {FederationIdentityContext} ctx 完整 identity 依赖
+ * @returns {FederationIdentityContext} identity handler 依赖
+ */
+export function pickIdentityContext(ctx) {
+	return {
+		...pickWireContext(ctx),
+		key: ctx.key,
+		nodeHash: ctx.nodeHash,
+		groupSettings: ctx.groupSettings,
+		fedOut: ctx.fedOut,
+		rtcLimits: ctx.rtcLimits,
+		peerToNode: ctx.peerToNode,
+		nodeToPeer: ctx.nodeToPeer,
+		ensureFederationPartitionRoom: ctx.ensureFederationPartitionRoom,
+		getSlot: ctx.getSlot,
+	}
+}
+
+/**
+ * @param {FederationRelayContext} ctx 完整 relay 依赖
+ * @returns {FederationRelayContext} relay handler 依赖
+ */
+export function pickRelayContext(ctx) {
+	return {
+		...pickWireContext(ctx),
+		nodeHash: ctx.nodeHash,
+		fedOut: ctx.fedOut,
+		isBlockedPeer: ctx.isBlockedPeer,
+	}
+}
+
+/**
+ * @param {FederationSyncContext} ctx 完整 sync 依赖
+ * @returns {FederationSyncContext} sync handler 依赖
+ */
+export function pickSyncContext(ctx) {
+	return {
+		...pickWireContext(ctx),
+		nodeHash: ctx.nodeHash,
+		groupSettings: ctx.groupSettings,
+		fedOut: ctx.fedOut,
+		peerToNode: ctx.peerToNode,
+		isBlockedPeer: ctx.isBlockedPeer,
+	}
+}
+
+/**
+ * @param {FederationRpcContext} ctx 完整 rpc 依赖
+ * @returns {FederationRpcContext} rpc handler 依赖
+ */
+export function pickRpcContext(ctx) {
+	return {
+		...pickWireContext(ctx),
+		key: ctx.key,
+		fedOut: ctx.fedOut,
+		rtcLimits: ctx.rtcLimits,
+	}
+}
+
+/**
+ * @param {FederationIdentityContext & FederationRelayContext & FederationSyncContext & FederationRpcContext} params join 期全量依赖
+ * @returns {FederationRoomHandlerBundle} 各 handler 最小依赖包
+ */
+export function createFederationRoomHandlerBundle(params) {
+	return {
+		identity: pickIdentityContext(params),
+		relay: pickRelayContext(params),
+		sync: pickSyncContext(params),
+		rpc: pickRpcContext(params),
+	}
 }

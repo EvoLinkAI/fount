@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { appendFile, mkdir, open, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -15,6 +16,35 @@ export async function readJsonl(filePath, options = {}) {
 	}
 	catch {
 		return []
+	}
+}
+
+/**
+ * 读取 JSONL 末行事件的 `id`（DAG tip）；空文件为 null。
+ * @param {string} filePath 文件路径
+ * @returns {Promise<string | null>} tip event id
+ */
+export async function readJsonlTipId(filePath) {
+	try {
+		const fh = await open(filePath, 'r')
+		try {
+			const { size } = await fh.stat()
+			if (!size) return null
+			const chunk = Math.min(size, 65_536)
+			const buf = Buffer.alloc(chunk)
+			await fh.read(buf, 0, chunk, size - chunk)
+			const lines = buf.toString('utf8').split('\n').filter(Boolean)
+			const last = lines[lines.length - 1]
+			if (!last) return null
+			const row = JSON.parse(last)
+			return row?.id != null ? String(row.id) : null
+		}
+		finally {
+			await fh.close()
+		}
+	}
+	catch {
+		return null
 	}
 }
 

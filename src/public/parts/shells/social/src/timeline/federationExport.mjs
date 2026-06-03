@@ -1,9 +1,10 @@
 import { resolveOperatorEntityHash } from '../../../../../../scripts/p2p/entity/replica.mjs'
-import { parseEntityHash } from '../../../../../../scripts/p2p/entity_id.mjs'
 import { getNodeHash } from '../../../../../../scripts/p2p/node_context.mjs'
-import { canViewPost, listLocalTimelineOwners } from '../feedHelpers.mjs'
+import { canViewPost } from '../feedHelpers.mjs'
 
 import { getTimelineMaterialized } from './materialize.mjs'
+import { listLocalEntitiesForNode } from './ownerIndex.mjs'
+
 
 /** 联邦 pull 永不外泄的类型 */
 const FEDERATION_PRIVATE_EVENT_TYPES = new Set(['follow', 'unfollow', 'follow_approve', 'like', 'unlike', 'file_share'])
@@ -35,9 +36,7 @@ async function resolveFederationRequesterContext(username, requesterNodeHash, ow
 		}
 	}
 
-	for (const entityHash of await listLocalTimelineOwners(username)) {
-		const parsed = parseEntityHash(entityHash)
-		if (!parsed || parsed.nodeHash !== requesterNode) continue
+	for (const entityHash of await listLocalEntitiesForNode(username, requesterNode)) {
 		const view = await getTimelineMaterialized(username, entityHash)
 		return {
 			requesterEntityHash: entityHash,

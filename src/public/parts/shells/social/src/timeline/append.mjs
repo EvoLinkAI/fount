@@ -14,6 +14,7 @@ import { groupIdForTimeline, timelineEventsPath } from '../paths.mjs'
 
 import { canonicalizeLocalTimelineEvent } from './canonicalizeEvent.mjs'
 import { invalidateTimelineMaterializedCache } from './materialize.mjs'
+import { invalidateTimelineOwnerIndex } from './ownerIndex.mjs'
 
 const NODE_ID = 'social-local'
 
@@ -116,6 +117,7 @@ export async function appendTimelineEvent(username, entityHash, event) {
 	const row = canonicalizeLocalTimelineEvent(signed)
 	await appendJsonlSynced(timelineEventsPath(username, entityHash), row)
 	invalidateTimelineMaterializedCache(username, entityHash)
+	invalidateTimelineOwnerIndex(username)
 	await projectFollowerIndexFromTimelineEvent(username, entityHash, row)
 	return row
 }

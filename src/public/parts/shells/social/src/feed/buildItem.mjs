@@ -1,3 +1,4 @@
+import { socialPostKey } from '../../../../../../scripts/p2p/social/post_key.mjs'
 import { maybeDecryptPostContent } from '../gsh/vault.mjs'
 
 /**
@@ -7,7 +8,7 @@ import { maybeDecryptPostContent } from '../gsh/vault.mjs'
  */
 export function createEngagementForPost(engagement, viewerLiked) {
 	return function engagementForPost(targetEntityHash, targetPostId) {
-		const key = `${targetEntityHash.toLowerCase()}:${targetPostId}`
+		const key = socialPostKey(targetEntityHash, targetPostId)
 		return {
 			likeCount: engagement.likes.get(key) || 0,
 			repostCount: engagement.reposts.get(key) || 0,

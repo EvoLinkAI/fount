@@ -21,6 +21,38 @@ import { ingestRemoteTimelineEvent } from './src/timeline/sync.mjs'
 const { info } = (await import('./locales.json', { with: { type: 'json' } })).default
 
 /**
+ * @param {string} username replica 登录名
+ * @param {object} data timeline_put 载荷
+ * @returns {Promise<{ ok: boolean }>} ingest 成功
+ */
+async function handleTimelinePut(username, data) {
+	const entityHash = data.timelineEntityHash.toLowerCase()
+	if (!parseEntityHash(entityHash)) throw new Error('invalid_timeline_put')
+	if (!await ingestRemoteTimelineEvent(username, entityHash, data.event))
+		throw new Error('ingest_failed')
+	return { ok: true }
+}
+
+/**
+ * @param {string} username replica 登录名
+ * @param {object} data social_rpc 载荷
+ * @param {{ requesterNodeHash?: string | null }} ingress 联邦入站元数据
+ * @returns {Promise<object>} RPC 响应体
+ */
+async function handleSocialRpcInvoke(username, data, ingress) {
+	const { kind, ...rpc } = data
+	const body = await handleSocialRpc(username, rpc, ingress)
+	if (!body) throw new Error('unknown_rpc')
+	return body
+}
+
+/** @type {Record<string, (username: string, data: object, ingress?: object) => Promise<object>>} */
+const p2pInvokeHandlers = {
+	timeline_put: handleTimelinePut,
+	social_rpc: handleSocialRpcInvoke,
+}
+
+/**
  * Social shell：账号 = Chat 联邦 P2P 实体（用户 identity 或本机 agent entityHash），无需单独注册。
  * @type {import('../../../../../src/decl/shellAPI.ts').shellAPI_t}
  */
@@ -65,20 +97,8 @@ export default {
 			 * @returns {Promise<object | null>} 响应体
 			 */
 			P2PInvokeHandler: async (username, data, ingress = {}) => {
-				if (data.kind === 'timeline_put') {
-					const entityHash = data.timelineEntityHash.toLowerCase()
-					if (!parseEntityHash(entityHash)) throw new Error('invalid_timeline_put')
-					if (!await ingestRemoteTimelineEvent(username, entityHash, data.event))
-						throw new Error('ingest_failed')
-					return { ok: true }
-				}
-				if (data.kind === 'social_rpc') {
-					const { kind, ...rpc } = data
-					const body = await handleSocialRpc(username, rpc, ingress)
-					if (!body) throw new Error('unknown_rpc')
-					return body
-				}
-				return null
+				const handler = p2pInvokeHandlers[String(data?.kind || '')]
+				return handler ? handler(username, data, ingress) : null
 			},
 		},
 	},

@@ -1,28 +1,19 @@
-import { readdir } from 'node:fs/promises'
-
 import { resolveOperatorEntityHash } from '../../../../../scripts/p2p/entity/replica.mjs'
-import { isEntityHash128 } from '../../../../../scripts/p2p/entity_id.mjs'
-import { getUserDictionary } from '../../../../../server/auth.mjs'
+import { socialPostKey } from '../../../../../scripts/p2p/social/post_key.mjs'
 
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
+import { getTimelineOwnerIndex, listLocalEntitiesForNode } from './timeline/ownerIndex.mjs'
 
 /**
  * 列出磁盘上全部时间线 owner（探索/热搜用）。
  * @param {string} username 用户
+ * @param {{ nodeHashPrefix?: string | null }} [options] 仅返回该 nodeHash 托管的 entity
  * @returns {Promise<string[]>} 本地 timelines 目录下的 entityHash
  */
-export async function listLocalTimelineOwners(username) {
-	const root = `${getUserDictionary(username)}/shells/social/timelines`
-	try {
-		const entries = await readdir(root, { withFileTypes: true })
-		return entries.filter(entry => entry.isDirectory())
-			.map(entry => entry.name.toLowerCase())
-			.filter(isEntityHash128)
-			.sort()
-	}
-	catch {
-		return []
-	}
+export async function listLocalTimelineOwners(username, options = {}) {
+	const prefix = String(options.nodeHashPrefix || '').trim().toLowerCase() || null
+	if (prefix) return listLocalEntitiesForNode(username, prefix)
+	return [...(await getTimelineOwnerIndex(username)).all]
 }
 
 /**
@@ -86,19 +77,23 @@ export async function buildEngagementIndex(username, owners = null) {
 	for (const owner of ownerList) {
 		const view = await getTimelineMaterialized(username, owner)
 		for (const like of view.likes) {
-			const key = `${String(like.content?.targetEntityHash || '').toLowerCase()}:${like.content?.targetPostId}`
-			if (!key.includes(':')) continue
+			const target = String(like.content?.targetEntityHash || '').toLowerCase()
+			const postId = like.content?.targetPostId
+			if (!target || postId == null) continue
+			const key = socialPostKey(target, postId)
 			likes.set(key, (likes.get(key) || 0) + 1)
 		}
 		for (const repost of view.reposts) {
-			const key = `${String(repost.content?.targetEntityHash || '').toLowerCase()}:${repost.content?.targetPostId}`
-			if (!key.includes(':')) continue
+			const target = String(repost.content?.targetEntityHash || '').toLowerCase()
+			const postId = repost.content?.targetPostId
+			if (!target || postId == null) continue
+			const key = socialPostKey(target, postId)
 			reposts.set(key, (reposts.get(key) || 0) + 1)
 		}
 		for (const post of view.posts) {
 			const replyTo = post.content?.replyTo
-			if (!replyTo?.entityHash || !replyTo?.postId) continue
-			const key = `${String(replyTo.entityHash).toLowerCase()}:${replyTo.postId}`
+			if (!replyTo?.entityHash || replyTo?.postId == null) continue
+			const key = socialPostKey(replyTo.entityHash, replyTo.postId)
 			replies.set(key, (replies.get(key) || 0) + 1)
 		}
 	}
@@ -115,7 +110,7 @@ export async function buildViewerLikedSet(username) {
 	if (!self) return new Set()
 	const view = await getTimelineMaterialized(username, self)
 	return new Set(view.likes.map(like =>
-		`${String(like.content?.targetEntityHash || '').toLowerCase()}:${like.content?.targetPostId}`,
+		socialPostKey(like.content?.targetEntityHash || '', like.content?.targetPostId || ''),
 	))
 }
 

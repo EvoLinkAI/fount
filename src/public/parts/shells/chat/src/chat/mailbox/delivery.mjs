@@ -1,16 +1,14 @@
 /**
- * Mailbox 投递：P2P pull + ingest DAG。
+ * Mailbox 投递：TrustGraph fanout + 本地 ingest。
  */
 import { normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { fanoutMailboxPut, fanoutMailboxWant } from '../../../../../../../scripts/p2p/mailbox/fanout.mjs'
 import {
 	allowMailboxRelayForTier,
 	defaultTtlMsForTier,
 	scoreMailboxImportance,
 } from '../../../../../../../scripts/p2p/mailbox_importance.mjs'
 import { takeIncomingMailboxPutSlot } from '../../../../../../../scripts/p2p/mailbox_rate.mjs'
-/** Chat shell partpath（本 shell 出站 part_invoke 自用，不写入 P2P 层常量表）。 */
-const CHAT_PARTPATH = 'shells/chat'
-import { fanoutPartInvoke } from '../../../../../../../scripts/p2p/part_wire.mjs'
 import { loadReputation } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 import { appendValidatedRemoteEvent } from '../dag/remoteIngest.mjs'
@@ -64,20 +62,17 @@ export async function dispatchMailboxMessage(username, signedEvent, toPubKeyHash
 		tier: 'trusted',
 		importance: 1,
 	})
-	await fanoutPartInvoke(username, CHAT_PARTPATH, {
-		kind: 'mailbox_put',
-		wire: {
-			nodeHash,
-			record: {
-				toPubKeyHash: normalizeHex64(toPubKeyHash),
-				groupId: meta.groupId,
-				channelId: meta.channelId,
-				dmSessionTag: meta.dmSessionTag,
-				envelope: signedEvent,
-				hop: 0,
-			},
+	await fanoutMailboxPut(username, {
+		nodeHash,
+		record: {
+			toPubKeyHash: normalizeHex64(toPubKeyHash),
+			groupId: meta.groupId,
+			channelId: meta.channelId,
+			dmSessionTag: meta.dmSessionTag,
+			envelope: signedEvent,
+			hop: 0,
 		},
-	}, 8, nodeHash)
+	})
 }
 
 /**
@@ -107,13 +102,10 @@ export async function onFederationRoomReadyForMailbox(username, groupId) {
  * @returns {Promise<void>}
  */
 export async function requestMailboxFromNetwork(username, toPubKeyHash) {
-	await fanoutPartInvoke(username, CHAT_PARTPATH, {
-		kind: 'mailbox_want',
-		wire: {
-			toPubKeyHash: normalizeHex64(toPubKeyHash),
-			ids: (await listMailboxIdsForRecipient(username, toPubKeyHash)).slice(0, 64),
-		},
-	}, 6)
+	await fanoutMailboxWant(username, {
+		toPubKeyHash: normalizeHex64(toPubKeyHash),
+		ids: (await listMailboxIdsForRecipient(username, toPubKeyHash)).slice(0, 64),
+	})
 }
 
 /**
@@ -159,13 +151,10 @@ export async function ingestMailboxPut(username, put) {
 	})) return
 	if (hop >= MAX_MAILBOX_HOP) return
 	if (!allowMailboxRelayForTier(tier)) return
-	await fanoutPartInvoke(username, CHAT_PARTPATH, {
-		kind: 'mailbox_put',
-		wire: {
-			nodeHash: put.nodeHash,
-			record: { ...record, hop: relayHop, tier, importance: score },
-		},
-	}, tier === 'trusted' ? 4 : 2, put.nodeHash)
+	await fanoutMailboxPut(username, {
+		nodeHash: put.nodeHash,
+		record: { ...record, hop: relayHop, tier, importance: score },
+	}, tier === 'trusted' ? 4 : 2)
 }
 
 /**

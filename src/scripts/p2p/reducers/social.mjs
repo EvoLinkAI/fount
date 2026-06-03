@@ -1,3 +1,5 @@
+import { socialPostKey } from '../social/post_key.mjs'
+
 /**
  * Social 时间线物化 reducer 表。
  */
@@ -54,7 +56,10 @@ function reducePostDelete(state, event) {
  * @returns {object} 更新后状态
  */
 function reduceLike(state, event) {
-	state.likes.set(`${event.content?.targetEntityHash}:${event.content?.targetPostId}`, event)
+	state.likes.set(
+		socialPostKey(event.content?.targetEntityHash || '', event.content?.targetPostId || ''),
+		event,
+	)
 	return state
 }
 
@@ -64,7 +69,9 @@ function reduceLike(state, event) {
  * @returns {object} 更新后状态
  */
 function reduceUnlike(state, event) {
-	state.likes.delete(`${event.content?.targetEntityHash}:${event.content?.targetPostId}`)
+	state.likes.delete(
+		socialPostKey(event.content?.targetEntityHash || '', event.content?.targetPostId || ''),
+	)
 	return state
 }
 

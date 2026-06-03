@@ -14,6 +14,7 @@ import {
 	markChunkInflight,
 	planChunkFetches,
 } from '../../../../../../../scripts/p2p/chunk_fetch_scheduler.mjs'
+import { compositeKey } from '../../../../../../../scripts/p2p/composite_key.mjs'
 import { FEDERATION_CHUNK_MAX_BYTES } from '../../../../../../../scripts/p2p/constants.mjs'
 import { handleIncomingChunkGet, resolvePendingChunkFetch } from '../../../../../../../scripts/p2p/files/chunk_fetch.mjs'
 import { getChunk, hasChunk } from '../../../../../../../scripts/p2p/files/chunk_store.mjs'
@@ -52,7 +53,7 @@ function consumeChunkRate(bucketKey, byteCount) {
  * @returns {string} 注册表键
  */
 function registryKey(username, groupId) {
-	return `${username}\0${groupId}`
+	return compositeKey(username, groupId)
 }
 
 /** @type {Map<string, { replicate: Function, fetch: Function }>} */
@@ -231,7 +232,7 @@ function replicateChunkToRoster(slot, chunkHash, data, bucketKey, opts = {}) {
  * @returns {Promise<Uint8Array>} 密文块
  */
 function fetchChunkFromPeer(slot, username, groupId, chunkHash, peerId) {
-	const waitKey = `${registryKey(username, groupId)}\0${chunkHash}`
+	const waitKey = compositeKey(username, groupId, chunkHash)
 	return new Promise((resolve, reject) => {
 		const timer = setTimeout(() => {
 			pendingFetches.delete(waitKey)
@@ -451,7 +452,7 @@ export function attachFedChunkHandlers(fedRoom) {
 		if (!CHUNK_HASH_RE.test(hash)) return
 		const b64 = String(data.dataB64 || '')
 		if (!b64) return
-		const waitKey = `${registryKey(username, groupId)}\0${hash}`
+		const waitKey = compositeKey(username, groupId, hash)
 		const pending = pendingFetches.get(waitKey)
 		if (!pending) return
 		clearTimeout(pending.timer)
