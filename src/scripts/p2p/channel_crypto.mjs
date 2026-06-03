@@ -2,7 +2,7 @@
  * 频道域密钥 K_ch：HPKE 包装（X25519 ECIES）与 AES-GCM 消息信封（scheme: ckg）。
  */
 import { Buffer } from 'node:buffer'
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto'
 
 import { decryptH, encryptHForMember, generateH } from './gsh.mjs'
 
@@ -42,12 +42,13 @@ export function unwrapChannelKey(wrap, myEdPrivKeySeed) {
  * @returns {Buffer} 消息 AES-256 密钥
  */
 function messageAesKey(channelKeyHex, channelId, generation) {
-	return createHash('sha256')
-		.update(Buffer.from(channelKeyHex, 'hex'))
-		.update('ckg-v1')
-		.update(String(channelId))
-		.update(String(generation))
-		.digest()
+	return Buffer.from(hkdfSync(
+		'sha256',
+		Buffer.from(channelKeyHex, 'hex'),
+		`ckg-v1:${String(channelId)}:${String(generation)}`,
+		'',
+		32,
+	))
 }
 
 /**

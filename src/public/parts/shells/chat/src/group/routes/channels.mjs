@@ -552,7 +552,7 @@ export function registerChannelRoutes(router, authenticate) {
 			files: processedFiles.length ? processedFiles : undefined,
 			maxDagPayloadBytes: Number(state.groupSettings?.maxDagPayloadBytes) || 262_144,
 		})
-		const { decryptEventContent } = await import('../../chat/gsh/content.mjs')
+		const { decryptEventContent } = await import('../../chat/channel_keys/content.mjs')
 		const displayContent = await decryptEventContent(username, groupId, channelId, event.content)
 		const content = displayContent || {}
 		const { recordEmojiUsageFromMessageContent } = await import('../../emojiUsage.mjs')

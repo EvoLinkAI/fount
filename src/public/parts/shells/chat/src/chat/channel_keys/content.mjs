@@ -9,9 +9,6 @@ import { getChannelKeyHex, loadChannelKeysFile } from './store.mjs'
 /** @type {Set<string>} */
 export const CKG_ENCRYPT_EVENT_TYPES = new Set(['message', 'message_edit'])
 
-/** 与 {@link CKG_ENCRYPT_EVENT_TYPES} 相同（历史别名）。 */
-export const GSH_ENCRYPT_EVENT_TYPES = CKG_ENCRYPT_EVENT_TYPES
-
 /**
  * @param {unknown} content 事件 content
  * @returns {boolean} 是否为 ckg 密文
@@ -19,9 +16,6 @@ export const GSH_ENCRYPT_EVENT_TYPES = CKG_ENCRYPT_EVENT_TYPES
 export function isCkgEncryptedContent(content) {
 	return content?.ckg?.scheme === 'ckg'
 }
-
-/** @type {typeof isCkgEncryptedContent} */
-export const isGshEncryptedContent = isCkgEncryptedContent
 
 /**
  * @param {string} type 事件类型
@@ -33,9 +27,6 @@ export function assertFederatedCkgContent(type, content) {
 	if (!isCkgEncryptedContent(content))
 		throw new Error(`federated ${type} requires ckg encrypted content`)
 }
-
-/** @type {typeof assertFederatedCkgContent} */
-export const assertFederatedGshContent = assertFederatedCkgContent
 
 /**
  * @param {string} username replica

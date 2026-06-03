@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer'
+import { createWriteStream } from 'node:fs'
 import { appendFile, mkdir, open, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -61,6 +62,41 @@ export async function appendJsonl(filePath, record) {
 
 /**
  * 追加一行 JSONL 并 `fsync`。
+ * @param {string} filePath 目标路径
+ * @param {object} record 记录对象
+ * @returns {Promise<void>}
+ */
+/**
+ * 流式重写 JSONL（临时文件 + rename），避免大数组 join 的内存峰值。
+ * @param {string} filePath 目标路径
+ * @param {object[]} records 行对象列表
+ * @returns {Promise<void>}
+ */
+export async function writeJsonl(filePath, records) {
+	const dir = dirname(filePath)
+	await mkdir(dir, { recursive: true })
+	const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`
+	const stream = createWriteStream(tmp, { encoding: 'utf8' })
+	try {
+		for (const record of records) {
+			const line = `${JSON.stringify(record)}\n`
+			if (!stream.write(line))
+				await new Promise(resolve => stream.once('drain', resolve))
+		}
+		await new Promise((resolve, reject) => {
+			stream.on('finish', resolve)
+			stream.on('error', reject)
+			stream.end()
+		})
+	}
+	catch (err) {
+		stream.destroy()
+		throw err
+	}
+	await rename(tmp, filePath)
+}
+
+/**
  * @param {string} filePath 目标路径
  * @param {object} record 记录对象
  * @returns {Promise<void>}

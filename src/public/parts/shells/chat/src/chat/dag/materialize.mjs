@@ -335,7 +335,7 @@ export async function runPostCheckpointMaintenance(username, groupId, checkpoint
 
 	try {
 		const { maybeAppendStateSummary } = await import('./stateSummary.mjs')
-		await maybeAppendStateSummary(username, groupId, state, checkpointPayload?.checkpoint_event_id)
+		await maybeAppendStateSummary(username, groupId, state, checkpointPayload?.checkpoint_event_id, events)
 	}
 	catch (error) {
 		console.error('state_summary:', error)

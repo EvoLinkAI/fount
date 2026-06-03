@@ -8,6 +8,18 @@ import { eventsPath } from '../lib/paths.mjs'
 import { appendSignedLocalEvent } from './append.mjs'
 
 /**
+ * @param {object[]} events 全量 DAG 事件
+ * @param {string} type 事件类型
+ * @returns {{ event: object, index: number } | null} 自后向前最近一条
+ */
+function findLastEventOfType(events, type) {
+	for (let index = events.length - 1; index >= 0; index--) 
+		if (events[index]?.type === type) return { event: events[index], index }
+	
+	return null
+}
+
+/**
  * @param {object} state 物化状态
  * @param {string} anchorEventId checkpoint tip 事件 id
  * @param {object[]} [events] 全量事件（算 tipsHash）
@@ -31,13 +43,14 @@ export function buildStateSummaryContent(state, anchorEventId, events = []) {
  * @param {string} groupId 群 ID
  * @param {object} state 物化状态
  * @param {string} anchorEventId checkpoint tip
+ * @param {object[]} [eventsHint] 已加载事件，避免重复读盘
  * @returns {Promise<object | null>} 新签名事件或 null
  */
-export async function maybeAppendStateSummary(username, groupId, state, anchorEventId) {
-	const events = await readJsonl(eventsPath(username, groupId))
-	const lastSummary = [...events].reverse().find(e => e.type === 'state_summary')
+export async function maybeAppendStateSummary(username, groupId, state, anchorEventId, eventsHint = null) {
+	const events = eventsHint ?? await readJsonl(eventsPath(username, groupId))
+	const last = findLastEventOfType(events, 'state_summary')
 	const minInterval = 50_000
-	if (lastSummary && events.length - events.indexOf(lastSummary) < minInterval) return null
+	if (last && events.length - last.index < minInterval) return null
 	const content = buildStateSummaryContent(state, anchorEventId, events)
 	return appendSignedLocalEvent(username, groupId, {
 		type: 'state_summary',

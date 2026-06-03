@@ -121,7 +121,7 @@ export const governanceReducers = {
 		if (from && to) {
 			const edge = { from, to, at: event.timestamp }
 			if (content.reputationEdge !== undefined) edge.reputationEdge = clampRepEdge(content.reputationEdge)
-			if (content.gshGrant) edge.gshGrant = true
+			if (content.fileHGrant) edge.fileHGrant = true
 			state.inviteEdges.push(edge)
 		}
 		return state

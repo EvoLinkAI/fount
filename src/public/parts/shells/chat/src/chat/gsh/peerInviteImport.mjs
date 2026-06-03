@@ -1,5 +1,5 @@
 /**
- * 从 DAG `peer_invite.gshGrant` 导入群 GSH 历史代际。
+ * 从 DAG `peer_invite.fileHGrant` 导入群文件密钥 H 历史代际。
  */
 import { Buffer } from 'node:buffer'
 
@@ -7,7 +7,7 @@ import { publicKeyFromSeed } from '../../../../../../../scripts/p2p/crypto.mjs'
 import { normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 
-import { applyGshGenerationGrant } from './historicalGrant.mjs'
+import { applyFileHGrant } from './historicalGrant.mjs'
 
 /**
  * @param {string} username 用户
@@ -17,7 +17,7 @@ import { applyGshGenerationGrant } from './historicalGrant.mjs'
  */
 export async function tryImportHFromPeerInvite(username, groupId, event) {
 	if (event?.type !== 'peer_invite') return
-	const grant = event.content?.fileHGrant || event.content?.gshGrant
+	const grant = event.content?.fileHGrant
 	if (!grant || typeof grant !== 'object') return
 
 	let signer
@@ -30,5 +30,5 @@ export async function tryImportHFromPeerInvite(username, groupId, event) {
 	const toHex = normalizeHex64(event.content?.to)
 	if (!toHex || toHex !== normalizeHex64(myEdPubHex)) return
 
-	await applyGshGenerationGrant(username, groupId, grant)
+	await applyFileHGrant(username, groupId, grant)
 }

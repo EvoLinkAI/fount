@@ -8,6 +8,42 @@ import { channelKeysPath } from '../lib/paths.mjs'
 
 const MAX_GENERATIONS = 64
 
+/** @type {Map<string, Promise<void>>} */
+const groupWriteChains = new Map()
+
+/**
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @returns {string} 串行化键
+ */
+function groupLockKey(username, groupId) {
+	return `${username}:${groupId}`
+}
+
+/**
+ * @param {string} lockKey 串行化键
+ * @param {() => Promise<void>} fn 临界区
+ * @returns {Promise<void>}
+ */
+async function withGroupChannelKeysLock(lockKey, fn) {
+	const prev = groupWriteChains.get(lockKey) || Promise.resolve()
+	/**
+	 *
+	 */
+	let release = () => {}
+	const gate = new Promise(resolve => { release = resolve })
+	const chain = prev.then(() => gate)
+	groupWriteChains.set(lockKey, chain)
+	await prev
+	try {
+		await fn()
+	}
+	finally {
+		release()
+		if (groupWriteChains.get(lockKey) === chain) groupWriteChains.delete(lockKey)
+	}
+}
+
 /**
  * @typedef {{ current: number, generations: Array<{ gen: number, keyHex: string }> }} ChannelKeysFile
  */
@@ -86,20 +122,23 @@ export async function getChannelKeyHex(username, groupId, channelId, generation 
  * @returns {Promise<void>} 无返回值
  */
 export async function putChannelKeyGeneration(username, groupId, channelId, generation, keyHex) {
-	const file = await loadChannelKeysFile(username, groupId)
-	if (!file.channels[channelId])
-		file.channels[channelId] = { current: -1, generations: [] }
-	const ch = file.channels[channelId]
-	const gen = Number(generation)
-	if (!ch.generations.some(g => g.gen === gen))
-		ch.generations.push({ gen, keyHex })
-	else
-		ch.generations = ch.generations.map(g => g.gen === gen ? { gen, keyHex } : g)
-	ch.generations.sort((a, b) => a.gen - b.gen)
-	if (ch.generations.length > MAX_GENERATIONS)
-		ch.generations = ch.generations.slice(-MAX_GENERATIONS)
-	ch.current = Math.max(ch.current, gen)
-	await saveChannelKeysFile(username, groupId, file)
+	const lockKey = groupLockKey(username, groupId)
+	await withGroupChannelKeysLock(lockKey, async () => {
+		const file = await loadChannelKeysFile(username, groupId)
+		if (!file.channels[channelId])
+			file.channels[channelId] = { current: -1, generations: [] }
+		const ch = file.channels[channelId]
+		const gen = Number(generation)
+		if (!ch.generations.some(g => g.gen === gen))
+			ch.generations.push({ gen, keyHex })
+		else
+			ch.generations = ch.generations.map(g => g.gen === gen ? { gen, keyHex } : g)
+		ch.generations.sort((a, b) => a.gen - b.gen)
+		if (ch.generations.length > MAX_GENERATIONS)
+			ch.generations = ch.generations.slice(-MAX_GENERATIONS)
+		ch.current = Math.max(ch.current, gen)
+		await saveChannelKeysFile(username, groupId, file)
+	})
 }
 
 /**

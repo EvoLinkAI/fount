@@ -60,5 +60,5 @@ export async function runSocialTimelineMaintenance(username, entityHash, checkpo
 	const events = await readJsonl(path, { sanitize })
 	const view = materializeTimeline(events)
 	const tipId = checkpoint?.checkpoint_event_id || view.tipIds?.[0]
-	if (tipId) await maybeAppendSocialStateSummary(username, entityHash, view, tipId)
+	if (tipId) await maybeAppendSocialStateSummary(username, entityHash, view, tipId, events)
 }

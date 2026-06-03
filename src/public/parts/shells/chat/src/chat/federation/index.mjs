@@ -11,7 +11,7 @@ import { isWantIdsInBackoff, wantIdsGroupKey } from '../../../../../../../script
 import { eventChannelId } from '../dag/authorizeEvent.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { pickFederationTargetPeerIds, reconcilePeerPoolFromRoster } from '../governance/peerPool.mjs'
-import { encryptSignedEventForWire } from '../gsh/content.mjs'
+import { encryptSignedEventForWire } from '../channel_keys/content.mjs'
 import { eventsPath } from '../lib/paths.mjs'
 
 import {

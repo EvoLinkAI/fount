@@ -13,24 +13,23 @@ import {
 	applySubjectiveSlashFromEvent,
 	seedMemberReputationFromIntroducer,
 } from '../../../../../../../scripts/p2p/reputation_user.mjs'
+import {
+	CKG_ENCRYPT_EVENT_TYPES,
+	decryptEventContent,
+} from '../channel_keys/content.mjs'
+import { appendChannelKeyRotate, rotateAllChannelKeys } from '../channel_keys/schedule.mjs'
+import { applyChannelKeyRotateEvent } from '../channel_keys/store.mjs'
 import { getEventReceivedAt } from '../events/meta.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { onMqttCredentialsSyncedFromDag, mqttCredentialsFromGroupSettings } from '../federation/mqttCredentials.mjs'
 import { releaseFileChunksAfterDelete } from '../files/deleteGc.mjs'
-import {
-	decryptEventContent,
-	GSH_ENCRYPT_EVENT_TYPES,
-} from '../gsh/content.mjs'
-import { applyChannelKeyRotateEvent } from '../channel_keys/store.mjs'
-import { appendChannelKeyRotate, rotateAllChannelKeys } from '../channel_keys/schedule.mjs'
 import { tryImportHFromPeerInvite } from '../gsh/peerInviteImport.mjs'
 import { applyGshRotationFromEvent } from '../gsh/store.mjs'
-import { resolveLocalEventSigner } from './localSigner.mjs'
 import { eventsPath, messagesPath } from '../lib/paths.mjs'
 import { broadcastEvent } from '../stream/groupWsHub.mjs'
 import { groupWsRoomKeyForReplica } from '../stream/groupWsRooms.mjs'
 
-
+import { resolveLocalEventSigner } from './localSigner.mjs'
 import { getState, rebuildAndSaveCheckpoint } from './materialize.mjs'
 
 /** 写入频道消息流 JSONL 的事件类型。 */
@@ -125,12 +124,12 @@ export async function broadcastAndPersist(username, groupId, signPayload, persis
 	const storedContent = signPayload.content
 	let displayContent = storedContent
 	let sidecarContent = storedContent
-	if (GSH_ENCRYPT_EVENT_TYPES.has(signPayload.type)) {
+	if (CKG_ENCRYPT_EVENT_TYPES.has(signPayload.type)) {
 		displayContent = await decryptEventContent(username, groupId, channelId, storedContent)
-		if (displayContent?.ckgDecryptFailed || displayContent?.gshDecryptFailed)
+		if (displayContent?.ckgDecryptFailed)
 			sidecarContent = {
 				decryptFailed: true,
-				pendingGeneration: displayContent.ckgPendingGeneration ?? displayContent.gshPendingGeneration ?? null,
+				pendingGeneration: displayContent.ckgPendingGeneration ?? null,
 			}
 		else
 			sidecarContent = displayContent

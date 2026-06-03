@@ -309,25 +309,12 @@ export function decryptUtf8ForMember(encrypted, myEdPrivKeySeed) {
 	catch { return null }
 }
 
-// ─── 消息加密（§11.1 broadcast）──────────────────────────────────────────────
-
-/**
- * 用 GSH 广播密钥加密消息内容（§11.1，`K = KDF(H, "broadcast", channelId)`）。
- *
- * @param {string} plaintext 明文消息
- * @param {string | Buffer} H 群秘密
- * @param {string} channelId 频道 ID
- * @param {number} generation 当前 H 代数（写入密文头，供接收方按代数查找 H）
- * @returns {{ scheme: 'gsh', generation: number, iv: string, ciphertext: string, authTag: string }} AES-256-GCM 加密结果，含 scheme 标识与 generation
- */
-export function encryptMessage() {
-	throw new Error('encryptMessage: use channel domain keys (ckg) via channel_crypto.mjs')
-}
+// ─── 遗留 GSH 广播消息解密（频道消息已迁移至 ckg）────────────────────────────
 
 /**
  * 解密 GSH 广播消息。
  *
- * @param {{ scheme: string, iv: string, ciphertext: string, authTag: string }} stored `encryptMessage` 的输出；若 `scheme` 不是 `'gsh'` 则返回 null
+ * @param {{ scheme: string, iv: string, ciphertext: string, authTag: string }} stored GSH 密文；若 `scheme` 不是 `'gsh'` 则返回 null
  * @param {string | Buffer} H 对应 generation 的群秘密
  * @param {string} channelId 频道 ID
  * @returns {string | null} 明文；解密失败或无权限返回 null

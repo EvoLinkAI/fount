@@ -9,6 +9,7 @@ import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { isPeerPoolKeyBlocked, loadPeerPoolView } from '../../../../../../../scripts/p2p/network.mjs'
 import { recordMessageRateViolation } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import { extractInboundSignedEvent } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
+import { assertFederatedCkgContent } from '../channel_keys/content.mjs'
 import {
 	classifyHlcSkewAction,
 	resolveHlcMaxSkewMs,
@@ -18,7 +19,6 @@ import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { canRelayFederatedEvent } from '../federation/acl.mjs'
 import { publishSignedEventToFederation } from '../federation/index.mjs'
 import { checkMessageRateLimit } from '../governance/messageRateLimit.mjs'
-import { assertFederatedGshContent } from '../gsh/content.mjs'
 import { eventsPath } from '../lib/paths.mjs'
 
 import { prepareInboundRemoteChatEvent } from './canonicalizeEvent.mjs'
@@ -123,7 +123,7 @@ export async function appendValidatedRemoteEvent(username, groupId, signPayload,
 	}
 
 	try {
-		assertFederatedGshContent(String(wirePayload.type), wirePayload.content)
+		assertFederatedCkgContent(String(wirePayload.type), wirePayload.content)
 	}
 	catch (error) {
 		if (logFailures) console.error('federation: drop remote event (GSH required)', error)

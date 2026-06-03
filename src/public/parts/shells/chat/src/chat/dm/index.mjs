@@ -18,7 +18,7 @@ import { setFederationBootstrap } from '../federation/bootstrapStore.mjs'
 import { getFederationSettings } from '../federation/config.mjs'
 import { catchUpGroupFromPeers } from '../federation/index.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../federation/room.mjs'
-import { buildGshGenerationGrant } from '../gsh/historicalGrant.mjs'
+import { buildFileHGrant } from '../gsh/historicalGrant.mjs'
 import { initGroupH, getCurrentH } from '../gsh/store.mjs'
 import { consumeGroupInviteTicket } from '../lib/inviteTickets.mjs'
 import { listUserGroups } from '../lib/userGroups.mjs'
@@ -98,7 +98,7 @@ export async function createEcdhDmGroup(username, myPubKeyHex, peerPubKeyHex) {
 
 	const hEntry = await getCurrentH(username, groupId)
 	if (hEntry?.h) {
-		const fileHGrant = await buildGshGenerationGrant(username, groupId, peerPubKey)
+		const fileHGrant = await buildFileHGrant(username, groupId, peerPubKey)
 		await appendSignedLocalEvent(username, groupId, {
 			type: 'peer_invite',
 			timestamp: Date.now(),

@@ -176,20 +176,16 @@ export function registerSyncHandlers(roomContext) {
 				before,
 				limit,
 				limitCap: 500,
-				decrypt: true,
+				decrypt: false,
 			})
 			if (!messages.length || !peerId) return
-			const { encryptMessageLineForWire } = await import('../../channel_keys/content.mjs')
-			const wireMessages = await Promise.all(
-				messages.map(row => encryptMessageLineForWire(username, groupId, channelId, row)),
-			)
 			fedOut.enqueue(2, () => {
 				try {
 					channelHistoryResponse.send({
 						requesterNodeHash,
 						requestId,
 						channelId,
-						messages: wireMessages,
+						messages,
 					}, peerId)
 				}
 				catch (error) {

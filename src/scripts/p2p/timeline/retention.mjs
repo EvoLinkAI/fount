@@ -1,8 +1,8 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 import { topologicalCanonicalOrder } from '../dag/index.mjs'
-import { readJsonl } from '../dag/storage.mjs'
+import { readJsonl, writeJsonl } from '../dag/storage.mjs'
 import { invalidateTopologicalOrderMemo } from '../topo_order_memo.mjs'
 
 /**
@@ -34,7 +34,10 @@ export async function enforceTimelineEventRetention(
 	let anchorIdx = order.length
 	for (let index = order.length - 1; index >= 0; index--) {
 		const ev = byId.get(order[index])
-		if (ev && policy.anchorTypes.has(ev.type)) anchorIdx = index
+		if (ev && policy.anchorTypes.has(ev.type)) {
+			anchorIdx = index
+			break
+		}
 	}
 	const depthStart = Math.max(0, order.length - maxDepth)
 	let timeStart = 0
@@ -57,7 +60,7 @@ export async function enforceTimelineEventRetention(
 	const dropped = events.length - kept.length
 	if (dropped <= 0) return { pruned: false, kept: kept.length, dropped: 0 }
 	await mkdir(dirname(eventsFilePath), { recursive: true })
-	await writeFile(eventsFilePath, kept.map(JSON.stringify).join('\n') + (kept.length ? '\n' : ''), 'utf8')
+	await writeJsonl(eventsFilePath, kept)
 	invalidateTopologicalOrderMemo(eventsFilePath)
 	return { pruned: true, kept: kept.length, dropped }
 }

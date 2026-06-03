@@ -1,5 +1,5 @@
 /**
- * 历史 GSH 代际批量授予（补拉 inner.gshGrant / peer_invite）。
+ * 群文件密钥 H 历史代际批量授予（补拉 inner.fileHGrant / peer_invite）。
  */
 import { Buffer } from 'node:buffer'
 
@@ -16,7 +16,7 @@ import { appendH, loadGsh } from './store.mjs'
  * @param {string} recipientEdPubKeyHex 接收方 Ed25519 公钥 hex
  * @returns {Promise<{ generations: Array<{ gen: number, encrypted_H: object }> }>} grant bundle
  */
-export async function buildGshGenerationGrant(username, groupId, recipientEdPubKeyHex) {
+export async function buildFileHGrant(username, groupId, recipientEdPubKeyHex) {
 	const recipient = normalizeHex64(recipientEdPubKeyHex)
 	if (!recipient || Buffer.from(recipient, 'hex').length !== 32)
 		throw new Error('invalid recipient Ed25519 pub key')
@@ -34,7 +34,7 @@ export async function buildGshGenerationGrant(username, groupId, recipientEdPubK
  * @param {{ generations?: Array<{ gen?: number, encrypted_H?: object }> }} grant grant bundle
  * @returns {Promise<number>} 新导入的代数条数
  */
-export async function applyGshGenerationGrant(username, groupId, grant) {
+export async function applyFileHGrant(username, groupId, grant) {
 	const rows = Array.isArray(grant?.generations) ? grant.generations : []
 	if (!rows.length) return 0
 	let signer

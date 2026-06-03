@@ -9,6 +9,7 @@ import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 import { appendValidatedRemoteEvent } from '../dag/remoteIngest.mjs'
 
 const CONSUMER_ID = 'chat/dag'
+const MAILBOX_APP_CHAT = 'chat'
 
 /**
  * @param {string} username replica
@@ -19,7 +20,7 @@ async function consumeChatDagMailbox(username, records) {
 	/** @type {string[]} */
 	const delivered = []
 	for (const row of records) {
-		if (!row?.envelope) continue
+		if (!row?.envelope || String(row.app || '') !== MAILBOX_APP_CHAT) continue
 		const groupId = String(row.groupId || row.envelope?.groupId || '').trim()
 		if (!groupId) continue
 		const status = await appendValidatedRemoteEvent(username, groupId, row.envelope, { logFailures: false })
@@ -33,7 +34,7 @@ async function consumeChatDagMailbox(username, records) {
  * @returns {void}
  */
 export function registerChatMailboxConsumer() {
-	registerMailboxConsumer(CONSUMER_ID, consumeChatDagMailbox)
+	registerMailboxConsumer(CONSUMER_ID, MAILBOX_APP_CHAT, consumeChatDagMailbox)
 }
 
 /** @returns {void} */
@@ -51,6 +52,7 @@ export function unregisterChatMailboxConsumer() {
 export async function dispatchMailboxMessage(username, signedEvent, toPubKeyHash, meta = {}) {
 	const nodeHash = getNodeHash(username)
 	await publishMailboxRecord(username, toPubKeyHash, {
+		app: MAILBOX_APP_CHAT,
 		groupId: meta.groupId || signedEvent.groupId,
 		channelId: meta.channelId || signedEvent.channelId,
 		dmSessionTag: meta.dmSessionTag,
@@ -83,7 +85,3 @@ export async function onFederationRoomReadyForMailbox(username, groupId) {
 	await requestMailboxFromNetwork(username, sender)
 }
 
-/**
- *
- */
-export { countMailboxPending } from '../../../../../../../scripts/p2p/mailbox/store.mjs'

@@ -13,7 +13,7 @@
 
 import { geti18nForUser } from '../../../../../../../scripts/i18n.mjs'
 import { readChannelMessagesForUser } from '../../group/queries.mjs'
-import { isGshEncryptedContent } from '../gsh/content.mjs'
+import { isCkgEncryptedContent } from '../channel_keys/content.mjs'
 import {
 	channelMessageAgentText,
 	channelMessageEditText,
@@ -124,7 +124,7 @@ function resolveDagMessageText(content, decryptUnavailableText, contentRefPlaceh
 	if (ref && !content.contentRefResolved)
 		return contentRefPlaceholder?.trim()
 			|| `[content_ref:${ref.contentHash?.trim().slice(0, 12) || '?'}…]`
-	if (content?.gshDecryptFailed || content?.ckgDecryptFailed || isGshEncryptedContent(content))
+	if (content?.ckgDecryptFailed || isCkgEncryptedContent(content))
 		return decryptUnavailableText
 	if (content?.e2e?.encrypted === true)
 		return decryptUnavailableText

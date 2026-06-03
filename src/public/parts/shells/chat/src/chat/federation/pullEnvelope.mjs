@@ -3,13 +3,10 @@
  */
 import { writeJsonAtomicSynced } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { extractInboundSignedEvent, isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
+import { encryptSignedEventForWire } from '../channel_keys/content.mjs'
 import { getState } from '../dag/materialize.mjs'
 import { mergeChannelHistories } from '../dag/queries.mjs'
-import {
-	encryptMessageLineForWire,
-	encryptSignedEventForWire,
-} from '../gsh/content.mjs'
-import { applyGshGenerationGrant, buildGshGenerationGrant } from '../gsh/historicalGrant.mjs'
+import { applyFileHGrant, buildFileHGrant } from '../gsh/historicalGrant.mjs'
 import { verifyRemoteCheckpoint } from '../lib/checkpointVerifier.mjs'
 import { snapshotPath } from '../lib/paths.mjs'
 
@@ -56,15 +53,13 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 		const wireHistories = {}
 		for (const [channelId, rows] of Object.entries(channelHistories)) {
 			if (!Array.isArray(rows)) continue
-			wireHistories[channelId] = await Promise.all(
-				rows.map(row => encryptMessageLineForWire(username, groupId, channelId, row)),
-			)
+			wireHistories[channelId] = rows
 		}
 		if (Object.keys(wireHistories).length)
 			inner.channelHistories = wireHistories
 	}
 	if (includeFileHGrant)
-		inner.fileHGrant = await buildGshGenerationGrant(username, groupId, recipientEdPubKeyHex)
+		inner.fileHGrant = await buildFileHGrant(username, groupId, recipientEdPubKeyHex)
 	if (includeChannelKeyRotates) {
 		const { collectChannelKeyRotatesForRecipient } = await import('../channel_keys/bootstrap.mjs')
 		const rotates = await collectChannelKeyRotatesForRecipient(username, groupId, recipientEdPubKeyHex)
@@ -88,7 +83,7 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 export async function applyPullInner(username, groupId, inner) {
 	if (!isPlainObject(inner)) return { eventsApplied: 0, historiesMerged: 0 }
 	if (inner.fileHGrant)
-		await applyGshGenerationGrant(username, groupId, inner.fileHGrant)
+		await applyFileHGrant(username, groupId, inner.fileHGrant)
 	if (Array.isArray(inner.channelKeyRotates)) {
 		const { applyChannelKeyRotateEvent } = await import('../channel_keys/store.mjs')
 		const { resolveLocalEventSigner } = await import('../dag/localSigner.mjs')

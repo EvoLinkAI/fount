@@ -23,7 +23,7 @@ import { ensureFederationRoom, invalidateFederationRoomCache } from '../../chat/
 import { saveGovernanceBranchTip } from '../../chat/governance/branchStore.mjs'
 import { forkGroupFromBranch } from '../../chat/governance/fork.mjs'
 import { blockOpposingForkBranch } from '../../chat/governance/forkBlockOpposing.mjs'
-import { buildGshGenerationGrant } from '../../chat/gsh/historicalGrant.mjs'
+import { buildFileHGrant } from '../../chat/gsh/historicalGrant.mjs'
 import { getCurrentH } from '../../chat/gsh/store.mjs'
 import { eventsPath } from '../../chat/lib/paths.mjs'
 import { canGovSlash, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
@@ -175,12 +175,12 @@ export function registerDagRoutes(router, authenticate) {
 				continue
 			}
 
-			if (event.type === 'peer_invite' && !content.fileHGrant && !content.gshGrant) {
+			if (event.type === 'peer_invite' && !content.fileHGrant) {
 				const peerPubKeyHex = normalizePubKeyHex(content.to || '')
 				if (PUB_KEY_HEX_64.test(peerPubKeyHex)) {
 					const hEntry = await getCurrentH(username, groupId)
 					if (hEntry)
-						content.fileHGrant = await buildGshGenerationGrant(username, groupId, peerPubKeyHex)
+						content.fileHGrant = await buildFileHGrant(username, groupId, peerPubKeyHex)
 				}
 			}
 

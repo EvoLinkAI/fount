@@ -7,7 +7,7 @@ import { authenticate, getUserByReq } from '../../../../../../server/auth.mjs'
 export function registerMailboxRoutes(router) {
 	router.get('/api/parts/shells\\:chat/mailbox/summary', authenticate, async (req, res) => {
 		const { username } = getUserByReq(req)
-		const { countMailboxPending } = await import('../chat/mailbox/ingest.mjs')
+		const { countMailboxPending } = await import('../../../../../../scripts/p2p/mailbox/store.mjs')
 		res.status(200).json({ pending: await countMailboxPending(username) })
 	})
 }

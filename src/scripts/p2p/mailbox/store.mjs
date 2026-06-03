@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
+import { writeJsonl } from '../dag/storage.mjs'
 import { isHex64, normalizeHex64 } from '../hexIds.mjs'
 import {
 	defaultTtlMsForTier,
@@ -29,6 +30,7 @@ const MAX_ENTRY_BYTES = 256 * 1024
 /**
  * @typedef {{
  *   id: string,
+ *   app: string,
  *   toPubKeyHash: string,
  *   dmSessionTag?: string,
  *   groupId?: string,
@@ -88,7 +90,7 @@ async function writeAll(username, rows) {
 	const now = Date.now()
 	let kept = rows.filter(record => record.expiresAt > now)
 	kept = pruneByImportanceThenFair(kept)
-	await writeFile(filePath, kept.map(record => JSON.stringify(record)).join('\n') + (kept.length ? '\n' : ''), 'utf8')
+	await writeJsonl(filePath, kept)
 }
 
 /**
@@ -114,12 +116,15 @@ export async function storeMailboxRecord(username, record) {
 		? record.tier
 		: mailboxTierFromHop(hop)
 	if (tier === 'quarantine' && hop > 0) return false
+	const app = String(record.app || '').trim()
+	if (!app) return false
 	const id = record.id || mailboxEnvelopeId(record.envelope)
 	const rows = await readAll(username)
 	if (rows.some(row => row.id === id)) return false
 	const ttlMs = Number(record.ttlMs) || defaultTtlMsForTier(tier)
 	rows.push({
 		id,
+		app,
 		toPubKeyHash,
 		dmSessionTag: record.dmSessionTag?.trim().toLowerCase() || undefined,
 		groupId: record.groupId || undefined,

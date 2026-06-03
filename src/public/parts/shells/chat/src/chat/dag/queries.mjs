@@ -81,8 +81,8 @@ function messageLineWallMs(line) {
 export async function listChannelMessages(username, groupId, channelId, q = {}) {
 	let lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
 	if (q.decrypt !== false) {
-		const { decryptChannelMessageLines, isGshEncryptedContent } = await import('../gsh/content.mjs')
-		const needsDecrypt = lines.some(line => isGshEncryptedContent(line?.content))
+		const { decryptChannelMessageLines, isCkgEncryptedContent } = await import('../channel_keys/content.mjs')
+		const needsDecrypt = lines.some(line => isCkgEncryptedContent(line?.content))
 		if (needsDecrypt)
 			lines = await decryptChannelMessageLines(username, groupId, channelId, lines)
 	}
