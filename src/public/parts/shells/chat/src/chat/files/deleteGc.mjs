@@ -20,5 +20,5 @@ export async function releaseFileChunksAfterDelete(username, groupId, fileId, st
 	if (!fid) return { released: 0, deleted: 0 }
 	const meta = fileMetaFromState(stateBeforeDelete, fid)
 	if (!meta) return { released: 0, deleted: 0 }
-	return releaseFileStorageRefs(username, groupId, meta)
+	return releaseFileStorageRefs(username, meta)
 }

@@ -31,9 +31,9 @@ export async function deliverToUserRoomPeers(username, actionName, payload, exce
 	let sent = 0
 	const peers = slot.getRoster()
 		.filter(({ peerId }) => peerId && peerId !== exceptPeerId)
-	for (let i = peers.length - 1; i > 0; i--) {
-		const j = Math.floor(Math.random() * (i + 1));
-		[peers[i], peers[j]] = [peers[j], peers[i]]
+	for (let swapIndex = peers.length - 1; swapIndex > 0; swapIndex--) {
+		const pickIndex = Math.floor(Math.random() * (swapIndex + 1));
+		[peers[swapIndex], peers[pickIndex]] = [peers[pickIndex], peers[swapIndex]]
 	}
 	for (const { peerId } of peers) 
 		try {

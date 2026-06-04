@@ -195,17 +195,17 @@ export async function catchUpGroupFromPeers(username, groupId, opts = {}) {
 		eventsFilled = wantIds.length - wantIdsStillMissing
 		if (result.rateLimited) wantIdsRateLimited = true
 	}
-	const catchUpResult = {
+	const stats = {
 		tipsCollected: remoteTips.size,
 		wantIds: wantIds.length,
 		eventsFilled,
 		wantIdsStillMissing,
 		wantIdsRateLimited,
 	}
-	void maybeRequestBootstrapAfterCatchup(username, groupId, catchUpResult, slot)
+	void maybeRequestBootstrapAfterCatchup(username, groupId, stats, slot)
 	if (localArchive.checkpoint?.local_tips_hash)
 		void markGroupOnlineSynced(username, groupId, localArchive.checkpoint.local_tips_hash).catch(console.error)
-	return catchUpResult
+	return stats
 }
 
 /**

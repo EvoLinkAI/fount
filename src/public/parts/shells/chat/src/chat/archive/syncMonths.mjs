@@ -50,51 +50,37 @@ export function sortMissingArchiveMonths(items, priorityMonth = '') {
  * @param {string} groupId 群 ID
  * @param {object} slot 联邦槽
  * @param {{ priorityMonth?: string, concurrency?: number }} [opts] 选项
- * @returns {Promise<{ pulled: number, incomplete: number, skipped: number }>} 拉取统计
+ * @returns {Promise<{ pulled: number, incomplete: number }>} 拉取统计
  */
 export async function syncMissingArchiveMonths(username, groupId, slot, opts = {}) {
-	if (!slot) return { pulled: 0, incomplete: 0, skipped: 0 }
+	if (!slot) return { pulled: 0, incomplete: 0 }
 	const { loadGroupSyncState } = await import('../federation/syncState.mjs')
 	const sync = await loadGroupSyncState(username, groupId)
 	const priorityMonth = opts.priorityMonth
 		|| sync.offlineStartUtcMonth
 		|| (sync.offlineStartedAt ? archiveMonthKey(sync.offlineStartedAt) : '')
 	let missing = await listMissingArchiveMonths(username, groupId)
-	if (!missing.length) return { pulled: 0, incomplete: 0, skipped: 0 }
+	if (!missing.length) return { pulled: 0, incomplete: 0 }
 	missing = sortMissingArchiveMonths(missing, priorityMonth)
 
 	const { pullArchiveMonthQuorum } = await import('../federation/archiveMonthPull.mjs')
-	const peerToNode = new Map()
-	for (const row of slot.getRoster?.() || []) {
-		const peerId = row?.peerId
-		const remoteNodeHash = row?.remoteNodeHash
-		if (peerId && remoteNodeHash) peerToNode.set(peerId, remoteNodeHash)
-	}
-
 	const concurrency = Math.max(1, Math.min(8, Number(opts.concurrency) || DEFAULT_CONCURRENCY))
 	let pulled = 0
 	let incomplete = 0
-	let index = 0
+	let nextIndex = 0
 
 	/** @returns {Promise<void>} */
 	const worker = async () => {
 		for (;;) {
-			const i = index++
-			if (i >= missing.length) return
-			const { channelId, utcMonth } = missing[i]
-			const { applied } = await pullArchiveMonthQuorum(
-				username,
-				groupId,
-				slot,
-				channelId,
-				utcMonth,
-				peerToNode,
-			)
+			const itemIndex = nextIndex++
+			if (itemIndex >= missing.length) return
+			const { channelId, utcMonth } = missing[itemIndex]
+			const { applied } = await pullArchiveMonthQuorum(username, groupId, slot, channelId, utcMonth)
 			if (applied) pulled++
 			else incomplete++
 		}
 	}
 
 	await Promise.all(Array.from({ length: Math.min(concurrency, missing.length) }, () => worker()))
-	return { pulled, incomplete, skipped: 0 }
+	return { pulled, incomplete }
 }

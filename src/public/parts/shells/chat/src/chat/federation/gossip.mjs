@@ -256,7 +256,7 @@ export async function requestMissingEventsGossip(username, groupId, query = {}) 
 				await waitPromise.catch(console.error)
 			}
 		}
-		; ({ filled, stillMissing } = await readFilled())
+		({ filled, stillMissing } = await readFilled())
 	}
 
 	return {

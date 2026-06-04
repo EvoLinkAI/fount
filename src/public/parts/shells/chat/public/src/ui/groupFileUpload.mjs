@@ -87,7 +87,7 @@ async function createUploadProgress(fileName) {
 async function uploadEncryptedChunk(groupId, partFileId, plainB64, byteLength, channelId, ceMode = 'convergent') {
 	const channelField = channelId ? { channelId } : {}
 	const modeField = { ceMode }
-	const haveR = await fetch(
+	const haveResponse = await fetch(
 		`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/chunks/have`,
 		{
 			method: 'POST',
@@ -96,10 +96,10 @@ async function uploadEncryptedChunk(groupId, partFileId, plainB64, byteLength, c
 			body: JSON.stringify({ fileId: partFileId, data: plainB64, size: byteLength, ...channelField, ...modeField }),
 		},
 	)
-	if (!haveR.ok) throw new Error(`chunk have HTTP ${haveR.status}`)
-	const probe = await haveR.json()
+	if (!haveResponse.ok) throw new Error(`chunk have HTTP ${haveResponse.status}`)
+	const probe = await haveResponse.json()
 	if (ceMode !== 'random' && probe?.have && probe.storageLocator) {
-		const regR = await fetch(
+		const registerResponse = await fetch(
 			`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/chunks`,
 			{
 				method: 'POST',
@@ -108,11 +108,11 @@ async function uploadEncryptedChunk(groupId, partFileId, plainB64, byteLength, c
 				body: JSON.stringify({ fileId: partFileId, data: plainB64, registerOnly: true, ...channelField, ...modeField }),
 			},
 		)
-		if (!regR.ok) throw new Error(`chunk register HTTP ${regR.status}`)
-		return await regR.json()
+		if (!registerResponse.ok) throw new Error(`chunk register HTTP ${registerResponse.status}`)
+		return await registerResponse.json()
 	}
 
-	const uploadR = await fetch(
+	const uploadResponse = await fetch(
 		`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/chunks`,
 		{
 			method: 'POST',
@@ -121,8 +121,8 @@ async function uploadEncryptedChunk(groupId, partFileId, plainB64, byteLength, c
 			body: JSON.stringify({ fileId: partFileId, data: plainB64, ...channelField, ...modeField }),
 		},
 	)
-	if (!uploadR.ok) throw new Error(`chunk HTTP ${uploadR.status}`)
-	return await uploadR.json()
+	if (!uploadResponse.ok) throw new Error(`chunk HTTP ${uploadResponse.status}`)
+	return await uploadResponse.json()
 }
 
 /**
@@ -196,26 +196,26 @@ export function createFileHandlers(hub) {
 			if (folderId) manifestBody.folderId = folderId
 			if (uploadChannelId) manifestBody.channelId = uploadChannelId
 			if (partCount === 1) {
-				const p = parts[0]
-				manifestBody.ciphertextHash = p.ciphertextHash
-				manifestBody.wrappedKey = p.wrappedKey
-				manifestBody.storageLocator = p.storageLocator
-				manifestBody.key_generation = p.key_generation
+				const firstPart = parts[0]
+				manifestBody.ciphertextHash = firstPart.ciphertextHash
+				manifestBody.wrappedKey = firstPart.wrappedKey
+				manifestBody.storageLocator = firstPart.storageLocator
+				manifestBody.key_generation = firstPart.key_generation
 			}
 			else {
 				manifestBody.parts = parts
 				manifestBody.key_generation = parts[0]?.key_generation
 			}
 
-			const evR = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/files`, {
+			const fileEventResponse = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/files`, {
 				method: 'POST',
 				credentials: 'include',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(manifestBody),
 			})
-			if (!evR.ok) {
+			if (!fileEventResponse.ok) {
 				progress.fail()
-				handleUIError(new Error(`uploadGroupFile files HTTP ${evR.status}`), 'chat.hub.fileUploadFailed')
+				handleUIError(new Error(`uploadGroupFile files HTTP ${fileEventResponse.status}`), 'chat.hub.fileUploadFailed')
 				return
 			}
 			progress.set(100, 'chat.hub.fileUploaded')
@@ -277,12 +277,12 @@ export function createFileHandlers(hub) {
 	 */
 	const downloadGroupFile = async (fileId, fileName) => {
 		try {
-			const metaR = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/files/${encodeURIComponent(fileId)}/meta`)
-			if (!metaR.ok) {
-				handleUIError(new Error(`downloadGroupFile meta HTTP ${metaR.status}`), 'chat.hub.fileDownloadFailed')
+			const metaResponse = await fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/files/${encodeURIComponent(fileId)}/meta`)
+			if (!metaResponse.ok) {
+				handleUIError(new Error(`downloadGroupFile meta HTTP ${metaResponse.status}`), 'chat.hub.fileDownloadFailed')
 				return
 			}
-			const meta = await metaR.json()
+			const meta = await metaResponse.json()
 			const hasParts = Array.isArray(meta.parts) && meta.parts.length
 			if (!meta.contentHash || (!hasParts && !meta.storageLocator)) {
 				handleUIError(new Error('downloadGroupFile: missing blob meta'), 'chat.hub.fileNoKey')
@@ -301,12 +301,12 @@ export function createFileHandlers(hub) {
 
 			const fileIdForEvfs = String(meta?.fileId || '').trim()
 			const entityHash = groupEntityHash(groupId)
-			const plainRes = await fetch(entityFileUrl(entityHash, `chat/${fileIdForEvfs}`), { credentials: 'include' })
-			if (!plainRes.ok) {
+			const plainResponse = await fetch(entityFileUrl(entityHash, `chat/${fileIdForEvfs}`), { credentials: 'include' })
+			if (!plainResponse.ok) {
 				handleUIError(new Error('downloadGroupFile decrypt failed'), 'chat.hub.fileDownloadFailed')
 				return
 			}
-			const plain = new Uint8Array(await plainRes.arrayBuffer())
+			const plain = new Uint8Array(await plainResponse.arrayBuffer())
 
 			const { createWriteStream } = await import('https://esm.sh/streamsaver@2.0.6')
 			const fileStream = createWriteStream(

@@ -5,12 +5,29 @@ const ENTITY_HASH_RE = /^[\da-f]{128}$/u
 
 /**
  * @param {string} entityHash 128 hex
+ * @returns {string} 规范化 entityHash
+ */
+function normalizeEntityHash(entityHash) {
+	const normalized = String(entityHash).trim().toLowerCase()
+	if (!ENTITY_HASH_RE.test(normalized)) throw new Error('invalid entityHash')
+	return normalized
+}
+
+/**
+ * @param {string} entityHash 128 hex
+ * @param {string} prefix 命名空间前缀
+ * @returns {string} DAG groupId
+ */
+function socialGroupId(entityHash, prefix) {
+	return `${prefix}:${normalizeEntityHash(entityHash)}`
+}
+
+/**
+ * @param {string} entityHash 128 hex
  * @returns {string} DAG groupId
  */
 export function timelineGroupId(entityHash) {
-	const id = String(entityHash).trim().toLowerCase()
-	if (!ENTITY_HASH_RE.test(id)) throw new Error('invalid entityHash')
-	return `social-timeline:${id}`
+	return socialGroupId(entityHash, 'social-timeline')
 }
 
 /**
@@ -18,9 +35,7 @@ export function timelineGroupId(entityHash) {
  * @returns {string} vault 逻辑库 groupId
  */
 export function vaultGroupId(entityHash) {
-	const id = String(entityHash).trim().toLowerCase()
-	if (!ENTITY_HASH_RE.test(id)) throw new Error('invalid entityHash')
-	return `social-vault:${id}`
+	return socialGroupId(entityHash, 'social-vault')
 }
 
 /** @type {Set<string>} */

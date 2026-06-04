@@ -63,17 +63,9 @@ function followerBucketPath(bucketId) {
 async function readFollowerBucket(bucketId) {
 	const { readFile } = await import('node:fs/promises')
 	try {
-		const bucket = JSON.parse(await readFile(followerBucketPath(bucketId), 'utf8'))
-		/** @type {Record<string, string[]>} */
-		const out = {}
-		for (const [key, value] of Object.entries(bucket)) {
-			if (!parseEntityHash(key)) continue
-			out[key] = [...new Set(value.map(String))]
-		}
-		return out
+		return JSON.parse(await readFile(followerBucketPath(bucketId), 'utf8'))
 	}
-	catch { /* missing */ }
-	return {}
+	catch { return {} }
 }
 
 /**

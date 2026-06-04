@@ -20,16 +20,17 @@ import { pickFederationTargetPeerIds } from '../governance/peerPool.mjs'
 import { channelArchivePath } from '../lib/paths.mjs'
 
 import { markArchiveMonthIncomplete } from './archiveMonthMark.mjs'
-/**
- *
- */
-export { parseFedArchiveMonthResponse, parseFedArchiveMonthWant } from './archiveMonthWire.mjs'
 import { federationNodeHash, loadFederationGroupSettings, loadFederationMaterializedState } from './deps.mjs'
 import {
 	signPullAttestation,
 	validateActivePullAttestationForGroup,
 } from './pullAttestation.mjs'
 import { loadGroupSyncState } from './syncState.mjs'
+
+/**
+ *
+ */
+export { parseFedArchiveMonthResponse, parseFedArchiveMonthWant } from './archiveMonthWire.mjs'
 
 const WAIT_MS = 5000
 
@@ -120,8 +121,7 @@ export function noteFedArchiveMonthResponse(username, groupId, response, peerNod
  * @returns {Promise<{ applied: boolean }>} 是否写入
  */
 export async function applyArchiveMonthWinner(username, groupId, winner) {
-	if (!winner?.channelId || !winner?.utcMonth) return { applied: false }
-	if (typeof winner.body !== 'string') return { applied: false }
+	if (!winner?.channelId || !winner?.utcMonth || winner.body == null) return { applied: false }
 	const manifest = await loadArchiveManifest(username, groupId)
 	if (winner.seal) {
 		const localSeal = manifest.seals?.[winner.channelId] || null
@@ -176,10 +176,9 @@ async function resolveArchiveMonthCandidates(username, groupId, slot, candidates
  * @param {object} slot 联邦槽
  * @param {string} channelId 频道
  * @param {string} utcMonth `YYYY-MM`
- * @param {Map<string, string>} peerToNode peerId → nodeHash
  * @returns {Promise<{ applied: boolean, reason: string }>} 拉取结果
  */
-export async function pullArchiveMonthQuorum(username, groupId, slot, channelId, utcMonth, peerToNode) {
+export async function pullArchiveMonthQuorum(username, groupId, slot, channelId, utcMonth) {
 	const nodeHash = federationNodeHash(username)
 	const groupSettings = await loadFederationGroupSettings(username, groupId)
 	const targets = await pickFederationTargetPeerIds(
@@ -276,13 +275,6 @@ export async function pullOfflineStartUtcMonthArchives(username, groupId, slot) 
 			channels.push(channelId)
 	}
 
-	const peerToNode = new Map()
-	for (const row of slot.getRoster?.() || []) {
-		const peerId = row?.peerId
-		const remoteNodeHash = row?.remoteNodeHash
-		if (peerId && remoteNodeHash) peerToNode.set(peerId, remoteNodeHash)
-	}
-
 	let pulled = 0
 	let incomplete = 0
 	for (const channelId of channels) {
@@ -292,14 +284,7 @@ export async function pullOfflineStartUtcMonthArchives(username, groupId, slot) 
 		}
 		catch { /* missing */ }
 
-		const { applied } = await pullArchiveMonthQuorum(
-			username,
-			groupId,
-			slot,
-			channelId,
-			utcMonth,
-			peerToNode,
-		)
+		const { applied } = await pullArchiveMonthQuorum(username, groupId, slot, channelId, utcMonth)
 		if (applied) pulled++
 		else incomplete++
 	}

@@ -63,7 +63,6 @@ async function readAll(username) {
 	try {
 		const text = await readFile(mailboxStorePath(username), 'utf8')
 		return text.split('\n').filter(Boolean).map(line => JSON.parse(line))
-			.filter(record => record.tier === 'trusted' || record.tier === 'normal' || record.tier === 'quarantine')
 	}
 	catch { return [] }
 }

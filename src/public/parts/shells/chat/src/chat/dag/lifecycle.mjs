@@ -20,8 +20,8 @@ import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { isGroupFederationActive } from '../federation/groupFederation.mjs'
 import { DEFAULT_MQTT_APP_ID, mintMqttRoomSecret } from '../federation/mqttCredentials.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../federation/room.mjs'
-import { releaseFileStorageRefs } from '../files/groupFiles.mjs'
 import { initGroupFileMasterKey } from '../file_keys/store.mjs'
+import { releaseFileStorageRefs } from '../files/groupFiles.mjs'
 import { groupDir, eventsPath } from '../lib/paths.mjs'
 import { getLocalNodeHash } from '../lib/replica.mjs'
 import { safeRm } from '../lib/utils.mjs'
@@ -216,7 +216,7 @@ export async function deleteGroupData(username, groupId) {
 export async function removeLocalGroupReplica(username, groupId) {
 	const { state } = await getState(username, groupId)
 	for (const meta of Object.values(state.fileIndex || {}))
-		if (meta && !meta.deleted) await releaseFileStorageRefs(username, groupId, meta)
+		if (meta && !meta.deleted) await releaseFileStorageRefs(username, meta)
 
 	invalidateFederationRoomCache(username, groupId)
 	purgeGroupSession(groupId)

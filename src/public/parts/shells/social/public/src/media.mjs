@@ -36,7 +36,7 @@ export async function uploadSocialMedia(files) {
  * @returns {string} HTML
  */
 export function renderMediaHtml(mediaRefs) {
-	if (!Array.isArray(mediaRefs) || !mediaRefs.length) return ''
+	if (!mediaRefs?.length) return ''
 	const items = mediaRefs.map(ref => {
 		const url = mediaRefUrl(ref)
 		const mimeType = ref.mimeType || ''

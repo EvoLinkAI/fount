@@ -129,11 +129,10 @@ export async function buildFederatedTimelinePullResponse(username, entityHash, a
 	const events = await readTimelineEvents(username, timelineOwner)
 	const afterId = afterEventId?.trim() || ''
 	const start = afterId ? events.findIndex(event => event.id === afterId) + 1 : 0
-	const slice = start > 0 ? events.slice(start) : events
 	return filterEventsForFederatedPull(
 		username,
 		timelineOwner,
-		slice.slice(0, FEDERATED_TIMELINE_PULL_BATCH),
+		(start > 0 ? events.slice(start) : events).slice(0, FEDERATED_TIMELINE_PULL_BATCH),
 		requesterNodeHash,
 	)
 }

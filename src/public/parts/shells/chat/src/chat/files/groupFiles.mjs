@@ -187,11 +187,6 @@ async function resolveCiphertextRaw(username, groupId, storageLocator) {
 }
 
 /**
- * 校验 `file_upload` DAG 必填字段。
- * @param {object} body 请求体
- * @returns {void}
- */
-/**
  * 校验单块 manifest 字段。
  * @param {object} part 分块描述
  * @returns {void}
@@ -552,12 +547,10 @@ export function listActiveFilesFromState(state) {
 /**
  * `file_delete` 后释放 blob 引用（§10.4）。
  * @param {string} username 用户
- * @param {string} groupId 群 ID
  * @param {object} meta 文件元数据
  * @returns {Promise<{ released: number, deleted: number }>} 释放与物理删除计数
  */
-export async function releaseFileStorageRefs(username, groupId, meta) {
-	void groupId
+export async function releaseFileStorageRefs(username, meta) {
 	if (!meta) return { released: 0, deleted: 0 }
 	let released = 0
 	let deleted = 0
