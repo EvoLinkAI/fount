@@ -192,16 +192,14 @@ export async function handleGossipResponse(username, groupId, data) {
 export async function requestMissingEventsGossip(username, groupId, query = {}) {
 	const { readJsonl } = requireDagDeps()
 	const nodeHash = federationNodeHash(username)
-	const wantIds = [...new Set(
-		(query.wantIds || []).filter(isHex64),
-	)]
+	const wantIds = [...new Set((query.wantIds || []).filter(isHex64))]
 
 	/**
-	 * @returns {Promise<{ filled: object[], stillMissing: string[] }>} 本地已命中与仍缺 id
+	 *
 	 */
+	/** @returns {Promise<{ filled: object[], stillMissing: string[] }>} 本地已命中与仍缺 id */
 	const readFilled = async () => {
-		const events = await readJsonl(eventsPath(username, groupId))
-		const eventsById = new Map(events.map(event => [event.id, event]))
+		const eventsById = new Map((await readJsonl(eventsPath(username, groupId))).map(event => [event.id, event]))
 		return {
 			filled: wantIds.map(id => eventsById.get(id)).filter(Boolean),
 			stillMissing: wantIds.filter(id => !eventsById.has(id)),

@@ -2,7 +2,8 @@
  * 冷归档按月联邦拉取：PullAttestation + chunk meta + 多 peer 信誉 digest 仲裁。
  */
 import { randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname } from 'node:path'
 
 import { penalizeArchiveServeMismatch } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import { loadArchiveManifest, saveArchiveManifest } from '../archive/index.mjs'
@@ -15,7 +16,6 @@ import {
 	pickArchiveMonthByReputation,
 } from '../archive/monthDigest.mjs'
 import { assertArchiveSealChainValid } from '../archive/seal.mjs'
-import { archiveMonthKey } from '../archive/settings.mjs'
 import { pickFederationTargetPeerIds } from '../governance/peerPool.mjs'
 import { channelArchivePath } from '../lib/paths.mjs'
 
@@ -105,7 +105,7 @@ export function noteFedArchiveMonthResponse(username, groupId, response, peerNod
 	const pending = pendingMonthPulls.get(key)
 	if (!pending) return
 	pending.candidates.push({
-		peerNodeHash: String(peerNodeHash || '').trim(),
+		peerNodeHash: String(peerNodeHash).trim(),
 		digest: response.digest,
 		parts: response.parts,
 		seal: response.seal,
@@ -129,12 +129,9 @@ export async function applyArchiveMonthWinner(username, groupId, winner) {
 			return { applied: false }
 	}
 	const { digest } = digestArchiveMonthBody(winner.body)
-	const { writeFile, mkdir } = await import('node:fs/promises')
-	const { dirname } = await import('node:path')
 	const path = channelArchivePath(username, groupId, winner.channelId, winner.utcMonth)
 	await mkdir(dirname(path), { recursive: true })
-	const bodyText = winner.body.endsWith('\n') ? winner.body : `${winner.body}\n`
-	await writeFile(path, bodyText, 'utf8')
+	await writeFile(path, winner.body.endsWith('\n') ? winner.body : `${winner.body}\n`, 'utf8')
 	if (!manifest.channels[winner.channelId]) manifest.channels[winner.channelId] = { months: [] }
 	if (!manifest.channels[winner.channelId].months.includes(winner.utcMonth))
 		manifest.channels[winner.channelId].months.push(winner.utcMonth)
@@ -263,7 +260,6 @@ export async function pullArchiveMonthQuorum(username, groupId, slot, channelId,
 export async function pullOfflineStartUtcMonthArchives(username, groupId, slot) {
 	const sync = await loadGroupSyncState(username, groupId)
 	const utcMonth = sync.offlineStartUtcMonth
-		|| (sync.offlineStartedAt ? archiveMonthKey(sync.offlineStartedAt) : '')
 	if (!utcMonth) return { pulled: 0, incomplete: 0 }
 
 	const manifest = await loadArchiveManifest(username, groupId)

@@ -150,9 +150,9 @@ export async function updateFollowerIndex(username, targetEntityHash, follow) {
  * @returns {Promise<void>}
  */
 export async function projectFollowerIndexFromTimelineEvent(replicaUsername, timelineOwnerEntityHash, event) {
-	if (!['follow', 'unfollow'].includes(event?.type)) return
+	if (!['follow', 'unfollow'].includes(event.type)) return
 	const operator = resolveOperatorEntityHash(replicaUsername)
-	const owner = String(timelineOwnerEntityHash).toLowerCase()
+	const owner = timelineOwnerEntityHash.toLowerCase()
 	if (!operator || owner !== operator.toLowerCase()) return
 	const target = event.content?.targetEntityHash?.toLowerCase()
 	if (!target) return

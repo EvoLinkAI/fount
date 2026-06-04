@@ -18,7 +18,7 @@ import { mailboxTierFromHop, storeMailboxRecord } from './store.mjs'
  */
 export async function deliverOrStoreMailboxPut(username, opts) {
 	const routing = getMailboxRoutingSettings(username)
-	const toPubKeyHash = normalizeHex64(opts.toPubKeyHash || opts.record?.toPubKeyHash)
+	const toPubKeyHash = normalizeHex64(opts.toPubKeyHash)
 	if (!toPubKeyHash) return { stored: false, delivered: false, relayed: 0 }
 	const hop = Math.min(routing.maxHop, Math.max(0, Number(opts.hop) || 0))
 	const tier = mailboxTierFromHop(hop)
@@ -31,10 +31,10 @@ export async function deliverOrStoreMailboxPut(username, opts) {
 		fromNodeHash: opts.record?.fromNodeHash || nodeHash,
 	}
 	const stored = await storeMailboxRecord(username, record)
-	let delivered = false
-	const toNodeHash = String(opts.toNodeHash || '').trim().toLowerCase()
-	if (toNodeHash)
-		delivered = await deliver(username, toNodeHash, 'mailbox_put', { nodeHash, record })
+	const toNodeHash = opts.toNodeHash?.trim().toLowerCase()
+	const delivered = toNodeHash
+		? await deliver(username, toNodeHash, 'mailbox_put', { nodeHash, record })
+		: false
 
 	let relayed = 0
 	const relayFanout = tier === 'trusted' ? routing.relayFanoutTrusted : routing.relayFanoutNormal

@@ -9,7 +9,7 @@ import { Buffer } from 'node:buffer'
 
 import { pubKeyHash, publicKeyFromSeed, verify } from '../../../../../../../scripts/p2p/crypto.mjs'
 import { signPayloadBytes, sortedPrevEventIds } from '../../../../../../../scripts/p2p/dag/index.mjs'
-import { HEX_ID_64, isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { HEX_ID_64, normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 
 /**
  * 发件人 pubKeyHash 的 64 位小写 hex 校验正则。
@@ -50,8 +50,8 @@ function memberRecord(materializedState, sender) {
  * @returns {Uint8Array | null} 32 字节公钥
  */
 function publicKeyBytesFromHex(hex) {
-	const normalized = hex?.replace(/^0x/iu, '') || ''
-	if (!isHex64(normalized)) return null
+	const normalized = normalizeHex64(hex)
+	if (!HEX_ID_64.test(normalized)) return null
 	return new Uint8Array(Buffer.from(normalized, 'hex'))
 }
 

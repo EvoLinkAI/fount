@@ -7,7 +7,6 @@ import { groupSyncStatePath } from '../lib/paths.mjs'
 import { safeReadJson } from '../lib/utils.mjs'
 
 const EMPTY_SYNC_STATE = {
-	offlineStartedAt: 0,
 	offlineStartUtcMonth: '',
 	tipsHashAtLastSync: '',
 }
@@ -42,7 +41,6 @@ export async function saveGroupSyncState(username, groupId, patch) {
  */
 export async function markGroupOfflineStarted(username, groupId, wallMs = Date.now()) {
 	return saveGroupSyncState(username, groupId, {
-		offlineStartedAt: wallMs,
 		offlineStartUtcMonth: archiveMonthKey(wallMs),
 	})
 }
@@ -57,6 +55,6 @@ export async function markGroupOfflineStarted(username, groupId, wallMs = Date.n
 export async function markGroupOnlineSynced(username, groupId, tipsHash) {
 	return saveGroupSyncState(username, groupId, {
 		tipsHashAtLastSync: tipsHash.trim().toLowerCase(),
-		offlineStartedAt: 0,
+		offlineStartUtcMonth: '',
 	})
 }

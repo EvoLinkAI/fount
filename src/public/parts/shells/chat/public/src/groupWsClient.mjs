@@ -55,16 +55,14 @@ export function sendWebsocketMessage(message) {
  * @returns {void}
  */
 export function stopGeneration(target) {
-	const payload = {
-		messageId: String((target?.messageId ?? target) || '').trim(),
-		dagEventId: String(target?.dagEventId || '').trim(),
-	}
-	if (!payload.messageId && !payload.dagEventId) return
+	const messageId = String(target?.messageId || '').trim()
+	const dagEventId = String(target?.dagEventId || '').trim()
+	if (!messageId && !dagEventId) return
 	sendWebsocketMessage({
 		type: 'stop_generation',
 		payload: {
-			messageId: payload.messageId || undefined,
-			dagEventId: payload.dagEventId || undefined,
+			messageId: messageId || undefined,
+			dagEventId: dagEventId || undefined,
 		},
 	})
 }

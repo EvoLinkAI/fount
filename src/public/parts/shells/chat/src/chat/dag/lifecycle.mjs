@@ -25,6 +25,7 @@ import { releaseFileStorageRefs } from '../files/groupFiles.mjs'
 import { groupDir, eventsPath } from '../lib/paths.mjs'
 import { getLocalNodeHash } from '../lib/replica.mjs'
 import { safeRm } from '../lib/utils.mjs'
+import { invalidateKnownMemberIndex } from '../mailbox/memberIndex.mjs'
 import { purgeGroupSession } from '../session/wsLifecycle.mjs'
 import { dropGroupReplicaRegistration } from '../stream/groupWsRooms.mjs'
 
@@ -153,11 +154,7 @@ export async function createGroup(username, body) {
 	await initGroupFileMasterKey(username, groupId)
 
 	const { checkpoint, state } = await getState(username, groupId)
-	try {
-		const { invalidateKnownMemberIndex } = await import('../mailbox/memberIndex.mjs')
-		invalidateKnownMemberIndex(username)
-	}
-	catch { /* ignore */ }
+	invalidateKnownMemberIndex(username)
 	return {
 		groupId,
 		checkpoint,

@@ -127,12 +127,13 @@ export async function buildFederatedTimelinePullResponse(username, entityHash, a
 	const timelineOwner = entityHash.toLowerCase()
 	const { readTimelineEvents } = await import('./append.mjs')
 	const events = await readTimelineEvents(username, timelineOwner)
-	const afterId = afterEventId?.trim() || ''
-	const start = afterId ? events.findIndex(event => event.id === afterId) + 1 : 0
+	const start = afterEventId
+		? Math.max(0, events.findIndex(event => event.id === afterEventId.trim()) + 1)
+		: 0
 	return filterEventsForFederatedPull(
 		username,
 		timelineOwner,
-		(start > 0 ? events.slice(start) : events).slice(0, FEDERATED_TIMELINE_PULL_BATCH),
+		events.slice(start, start + FEDERATED_TIMELINE_PULL_BATCH),
 		requesterNodeHash,
 	)
 }

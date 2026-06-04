@@ -390,7 +390,7 @@ function handleGroupHubWireMessage(wireMessage, channelId) {
  */
 async function handleVolatileStreamWireMessage(wireMessage, channelId) {
 	if (wireMessage.type === 'reputation_slash_alert') {
-		const target = String(wireMessage.payload?.targetPubKeyHash || wireMessage.payload?.target || '').slice(0, 16)
+		const target = String(wireMessage.targetPubKeyHash || '').slice(0, 16)
 		showToastI18n('warning', 'chat.hub.reputationSlashAlert', { target })
 		return
 	}

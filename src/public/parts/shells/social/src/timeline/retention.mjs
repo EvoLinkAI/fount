@@ -39,17 +39,12 @@ export function socialRetentionPolicy(socialMeta = {}) {
 export async function runSocialTimelineMaintenance(username, entityHash, checkpoint, socialMeta) {
 	const path = timelineEventsPath(username, entityHash)
 	const policy = socialRetentionPolicy(socialMeta)
-	/**
-	 * @param {object} row 事件行
-	 * @returns {object} 规范化行
-	 */
-	const sanitize = row => canonicalizeSignedTimelineEvent(row)
 	await enforceTimelineEventRetention(path, checkpoint, {
 		maxDepth: policy.maxDepth,
 		maxMs: policy.maxMs,
 		anchorTypes: SOCIAL_TIMELINE_ANCHOR_TYPES,
-	}, sanitize)
-	const count = (await readJsonl(path, { sanitize })).length
+	}, canonicalizeSignedTimelineEvent)
+	const count = (await readJsonl(path, { sanitize: canonicalizeSignedTimelineEvent })).length
 	if (count > policy.compactTrigger && checkpoint?.checkpoint_event_id)
-		await pruneEventsJsonlAfterCheckpoint(path, checkpoint, sanitize)
+		await pruneEventsJsonlAfterCheckpoint(path, checkpoint, canonicalizeSignedTimelineEvent)
 }

@@ -61,7 +61,7 @@ export async function signPullAttestation(username, groupId, fields = {}) {
  */
 export async function verifyPullAttestation(attestation, expectedGroupId, requesterEdPubKey) {
 	if (!attestation?.signature) return false
-	if (String(attestation.groupId || '').trim() !== String(expectedGroupId || '').trim()) return false
+	if (attestation.groupId !== expectedGroupId) return false
 	const ts = Number(attestation.timestamp)
 	if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > ATTESTATION_MAX_SKEW_MS) return false
 	try {
@@ -82,9 +82,7 @@ export async function verifyPullAttestation(attestation, expectedGroupId, reques
 export function isHistoricalPullMember(state, requesterPubKeyHash) {
 	const key = normalizeHex64(requesterPubKeyHash)
 	if (!isHex64(key)) return false
-	const member = state?.members?.[key]
-	if (!member) return false
-	return PULL_MEMBER_STATUSES.has(String(member.status || ''))
+	return PULL_MEMBER_STATUSES.has(state?.members?.[key]?.status)
 }
 
 /**
@@ -117,7 +115,7 @@ export async function validatePullAttestationForGroup(state, groupId, attestatio
  * 仅 active 成员可拉取/提供冷归档明文（fed_archive_month）。
  * @param {object | null | undefined} state 物化群状态
  * @param {string} requesterPubKeyHash 请求方 pubKeyHash
- * @returns {boolean}
+ * @returns {boolean} 是否为 active 成员
  */
 export function isActivePullMember(state, requesterPubKeyHash) {
 	const key = normalizeHex64(requesterPubKeyHash)

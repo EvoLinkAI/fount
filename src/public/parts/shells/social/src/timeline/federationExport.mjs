@@ -67,7 +67,7 @@ function isTimelineEventVisibleForFederation(event, ownerEntityHash, requesterCo
 			{ entityHash: ownerEntityHash, content: event.content },
 			requesterContext.requesterEntityHash,
 			new Set(),
-			requesterContext.followsOwner ? new Set([ownerEntityHash]) : new Set(),
+			new Set(requesterContext.followsOwner ? [ownerEntityHash] : []),
 		)
 
 	if (type === 'post_delete') return true

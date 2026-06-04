@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -68,17 +67,6 @@ async function readAll(username) {
 }
 
 /**
- * @param {MailboxRecord[]} rows 待修剪记录
- * @returns {MailboxRecord[]} 修剪后记录
- */
-function pruneByImportanceThenFair(rows) {
-	const sorted = sortMailboxForRetention(rows)
-	let kept = pruneMailboxBuckets(sorted)
-	kept = pruneMailboxGlobalFair(kept)
-	return kept
-}
-
-/**
  * @param {string} username replica
  * @param {MailboxRecord[]} rows 待写入记录
  * @returns {Promise<void>} 无返回值
@@ -87,8 +75,9 @@ async function writeAll(username, rows) {
 	const filePath = mailboxStorePath(username)
 	await mkdir(dirname(filePath), { recursive: true })
 	const now = Date.now()
-	let kept = rows.filter(record => record.expiresAt > now)
-	kept = pruneByImportanceThenFair(kept)
+	const kept = pruneMailboxGlobalFair(
+		pruneMailboxBuckets(sortMailboxForRetention(rows.filter(record => record.expiresAt > now))),
+	)
 	await writeJsonl(filePath, kept)
 }
 
@@ -97,8 +86,9 @@ async function writeAll(username, rows) {
  * @returns {string} 稳定信封 id
  */
 export function mailboxEnvelopeId(envelope) {
-	if (envelope?.id) return String(envelope.id).trim().toLowerCase()
-	return createHash('sha256').update(JSON.stringify(envelope)).digest('hex')
+	const id = String(envelope?.id || '').trim().toLowerCase()
+	if (!id) throw new Error('mailbox envelope id required')
+	return id
 }
 
 /**
@@ -111,13 +101,18 @@ export async function storeMailboxRecord(username, record) {
 	const toPubKeyHash = normalizeHex64(record.toPubKeyHash)
 	if (!isHex64(toPubKeyHash)) return false
 	const hop = Math.min(3, Math.max(0, Number(record.hop) || 0))
-	const tier = record.tier === 'trusted' || record.tier === 'normal' || record.tier === 'quarantine'
-		? record.tier
-		: mailboxTierFromHop(hop)
+	const tier = record.tier
+	if (!['trusted', 'normal', 'quarantine'].includes(tier)) return false
 	if (tier === 'quarantine' && hop > 0) return false
 	const app = String(record.app || '').trim()
 	if (!app) return false
-	const id = mailboxEnvelopeId(record.envelope)
+	let id
+	try {
+		id = mailboxEnvelopeId(record.envelope)
+	}
+	catch {
+		return false
+	}
 	const rows = await readAll(username)
 	if (rows.some(row => row.id === id)) return false
 	const ttlMs = Number(record.ttlMs) || defaultTtlMsForTier(tier)

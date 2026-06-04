@@ -6,7 +6,6 @@ import { readFile } from 'node:fs/promises'
 import { channelArchivePath } from '../lib/paths.mjs'
 
 import { loadArchiveManifest } from './index.mjs'
-import { archiveMonthKey } from './settings.mjs'
 
 const DEFAULT_CONCURRENCY = 3
 
@@ -38,11 +37,12 @@ export async function listMissingArchiveMonths(username, groupId) {
  * @returns {Array<{ channelId: string, utcMonth: string }>} 排序后的列表
  */
 export function sortMissingArchiveMonths(items, priorityMonth = '') {
-	const pri = String(priorityMonth || '').trim()
-	if (!pri) return items
-	const first = items.filter(row => row.utcMonth === pri)
-	const rest = items.filter(row => row.utcMonth !== pri)
-	return [...first, ...rest]
+	const priority = priorityMonth.trim()
+	if (!priority) return items
+	return [
+		...items.filter(row => row.utcMonth === priority),
+		...items.filter(row => row.utcMonth !== priority),
+	]
 }
 
 /**
@@ -56,9 +56,7 @@ export async function syncMissingArchiveMonths(username, groupId, slot, opts = {
 	if (!slot) return { pulled: 0, incomplete: 0 }
 	const { loadGroupSyncState } = await import('../federation/syncState.mjs')
 	const sync = await loadGroupSyncState(username, groupId)
-	const priorityMonth = opts.priorityMonth
-		|| sync.offlineStartUtcMonth
-		|| (sync.offlineStartedAt ? archiveMonthKey(sync.offlineStartedAt) : '')
+	const priorityMonth = opts.priorityMonth || sync.offlineStartUtcMonth
 	let missing = await listMissingArchiveMonths(username, groupId)
 	if (!missing.length) return { pulled: 0, incomplete: 0 }
 	missing = sortMissingArchiveMonths(missing, priorityMonth)

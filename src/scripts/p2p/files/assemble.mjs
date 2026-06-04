@@ -39,14 +39,23 @@ const ENCRYPTION_STRATEGIES = {
  */
 
 /**
+ * @param {CeMode} ceMode 模式
+ * @returns {(plain: Buffer) => { contentHash: string, ciphertextHash: string, raw: Buffer, contentKey?: Buffer }} 加密策略
+ */
+function encryptionStrategyFor(ceMode) {
+	const strategy = ENCRYPTION_STRATEGIES[ceMode]
+	if (!strategy) throw new Error(`unknown ceMode: ${ceMode}`)
+	return strategy
+}
+
+/**
  * @param {Buffer | Uint8Array} plaintext 明文
  * @param {CeMode} ceMode 模式
  * @returns {{ contentHash: string, parts: Array<{ hash: string, size: number, raw: Buffer }>, contentKey?: Buffer }} 加密结果
  */
 export function encryptPlaintextToParts(plaintext, ceMode = 'convergent') {
 	const plain = Buffer.from(plaintext)
-	const strategy = ENCRYPTION_STRATEGIES[ceMode] || ENCRYPTION_STRATEGIES.convergent
-	const enc = strategy(plain)
+	const enc = encryptionStrategyFor(ceMode)(plain)
 	return {
 		contentHash: enc.contentHash,
 		parts: [{ hash: enc.ciphertextHash, size: enc.raw.length, raw: enc.raw }],
@@ -71,8 +80,7 @@ export function encryptPlaintextToMultiParts(plaintext, ceMode = 'convergent') {
 	let contentKey = null
 	for (let offset = 0; offset < plain.length; offset += FEDERATION_CHUNK_MAX_BYTES) {
 		const slice = plain.subarray(offset, offset + FEDERATION_CHUNK_MAX_BYTES)
-		const strategy = ENCRYPTION_STRATEGIES[ceMode] || ENCRYPTION_STRATEGIES.convergent
-		const enc = strategy(slice)
+		const enc = encryptionStrategyFor(ceMode)(slice)
 		if (ceMode === 'random') contentKey = enc.contentKey
 		parts.push({ hash: enc.ciphertextHash, size: enc.raw.length, raw: enc.raw })
 	}
@@ -97,8 +105,7 @@ export async function encryptPlaintextToMultiPartsAsync(plaintext, ceMode = 'con
 	for (let offset = 0; offset < plain.length; offset += FEDERATION_CHUNK_MAX_BYTES) {
 		if (offset > 0) await new Promise(resolve => setImmediate(resolve))
 		const slice = plain.subarray(offset, offset + FEDERATION_CHUNK_MAX_BYTES)
-		const strategy = ENCRYPTION_STRATEGIES[ceMode] || ENCRYPTION_STRATEGIES.convergent
-		const enc = strategy(slice)
+		const enc = encryptionStrategyFor(ceMode)(slice)
 		if (ceMode === 'random') contentKey = enc.contentKey
 		parts.push({ hash: enc.ciphertextHash, size: enc.raw.length, raw: enc.raw })
 	}

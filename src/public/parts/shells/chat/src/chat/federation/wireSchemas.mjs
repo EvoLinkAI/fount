@@ -65,7 +65,7 @@ export function parseChannelHistoryWant(payload, localNodeHash, groupId) {
 	const channelId = String(payload.channelId || '').trim()
 	const attestation = parsePullAttestation(payload.attestation)
 	if (!requesterNodeHash || !requestId || !channelId || requesterNodeHash === localNodeHash) return null
-	if (!attestation || attestation.groupId !== String(groupId || '').trim() || attestation.requestId !== requestId)
+	if (!attestation || attestation.groupId !== groupId || attestation.requestId !== requestId)
 		return null
 	const before = String(payload.before || '').trim()
 	return {

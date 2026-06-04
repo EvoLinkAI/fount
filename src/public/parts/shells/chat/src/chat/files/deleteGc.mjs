@@ -16,9 +16,7 @@ import { fileMetaFromState, releaseFileStorageRefs } from './groupFiles.mjs'
  * @returns {Promise<{ released: number, deleted: number }>} 处理的分块数
  */
 export async function releaseFileChunksAfterDelete(username, groupId, fileId, stateBeforeDelete) {
-	const fid = String(fileId || '').trim()
-	if (!fid) return { released: 0, deleted: 0 }
-	const meta = fileMetaFromState(stateBeforeDelete, fid)
+	const meta = fileMetaFromState(stateBeforeDelete, fileId)
 	if (!meta) return { released: 0, deleted: 0 }
 	return releaseFileStorageRefs(username, meta)
 }
