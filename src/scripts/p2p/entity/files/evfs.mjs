@@ -62,7 +62,8 @@ export async function storeManifestParts(replicaUsername, manifest, partBytes) {
  * @returns {Promise<Buffer | null>} 明文内容
  */
 export async function readManifestPlaintext(replicaUsername, manifest, opts = {}) {
-	if (Array.isArray(manifest.meta?.dagParts) && manifest.meta?.groupId) {
+	const dagGroupId = manifest.meta?.groupId || manifest.transferKeyDescriptor?.groupId
+	if (Array.isArray(manifest.meta?.dagParts) && dagGroupId) {
 		const dagPlain = await readDagManifestPlaintext(replicaUsername, manifest)
 		if (dagPlain) return dagPlain
 	}

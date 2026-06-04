@@ -1,8 +1,31 @@
-import { readFile } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { createInterface } from 'node:readline'
 
 import { channelArchivePath } from '../lib/paths.mjs'
 
 import { postSnapshotToMessageLine } from './postSnapshot.mjs'
+
+/**
+ * @param {string} filePath 归档 JSONL 路径
+ * @returns {Promise<object[]>} PostSnapshot 列表
+ */
+async function readJsonlFile(filePath) {
+	/** @type {object[]} */
+	const rows = []
+	try {
+		const input = createReadStream(filePath, { encoding: 'utf8' })
+		const lines = createInterface({ input, crlfDelay: Infinity })
+		for await (const line of lines) {
+			const trimmed = String(line).trim()
+			if (!trimmed) continue
+			rows.push(JSON.parse(trimmed))
+		}
+	}
+	catch {
+		return []
+	}
+	return rows
+}
 
 /**
  * @param {string} username replica
@@ -12,13 +35,7 @@ import { postSnapshotToMessageLine } from './postSnapshot.mjs'
  * @returns {Promise<object[]>} PostSnapshot 列表
  */
 export async function readArchiveMonth(username, groupId, channelId, month) {
-	try {
-		const text = await readFile(channelArchivePath(username, groupId, channelId, month), 'utf8')
-		return text.split('\n').filter(Boolean).map(line => JSON.parse(line))
-	}
-	catch {
-		return []
-	}
+	return readJsonlFile(channelArchivePath(username, groupId, channelId, month))
 }
 
 /**

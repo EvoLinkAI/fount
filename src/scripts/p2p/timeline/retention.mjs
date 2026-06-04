@@ -3,6 +3,8 @@ import { dirname } from 'node:path'
 
 import { topologicalCanonicalOrder } from '../dag/index.mjs'
 import { readJsonl, writeJsonl } from '../dag/storage.mjs'
+import { computeDagTipIdsFromEvents, selectConsensusBranchTip } from '../governance_branch.mjs'
+import { computeRetentionKeepIds } from '../retention_policy.mjs'
 import { invalidateTopologicalOrderMemo } from '../topo_order_memo.mjs'
 
 /**
@@ -23,6 +25,7 @@ export async function enforceTimelineEventRetention(
 	const maxDepth = Math.max(256, Number(policy.maxDepth) || 200_000)
 	const maxMs = Math.max(3_600_000, Number(policy.maxMs) || 365 * 24 * 3600 * 1000)
 	const cutoffWall = Date.now() - maxMs
+	const byId = new Map(events.map(e => [e.id, e]))
 	const order = topologicalCanonicalOrder(events.map(e => ({
 		id: e.id,
 		prev_event_ids: e.prev_event_ids,
@@ -30,33 +33,18 @@ export async function enforceTimelineEventRetention(
 		node_id: e.node_id,
 		sender: e.sender,
 	})))
-	const byId = new Map(events.map(e => [e.id, e]))
-	let anchorIdx = order.length
-	for (let index = order.length - 1; index >= 0; index--) {
-		const ev = byId.get(order[index])
-		if (ev && policy.anchorTypes.has(ev.type)) {
-			anchorIdx = index
-			break
-		}
-	}
-	const depthStart = Math.max(0, order.length - maxDepth)
-	let timeStart = 0
-	for (let index = 0; index < order.length; index++) {
-		const wall = Number(byId.get(order[index])?.hlc?.wall ?? 0)
-		if (wall >= cutoffWall) {
-			timeStart = index
-			break
-		}
-	}
-	const tipId = checkpointHint?.checkpoint_event_id
-	let checkpointStart = 0
-	if (tipId) {
-		const tipIdx = order.indexOf(tipId)
-		if (tipIdx >= 0) checkpointStart = tipIdx
-	}
-	const startIdx = Math.max(depthStart, timeStart, anchorIdx, checkpointStart)
-	if (startIdx <= 0) return { pruned: false, kept: events.length, dropped: 0 }
-	const kept = order.slice(startIdx).map(id => byId.get(id)).filter(Boolean)
+	const tips = computeDagTipIdsFromEvents(events)
+	const branchTipId = selectConsensusBranchTip(tips, byId)
+	const checkpointTipId = checkpointHint?.checkpoint_event_id || null
+	const keepIds = computeRetentionKeepIds(order, byId, {
+		maxDepth,
+		cutoffWall,
+		anchorTypes: policy.anchorTypes,
+		checkpointTipId,
+		branchTipId,
+	})
+	if (keepIds.size >= events.length) return { pruned: false, kept: events.length, dropped: 0 }
+	const kept = order.map(id => byId.get(id)).filter(ev => ev && keepIds.has(ev.id))
 	const dropped = events.length - kept.length
 	if (dropped <= 0) return { pruned: false, kept: kept.length, dropped: 0 }
 	await mkdir(dirname(eventsFilePath), { recursive: true })

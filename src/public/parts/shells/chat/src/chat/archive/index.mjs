@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 import { writeJsonAtomicSynced } from '../../../../../../../scripts/p2p/dag/storage.mjs'
@@ -97,10 +97,7 @@ export async function appendPostSnapshotsToArchive(username, groupId, channelId,
 		const path = channelArchivePath(username, groupId, channelId, month)
 		await mkdir(dirname(path), { recursive: true })
 		const block = rows.map(JSON.stringify).join('\n') + '\n'
-		let prev = ''
-		try { prev = await readFile(path, 'utf8') }
-		catch { /* new file */ }
-		await writeFile(path, prev + block, 'utf8')
+		await appendFile(path, block, 'utf8')
 	}
 	if (added) await saveArchiveManifest(username, groupId, manifest)
 	return added

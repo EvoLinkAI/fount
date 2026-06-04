@@ -85,11 +85,14 @@ Deno.test('hasBypassRateLimit respects BYPASS_RATE_LIMIT permission', () => {
 	assertEquals(memberChannelPermissions(state, sender, 'default')[PERMISSIONS.BYPASS_RATE_LIMIT], true)
 })
 
-Deno.test('retentionStartIndex respects depth cutoff', () => {
+Deno.test('retentionStartIndex depth keeps ancestor chain on linear DAG', () => {
 	const order = ['e1', 'e2', 'e3', 'e4']
-	const byId = new Map(order.map((id, i) => [id, { id, hlc: { wall: i * 1000 } }]))
-	const start = retentionStartIndex(order, byId, { maxDepth: 2, cutoffWall: 0 })
-	assertEquals(start, 2)
+	const byId = new Map(order.map((id, i) => [
+		id,
+		{ id, prev_event_ids: i ? [order[i - 1]] : [], hlc: { wall: i * 1000, logical: 0 } },
+	]))
+	const start = retentionStartIndex(order, byId, { maxDepth: 2, cutoffWall: 0, branchTipId: 'e4' })
+	assertEquals(start, 0)
 })
 
 Deno.test('joinSnapshot wire parse', () => {

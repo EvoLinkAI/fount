@@ -16,7 +16,7 @@ const OWNER_ID = 'chat'
  */
 export function registerChatManifestAcl() {
 	registerManifestAcl('file-master-key-wrap', OWNER_ID, async (manifestContext, logicalPath) => {
-		const groupId = manifestContext.manifest?.meta?.groupId
+		const groupId = manifestContext.manifest?.transferKeyDescriptor?.groupId
 			|| await groupIdFromGroupEntity(manifestContext.ownerEntityHash, manifestContext.replicaUsername)
 		if (!groupId) return false
 		const { state } = await getState(manifestContext.replicaUsername, groupId)

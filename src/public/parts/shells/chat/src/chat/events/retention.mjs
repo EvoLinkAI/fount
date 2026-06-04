@@ -4,7 +4,11 @@
  */
 import { readFile } from 'node:fs/promises'
 
-import { PERMISSION_ANCHOR_TYPES, retentionStartIndex } from '../../../../../../../scripts/p2p/retention_policy.mjs'
+import {
+	PERMISSION_ANCHOR_TYPES,
+	computeRetentionKeepIds,
+	retentionStartIndex,
+} from '../../../../../../../scripts/p2p/retention_policy.mjs'
 import { enforceTimelineEventRetention } from '../../../../../../../scripts/p2p/timeline/retention.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { eventsPath, snapshotPath } from '../lib/paths.mjs'
@@ -12,7 +16,7 @@ import { eventsPath, snapshotPath } from '../lib/paths.mjs'
 /**
  * 计算事件保留裁剪起点索引（自 `p2p/retention_policy` 再导出）。
  */
-export { retentionStartIndex }
+export { computeRetentionKeepIds, retentionStartIndex }
 
 /**
  * @param {string} username replica

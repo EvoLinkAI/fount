@@ -59,10 +59,12 @@ function messageAesKey(channelKeyHex, channelId, generation) {
  * @returns {{ scheme: 'ckg', channelId: string, generation: number, payload: string }} ckg 信封
  */
 export function encryptWithChannelKey(plaintext, channelKeyHex, channelId, generation) {
+	if (typeof plaintext !== 'string' && !Buffer.isBuffer(plaintext))
+		throw new TypeError('encryptWithChannelKey: plaintext must be string or Buffer')
 	const key = messageAesKey(channelKeyHex, channelId, generation)
 	const iv = randomBytes(12)
 	const cipher = createCipheriv('aes-256-gcm', key, iv)
-	const plain = Buffer.from(String(plaintext), 'utf8')
+	const plain = Buffer.isBuffer(plaintext) ? plaintext : Buffer.from(plaintext, 'utf8')
 	const ciphertext = Buffer.concat([cipher.update(plain), cipher.final()])
 	const authTag = cipher.getAuthTag()
 	return {

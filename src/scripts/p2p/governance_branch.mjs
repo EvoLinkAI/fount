@@ -41,6 +41,56 @@ export function ancestorClosureFromTip(tipId, byId) {
 }
 
 /**
+ * 构建 id → 子事件 id 列表（仅含图内边）。
+ * @param {Map<string, { id: string, prev_event_ids?: unknown }>} byId id→事件
+ * @returns {Map<string, string[]>} 父 id → 子 id 列表
+ */
+export function buildDagChildrenMap(byId) {
+	/** @type {Map<string, string[]>} */
+	const children = new Map()
+	for (const event of byId.values()) 
+		for (const parentId of sortedPrevEventIds(event.prev_event_ids)) {
+			if (!byId.has(parentId)) continue
+			const list = children.get(parentId)
+			if (list) list.push(event.id)
+			else children.set(parentId, [event.id])
+		}
+	
+	return children
+}
+
+/**
+ * 从根沿子指针正向闭包（checkpoint 之后保留的后缀）。
+ * @param {string} rootId 根事件 id（通常为 checkpoint_event_id）
+ * @param {Map<string, { id: string, prev_event_ids?: unknown }>} byId id→事件
+ * @returns {Set<string>} 根及其后代 id
+ */
+export function descendantClosureFromTip(rootId, byId) {
+	if (!rootId || !byId.has(rootId)) return new Set()
+	const children = buildDagChildrenMap(byId)
+	const out = new Set()
+	const stack = [rootId]
+	while (stack.length) {
+		const id = stack.pop()
+		if (!id || out.has(id)) continue
+		out.add(id)
+		for (const childId of children.get(id) || []) stack.push(childId)
+	}
+	return out
+}
+
+/**
+ * 事件是否在 root 的后代闭包中（含 root）。
+ * @param {string} eventId 事件 id
+ * @param {string} rootId 根 id
+ * @param {Map<string, object>} byId id→事件
+ * @returns {boolean} 是否为 root 的后代（含 root 自身）
+ */
+export function isDescendantOfTip(eventId, rootId, byId) {
+	return descendantClosureFromTip(rootId, byId).has(eventId)
+}
+
+/**
  * @param {string} tipId 叶 id
  * @param {Map<string, object>} byId id→事件
  * @param {Record<string, number>} reputationBySender 发送方主观信誉

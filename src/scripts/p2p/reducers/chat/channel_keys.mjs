@@ -16,7 +16,7 @@ export const channelKeyReducers = {
 		if (!state.channelKeyGeneration) state.channelKeyGeneration = {}
 		if (!state.channelKeyWraps) state.channelKeyWraps = {}
 		state.channelKeyGeneration[channelId] = generation
-		state.channelKeyWraps[channelId] = { generation, wraps: structuredClone(wraps) }
+		state.channelKeyWraps[channelId] = { generation }
 		return state
 	},
 
@@ -37,7 +37,7 @@ export const channelKeyReducers = {
 			const wraps = rot?.wraps
 			if (!channelId || !Number.isFinite(generation) || !wraps || typeof wraps !== 'object') continue
 			state.channelKeyGeneration[channelId] = generation
-			state.channelKeyWraps[channelId] = { generation, wraps: structuredClone(wraps) }
+			state.channelKeyWraps[channelId] = { generation }
 		}
 		return state
 	},
