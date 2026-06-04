@@ -73,7 +73,7 @@ export function buildCheckpointPayload({
 		membersPagesCount: materializedState.membersPagesCount ?? 1,
 		reputationLedger: JSON.parse(JSON.stringify(materializedState.reputationLedger || [])),
 		inviteEdges: JSON.parse(JSON.stringify(materializedState.inviteEdges || [])),
-		gshRotations: JSON.parse(JSON.stringify(materializedState.gshRotations || [])),
+		fileMasterKeyRotations: JSON.parse(JSON.stringify(materializedState.fileMasterKeyRotations || [])),
 		pexHints: [...materializedState.pexHints || []].filter(hint => String(hint).trim()),
 		messageSenderIndex: JSON.parse(JSON.stringify(materializedState.messageSenderIndex)),
 		session: JSON.parse(JSON.stringify(materializedState.session || {})),

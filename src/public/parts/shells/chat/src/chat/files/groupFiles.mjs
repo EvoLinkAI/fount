@@ -34,7 +34,7 @@ import {
 	replicateChunkToFederation,
 } from '../federation/chunks.mjs'
 import { ensureFederationRoom } from '../federation/room.mjs'
-import { getCurrentFileMasterKey, getFileMasterKeyByGeneration } from '../gsh/store.mjs'
+import { getCurrentFileMasterKey, getFileMasterKeyByGeneration } from '../file_keys/store.mjs'
 import { shellChatRoot } from '../lib/paths.mjs'
 import { getFederatedChunkStorage, getStorageForGroup } from '../storage.mjs'
 
@@ -605,7 +605,7 @@ export async function syncGroupFileManifest(username, groupId, uploadMeta) {
 				size: Number(part.partSize) || 0,
 			})),
 			transferKeyDescriptor: {
-				type: 'gsh-wrap',
+				type: 'file-master-key-wrap',
 				groupId,
 				fileId,
 				keyGeneration: keyGen,
@@ -625,7 +625,7 @@ export async function syncGroupFileManifest(username, groupId, uploadMeta) {
 			ceMode,
 			parts: [{ hash: uploadMeta.ciphertextHash, size: Number(uploadMeta.size) || 0 }],
 			transferKeyDescriptor: {
-				type: 'gsh-wrap',
+				type: 'file-master-key-wrap',
 				groupId,
 				fileId,
 				keyGeneration: keyGen,

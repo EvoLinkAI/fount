@@ -126,34 +126,34 @@ export function deriveStreamingAuthKey(H, groupId) {
 // ─── H 轮换（§11.2、§6.3 key_rotate）──────────────────────────────────────
 
 /**
- * 踢人/主动轮换后推导新 H：`H_new = SHA256(H_old || eventId || nonce)`（§11.2）
+ * 踢人/主动轮换后推导新 fileMasterKey：`K_new = SHA256(K_old || eventId || nonce)`
  *
- * @param {string} oldHHex 旧 H（十六进制）
+ * @param {string} oldKeyHex 旧密钥（十六进制）
  * @param {string} eventId 踢人/轮换事件 ID（签名后的 SHA256 hex）
- * @param {string} nonce `new_H_nonce` 字段（字符串）
- * @returns {string} 新 H（十六进制）
+ * @param {string} nonce `new_key_nonce` 字段（字符串）
+ * @returns {string} 新密钥（十六进制）
  */
-export function deriveNewH(oldHHex, eventId, nonce) {
+export function deriveNextFileMasterKey(oldKeyHex, eventId, nonce) {
 	return createHash('sha256')
-		.update(Buffer.from(oldHHex, 'hex'))
+		.update(Buffer.from(oldKeyHex, 'hex'))
 		.update(String(eventId))
 		.update(String(nonce))
 		.digest('hex')
 }
 
 /**
- * 生成随机 H（32 字节，十六进制），用于群初始化或手动重置。
- * @returns {string} 随机 H（hex）
+ * 生成随机 32 字节 fileMasterKey（十六进制）。
+ * @returns {string} 随机密钥 hex
  */
-export function generateH() {
+export function generateFileMasterKey() {
 	return randomBytes(32).toString('hex')
 }
 
 /**
- * 生成随机 `new_H_nonce`，用于踢人事件或 key_rotate 事件。
+ * 生成随机 `new_key_nonce`，用于踢人事件或 key_rotate 事件。
  * @returns {string} 16 字节 base64 随机 nonce
  */
-export function generateHNonce() {
+export function generateKeyRotationNonce() {
 	return randomBytes(16).toString('base64')
 }
 

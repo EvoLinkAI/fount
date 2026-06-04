@@ -31,3 +31,4 @@
 - **Read path**: `listChannelMessages({ includeArchive: true })` merges hot + archive; `before` pagination may call `requestChannelHistoryFromPeers` when local miss.
 - **Cleanup**: admins delete cold months via settings UI → `DELETE .../archive?before=YYYY-MM` (does not silent-prune DAG).
 - **Display**: Hub prefers `content.displayName` / `content.displayAvatar` on archived or folded posts, then live profile.
+- **Message navigation**: `messages/channelMessageStore.mjs` owns fetch/merge by `eventId` (`ensureMessageLoaded`); `messages.mjs` only scrolls/highlights DOM (`scrollToMessageEventId`).

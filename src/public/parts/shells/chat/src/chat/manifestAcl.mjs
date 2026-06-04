@@ -15,7 +15,7 @@ const OWNER_ID = 'chat'
  * @returns {void}
  */
 export function registerChatManifestAcl() {
-	registerManifestAcl('group-entity', OWNER_ID, async (manifestContext, logicalPath) => {
+	registerManifestAcl('file-master-key-wrap', OWNER_ID, async (manifestContext, logicalPath) => {
 		const groupId = manifestContext.manifest?.meta?.groupId
 			|| await groupIdFromGroupEntity(manifestContext.ownerEntityHash, manifestContext.replicaUsername)
 		if (!groupId) return false
@@ -33,5 +33,5 @@ export function registerChatManifestAcl() {
 
 /** @returns {void} */
 export function unregisterChatManifestAcl() {
-	unregisterManifestAcl('group-entity', OWNER_ID)
+	unregisterManifestAcl('file-master-key-wrap', OWNER_ID)
 }

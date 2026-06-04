@@ -66,7 +66,6 @@ export async function refreshPinsBookmarks() {
 			const eventId = pinRow.getAttribute('data-pinned-message-event')
 			if (!channelId || !eventId) return
 			if (channelId !== hubStore.currentChannelId) await selectChannel(channelId)
-			else await loadMessages()
 			await scrollToMessageEventId(eventId)
 		})
 	})

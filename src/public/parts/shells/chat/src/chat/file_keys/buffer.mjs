@@ -1,12 +1,8 @@
 /**
- * 【文件】gsh/buffer.mjs
- * 【职责】§11.2 GSH 代数超前缓冲：解密时遇到未来 generation 密文则计数暂存，key_rotate/成员变更推导新 H 后 flush 重试。
- * 【原理】recordGshPendingDecrypt 递增 pendingByGroup；flushGshBufferAfterRotation 在代数推进后触发批量解密；getGshBufferStats 供诊断。避免联邦先到未来代消息导致永久失败。
- * 【数据结构】pendingByGroup: Map<username\0groupId, Map<generation, count>>。
- * 【关联】gsh/content.mjs decrypt、store applyGshRotationFromEvent；scripts/p2p/gsh.mjs。
+ * 频道 ckg / 文件主密钥解密待重试缓冲（联邦先到未来代密文时计数，轮换后 flush）。
  */
 
-/** @type {Map<string, Map<number, number>>} key → groupId, value → generation → count */
+/** @type {Map<string, Map<number, number>>} */
 const pendingByGroup = new Map()
 
 /**
@@ -19,13 +15,13 @@ function bufKey(username, groupId) {
 }
 
 /**
- * 记录一条因缺少对应 generation 的 H 而未能解密的密文。
+ * 记录一条因缺少对应 generation 密钥而未能解密的密文。
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
- * @param {number | null} generation 信封中的 key_generation
+ * @param {number | null} generation 信封 generation
  * @returns {void}
  */
-export function recordGshPendingDecrypt(username, groupId, generation) {
+export function recordPendingChannelDecrypt(username, groupId, generation) {
 	if (generation == null || !Number.isFinite(generation)) return
 	const k = bufKey(username, groupId)
 	let m = pendingByGroup.get(k)
@@ -41,7 +37,7 @@ export function recordGshPendingDecrypt(username, groupId, generation) {
  * @param {string} groupId 群 ID
  * @returns {{ total: number, byGeneration: Record<string, number> }} 待解密统计
  */
-export function getGshBufferStats(username, groupId) {
+export function getPendingDecryptBufferStats(username, groupId) {
 	const m = pendingByGroup.get(bufKey(username, groupId))
 	if (!m || !m.size) return { total: 0, byGeneration: {} }
 	/** @type {Record<string, number>} */
@@ -55,13 +51,13 @@ export function getGshBufferStats(username, groupId) {
 }
 
 /**
- * H 轮换后清除已覆盖代数及以下的缓冲计数。
+ * 文件主密钥轮换后清除已覆盖代数及以下的缓冲计数。
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
- * @param {number} newGeneration 已写入的最新 H 代数
+ * @param {number} newGeneration 已写入的最新代数
  * @returns {number} 清除的待解密条数
  */
-export function flushGshBufferAfterRotation(username, groupId, newGeneration) {
+export function flushPendingDecryptAfterFileKeyRotation(username, groupId, newGeneration) {
 	const k = bufKey(username, groupId)
 	const m = pendingByGroup.get(k)
 	if (!m || !m.size) return 0

@@ -20,7 +20,7 @@ import {
 	appendUnpinEvent,
 } from '../../chat/dag/channelOps.mjs'
 import { requestChannelHistoryFromPeers } from '../../chat/federation/channelHistory.mjs'
-import { getCurrentFileMasterKey } from '../../chat/gsh/store.mjs'
+import { getCurrentFileMasterKey } from '../../chat/file_keys/store.mjs'
 import { channelMessageText } from '../../chat/lib/channelContent.mjs'
 import { EVENT_ID_ROUTE_SEGMENT } from '../../chat/lib/hexRoute.mjs'
 import { triggerCharReply } from '../../chat/session/generation.mjs'

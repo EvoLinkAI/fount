@@ -4,7 +4,7 @@ import {
 	clampRepEdge,
 	isHex64,
 	isJoinBanned,
-	recordGshRotation,
+	recordFileMasterKeyRotation,
 	refreshMembersDigest,
 	withGroupId,
 } from './helpers.mjs'
@@ -73,7 +73,7 @@ export const memberReducers = {
 		const target = event.content?.targetPubKeyHash
 		if (target && state.members[target])
 			state.members[target].status = 'kicked'
-		recordGshRotation(state, event, 'kick', { targetPubKeyHash: target })
+		recordFileMasterKeyRotation(state, event, 'kick', { targetPubKeyHash: target })
 		refreshMembersDigest(state)
 		return state
 	},

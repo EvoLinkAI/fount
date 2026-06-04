@@ -5,10 +5,10 @@
  * 【数据结构】hubStore 及模块内 Map/Set 字段；见 core/state 与各函数 JSDoc。
  * 【关联】../../src/api/groupApi、../core/domUtils、../core/state、messageRender
  */
-import { getChannelMessages } from '../../src/api/groupApi.mjs'
 import { escapeHtml } from '../core/domUtils.mjs'
 import { hubStore } from '../core/state.mjs'
 
+import { fetchRowsForMessageEvent } from './channelMessageStore.mjs'
 import { getMessageText } from './messageRender.mjs'
 
 /** @type {Map<string, { i18n?: string, params?: Record<string, string>, text?: string }>} */
@@ -80,8 +80,8 @@ export async function resolvePinMessagePreview(groupId, channelId, eventId) {
 	}
 
 	try {
-		const { messages } = await getChannelMessages(groupId, channelId, { eventIds: [normalizedEventId] })
-		const message = messages.find(row => String(row.eventId) === normalizedEventId)
+		const rows = await fetchRowsForMessageEvent(groupId, channelId, normalizedEventId)
+		const message = rows.find(row => String(row.eventId) === normalizedEventId)
 		const descriptor = message ? previewFromMessage(message) : { text: shortEventId(normalizedEventId) }
 		previewCache.set(cacheKey, descriptor)
 		return descriptor

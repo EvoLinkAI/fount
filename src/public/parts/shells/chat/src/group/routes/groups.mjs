@@ -1,7 +1,7 @@
 /**
  * 【文件】group/routes/groups.mjs
  * 【职责】群生命周期 HTTP：列表、创建（含 DM 模板）、时间线切换与管理员删除本地 replica。
- * 【原理】GET 列表经 enumerateJoinedFederatedGroups；POST 普通群走 createGroup+initGroupH，DM 走 createEcdhDmGroup；timeline 委托 session/generation；DELETE 需 ADMIN/MANAGE_ADMINS。
+ * 【原理】GET 列表经 enumerateJoinedFederatedGroups；POST 普通群走 createGroup+initGroupFileMasterKey，DM 走 createEcdhDmGroup；timeline 委托 session/generation；DELETE 需 ADMIN/MANAGE_ADMINS。
  * 【数据结构】群列表行、201 响应（groupId/defaultChannelId）、timeline {current,total}、DM intro 证明字段。
  * 【关联】被 group/endpoints.mjs 注册；依赖 chat/dag/lifecycle、chat/dm、queries.mjs、access.mjs。
  */
@@ -14,7 +14,7 @@ import { createGroup, removeLocalGroupReplica } from '../../chat/dag/lifecycle.m
 import { getLocalSignerForNewGroup } from '../../chat/dag/localSigner.mjs'
 import { createEcdhDmGroup } from '../../chat/dm/index.mjs'
 import { validateDmIntroLinkProof } from '../../chat/dm/linkValidate.mjs'
-import { initGroupFileMasterKey } from '../../chat/gsh/store.mjs'
+import { initGroupFileMasterKey } from '../../chat/file_keys/store.mjs'
 import { newMetadata } from '../../chat/session/crud.mjs'
 import { modifyTimeLine } from '../../chat/session/generation.mjs'
 import { getActiveGroupRuntime } from '../../chat/session/persistence.mjs'

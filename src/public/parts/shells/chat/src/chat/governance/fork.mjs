@@ -3,7 +3,7 @@
  * 【职责】治理分叉产品化：从源群选定 DAG 分支尖 fork 出新 groupId，复制 GSH、频道消息视图与信誉快照，写入新群创世 DAG。
  * 【原理】forkGroupFromBranch 读 branchStore tip、ancestor 闭包事件，createGroup 后批量 append 与 init GSH；频道 JSONL 按可达事件复制。新群联邦房间独立，原群 P2P 关系不自动迁移。
  * 【数据结构】返回 { groupId, forkedFrom, branchTip, defaultChannelId }；新群目录 under groups/{newId}。
- * 【关联】branchStore.mjs、gsh/store、dag/lifecycle、checkpoint、reputation.mjs、paths.mjs。
+ * 【关联】branchStore.mjs、file_keys/store、dag/lifecycle、checkpoint、reputation.mjs、paths.mjs。
  */
 
 import { randomUUID } from 'node:crypto'

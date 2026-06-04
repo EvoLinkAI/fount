@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer'
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 
-import { deriveSocialPostKey, encryptHForMember, generateH } from '../../../../../../scripts/p2p/gsh.mjs'
+import { deriveSocialPostKey, encryptHForMember, generateFileMasterKey } from '../../../../../../scripts/p2p/gsh.mjs'
 import { vaultGroupId } from '../../../../../../scripts/p2p/social_namespace.mjs'
 import { vaultStatePath } from '../paths.mjs'
 
@@ -17,7 +17,7 @@ export async function loadVaultGsh(username, entityHash) {
 		return JSON.parse(await readFile(vaultStatePath(username, entityHash), 'utf8'))
 	}
 	catch {
-		const state = { H: generateH(), generation: 0 }
+		const state = { H: generateFileMasterKey(), generation: 0 }
 		await saveVaultGsh(username, entityHash, state)
 		return state
 	}

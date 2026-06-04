@@ -92,8 +92,8 @@ export async function readManifestPlaintext(replicaUsername, manifest, opts = {}
 
 	const rawDeps = resolveTransferKeyDeps()
 	const deps = {
-		getGroupH: rawDeps.getGroupH
-			? (groupId, keyGeneration) => rawDeps.getGroupH(replicaUsername, groupId, keyGeneration)
+		getGroupFileMasterKey: rawDeps.getGroupFileMasterKey
+			? (groupId, keyGeneration) => rawDeps.getGroupFileMasterKey(replicaUsername, groupId, keyGeneration)
 			: undefined,
 		getVaultH: rawDeps.getVaultH
 			? entityHash => rawDeps.getVaultH(replicaUsername, entityHash)

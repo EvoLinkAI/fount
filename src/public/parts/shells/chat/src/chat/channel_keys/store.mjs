@@ -164,3 +164,26 @@ export async function applyChannelKeyRotateEvent(username, groupId, event, selfP
 	await putChannelKeyGeneration(username, groupId, channelId, generation, keyHex)
 	return true
 }
+
+/**
+ * 从联邦补拉 `channelKeyWraps` 批量导入本机 K_ch。
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @param {Record<string, { generation?: number, wrap?: object }>} wrapsByChannel 频道 → wrap
+ * @param {string} selfPubKeyHash 本机成员 pubKeyHash
+ * @returns {Promise<number>} 成功导入的频道数
+ */
+export async function applyChannelKeyWrapsFromPull(username, groupId, wrapsByChannel, selfPubKeyHash) {
+	if (!wrapsByChannel || typeof wrapsByChannel !== 'object') return 0
+	let imported = 0
+	for (const [channelId, row] of Object.entries(wrapsByChannel)) {
+		const generation = Number(row?.generation)
+		const wrap = row?.wrap
+		if (!channelId || !Number.isFinite(generation) || !wrap) continue
+		const ok = await applyChannelKeyRotateEvent(username, groupId, {
+			content: { channelId, generation, wraps: { [normalizeHex64(selfPubKeyHash)]: wrap } },
+		}, selfPubKeyHash)
+		if (ok) imported++
+	}
+	return imported
+}

@@ -1,11 +1,12 @@
 /**
  * 群文件主密钥（fileMasterKey）本地持久化：维护代数历史，供文件加密与成员变更轮换。
  */
+import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 import { debugLog } from '../../../../../../../scripts/debug_log.mjs'
-import { generateH, clearGshKdfCache, deriveNewH } from '../../../../../../../scripts/p2p/gsh.mjs'
+import { clearGshKdfCache, deriveNextFileMasterKey } from '../../../../../../../scripts/p2p/gsh.mjs'
 import { fileMasterKeysPath } from '../lib/paths.mjs'
 
 /** 最多保留多少代历史密钥（用于解密旧文件块） */
@@ -97,7 +98,7 @@ export async function getFileMasterKeyByGeneration(username, groupId, generation
 export async function initGroupFileMasterKey(username, groupId) {
 	const existing = await getCurrentFileMasterKey(username, groupId)
 	if (existing) return existing
-	const fileMasterKey = generateH()
+	const fileMasterKey = randomBytes(32).toString('hex')
 	const data = { current: 0, generations: [{ gen: 0, fileMasterKey }] }
 	await saveFileMasterKeys(username, groupId, data)
 	return { fileMasterKey, generation: 0 }
@@ -124,14 +125,14 @@ export async function appendFileMasterKey(username, groupId, generation, fileMas
  * 从已落盘的 `member_kick` / `key_rotate` 事件推导并写入新 fileMasterKey。
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
- * @param {{ id: string, type: string, content?: { key_generation?: number, new_H_nonce?: string } }} event 签名事件
+ * @param {{ id: string, type: string, content?: { key_generation?: number, new_key_nonce?: string } }} event 签名事件
  * @returns {Promise<void>}
  */
 export async function applyFileMasterKeyRotationFromEvent(username, groupId, event) {
 	if (event.type !== 'member_kick' && event.type !== 'key_rotate') return
 	const c = event.content
 	const gen = c.key_generation
-	const nonce = c.new_H_nonce?.trim()
+	const nonce = c.new_key_nonce?.trim()
 	if (!Number.isFinite(gen) || gen < 0 || !nonce) return
 
 	const entry = await getCurrentFileMasterKey(username, groupId)
@@ -140,8 +141,8 @@ export async function applyFileMasterKeyRotationFromEvent(username, groupId, eve
 	const newGen = Math.floor(gen)
 	if (newGen <= entry.generation) return
 
-	const newKey = deriveNewH(entry.fileMasterKey, event.id, nonce)
+	const newKey = deriveNextFileMasterKey(entry.fileMasterKey, event.id, nonce)
 	await appendFileMasterKey(username, groupId, newGen, newKey)
-	const { flushGshBufferAfterRotation } = await import('./buffer.mjs')
-	flushGshBufferAfterRotation(username, groupId, newGen)
+	const { flushPendingDecryptAfterFileKeyRotation } = await import('./buffer.mjs')
+	flushPendingDecryptAfterFileKeyRotation(username, groupId, newGen)
 }

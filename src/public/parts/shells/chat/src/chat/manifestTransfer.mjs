@@ -6,8 +6,8 @@ import {
 	unregisterTransferKeyDeps,
 } from '../../../../../../scripts/p2p/files/transfer_key_registry.mjs'
 
+import { getFileMasterKeyByGeneration, getCurrentFileMasterKey } from './file_keys/store.mjs'
 import { getDecryptedFile } from './files/groupFiles.mjs'
-import { getFileMasterKeyByGeneration, getCurrentFileMasterKey } from './gsh/store.mjs'
 
 const OWNER_ID = 'chat'
 
@@ -23,7 +23,7 @@ export function registerChatManifestTransfer() {
 		 * @param {number} [keyGeneration] 密钥代际
 		 * @returns {Promise<Buffer | string | null>} 密钥材料
 		 */
-		async getGroupH(replicaUsername, groupId, keyGeneration) {
+		async getGroupFileMasterKey(replicaUsername, groupId, keyGeneration) {
 			if (keyGeneration != null && Number.isFinite(keyGeneration))
 				return getFileMasterKeyByGeneration(replicaUsername, groupId, keyGeneration)
 			const entry = await getCurrentFileMasterKey(replicaUsername, groupId)

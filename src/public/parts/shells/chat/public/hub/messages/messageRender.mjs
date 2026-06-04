@@ -1,7 +1,7 @@
 /**
  * 【文件】public/hub/messages/messageRender.mjs
  * 【职责】单条频道消息的 HTML 生成：Markdown 预处理、模板块、反应条、嵌入守卫与生成中状态判定。
- * 【原理】输出可插入 `#hub-channel-messages` 的气泡 DOM 结构（头像区、操作条占位、时间分组）；核心：`renderChannelMessageBlock`、`renderMessageContent`、`hydrateMessageMarkdown`、`localizeRenderedMessages`；不直接监听 WS。
+ * 【原理】输出可插入 `#hub-messages` 的气泡 DOM 结构（头像区、操作条占位、时间分组）；核心：`renderChannelMessageBlock`、`renderMessageContent`、`hydrateMessageMarkdown`、`localizeRenderedMessages`；不直接监听 WS。
  * 【数据结构】hubStore（core/state）及本模块函数入参/返回值；详见 JSDoc。
  * 【关联】../../../../../scripts/template、../../src/chatMarkdown、../../src/chatMarkdownConvertor、../../src/customEmojis、../../src/groupFileBlob、../../src/groupMode、../../src/inviteQr、../../src/lib/channelContent。
  */
@@ -97,6 +97,7 @@ function isOwnViewerMessage(message, renderOpts) {
  * @returns {string} 展示用文本
  */
 export function getMessageText(message) {
+	if (message?.decryptView) return ''
 	const content = message?.content
 	if (content?.decryptFailed) return ''
 	return channelMessageShowText(content)
@@ -116,6 +117,14 @@ export function getMessageEditText(message) {
  * @returns {Promise<string>} HTML 片段
  */
 async function renderDecryptBodyHtml(message) {
+	if (message?.decryptView) {
+		const pendingGen = message.decryptView.pending
+		return renderTemplateAsHtmlString('hub/messages/decrypt_body', {
+			mode: pendingGen != null ? 'pending' : 'failed',
+			generation: pendingGen,
+			escapeHtml,
+		})
+	}
 	const content = message?.content
 	if (!content?.decryptFailed) return ''
 	const pendingGen = content.pendingGeneration

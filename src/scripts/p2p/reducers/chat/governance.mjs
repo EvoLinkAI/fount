@@ -1,7 +1,7 @@
 import {
 	clampRepEdge,
 	isHex64,
-	recordGshRotation,
+	recordFileMasterKeyRotation,
 	sanitizeIceServersForSettings,
 	withGroupId,
 } from './helpers.mjs'
@@ -103,7 +103,7 @@ export const governanceReducers = {
 	 */
 	key_rotate(state, event) {
 		withGroupId(state, event)
-		recordGshRotation(state, event, 'rotate')
+		recordFileMasterKeyRotation(state, event, 'rotate')
 		return state
 	},
 

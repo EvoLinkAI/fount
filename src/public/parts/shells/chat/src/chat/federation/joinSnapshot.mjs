@@ -1,5 +1,5 @@
 /**
- * 入群快照：checkpoint + ckg wire channelHistories + file_key_grant + channelKeyRotates。
+ * 入群快照：checkpoint + ckg wire channelHistories + file_key_grant + channelKeyWraps。
  */
 import { randomUUID } from 'node:crypto'
 
@@ -103,7 +103,7 @@ export async function handleJoinSnapshotRequest(username, groupId, request, peer
 		archiveSummary: wireArchiveSummary(localArchive.summary),
 		channelHistories,
 		includeFileKeyGrant: true,
-		includeChannelKeyRotates: true,
+		includeChannelKeyWraps: true,
 	})
 	sendResponse(envelope, peerId)
 }

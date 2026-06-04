@@ -15,7 +15,7 @@ import {
 /**
  * @param {TransferKeyDescriptor} descriptor 传递密钥描述符
  * @param {FileManifest} manifest manifest
- * @param {{ getGroupH?: (groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultH?: (entityHash: string) => Promise<Buffer | string | null> }} deps 密钥源
+ * @param {{ getGroupFileMasterKey?: (groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultH?: (entityHash: string) => Promise<Buffer | string | null> }} deps 密钥源
  * @returns {Promise<Buffer | null>} contentKey；plain/convergent 返回 null（按 contentHash 派生）
  */
 export async function resolveContentKey(descriptor, manifest, deps = {}) {
@@ -23,11 +23,11 @@ export async function resolveContentKey(descriptor, manifest, deps = {}) {
 	if (type === 'public' || manifest.ceMode === 'plain' || manifest.ceMode === 'convergent')
 		return null
 
-	if (type === 'gsh-wrap') {
+	if (type === 'file-master-key-wrap') {
 		const groupId = descriptor.groupId
 		const fileId = descriptor.fileId
-		if (!groupId || !fileId || !descriptor.wrappedKey || !deps.getGroupH) return null
-		const groupKey = await deps.getGroupH(String(groupId), descriptor.keyGeneration)
+		if (!groupId || !fileId || !descriptor.wrappedKey || !deps.getGroupFileMasterKey) return null
+		const groupKey = await deps.getGroupFileMasterKey(String(groupId), descriptor.keyGeneration)
 		if (!groupKey) return null
 		return unwrapContentKey(descriptor.wrappedKey, groupKey, fileId)
 	}
@@ -66,7 +66,7 @@ export function decryptPart(encryptedPartBytes, manifest, contentKey) {
 /**
  * @param {FileManifest} manifest manifest
  * @param {Array<Buffer | Uint8Array>} partBytes 按序密文块
- * @param {{ getGroupH?: Function, getVaultH?: Function }} deps 密钥源
+ * @param {{ getGroupFileMasterKey?: Function, getVaultH?: Function }} deps 密钥源
  * @returns {Promise<Buffer | null>} 完整明文
  */
 export async function assembleManifestPlaintext(manifest, partBytes, deps = {}) {
@@ -80,8 +80,8 @@ export async function assembleManifestPlaintext(manifest, partBytes, deps = {}) 
 		plains.push(plain)
 	}
 	const merged = Buffer.concat(plains)
-	if (manifest.contentHash) 
+	if (manifest.contentHash)
 		if (createHash('sha256').update(merged).digest('hex') !== manifest.contentHash.toLowerCase()) return null
-	
+
 	return merged
 }

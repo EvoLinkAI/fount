@@ -7,7 +7,7 @@ import { isHex64 } from '../hexIds.mjs'
 
 /**
  * @typedef {{
- *   type: 'public' | 'gsh-wrap' | 'vault-wrap' | 'identity-wrap',
+ *   type: 'public' | 'file-master-key-wrap' | 'vault-wrap' | 'identity-wrap',
  *   wrappedKey?: { iv: string, ciphertext: string, authTag: string },
  *   groupId?: string,
  *   fileId?: string,
@@ -32,7 +32,7 @@ import { isHex64 } from '../hexIds.mjs'
  */
 
 const CE_MODES = new Set(['plain', 'convergent', 'random'])
-const TRANSFER_TYPES = new Set(['public', 'gsh-wrap', 'vault-wrap', 'identity-wrap'])
+const TRANSFER_TYPES = new Set(['public', 'file-master-key-wrap', 'vault-wrap', 'identity-wrap'])
 
 /**
  * @param {unknown} input 原始对象

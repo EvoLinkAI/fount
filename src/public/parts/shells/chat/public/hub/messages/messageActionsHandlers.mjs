@@ -1,7 +1,7 @@
 /**
  * 【文件】public/hub/messages/messageActionsHandlers.mjs
  * 【职责】频道消息行操作的事件委托：编辑保存、删除、反馈、置顶、投票、信任作者等点击处理。
- * 【原理】在 `#hub-channel-messages` 上绑定 `data-action`，弹出确认框、内联编辑区与 Toast 反馈；操作成功后局部更新 DOM 或触发 `loadMessages`/增量刷新；与 `messageActionsRender` 按钮定义配合。
+ * 【原理】在 `#hub-messages` 上绑定 `data-action`，弹出确认框、内联编辑区与 Toast 反馈；操作成功后局部更新 DOM 或触发 `loadMessages`/增量刷新；与 `messageActionsRender` 按钮定义配合。
  * 【数据结构】hubStore（core/state）及本模块函数入参/返回值；详见 JSDoc。
  * 【关联】../../../../../scripts/i18n、../../../../../scripts/markdown、../../../../../scripts/toast、../../src/api/groupApi、../../src/share、../threadDrawer、messageActionsState、messageActionsUi。
  */

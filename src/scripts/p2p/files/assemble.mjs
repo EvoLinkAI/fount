@@ -146,7 +146,7 @@ export function buildFileManifest(params) {
 }
 
 /**
- * 由已加密分块构建 manifest（vault / gsh-wrap 等需自定义 transferKeyDescriptor）。
+ * 由已加密分块构建 manifest（vault / file-master-key-wrap 等需自定义 transferKeyDescriptor）。
  * @param {object} params 与 buildFileManifest 相同字段（不含 plaintext 重加密）
  * @param {{ contentHash: string, parts: Array<{ hash: string, size: number, raw?: Buffer }> }} enc 加密结果
  * @returns {FileManifest} manifest
@@ -186,9 +186,9 @@ export function buildFileManifestFromEnc(params, enc) {
  * @param {number} keyGeneration 密钥代次
  * @returns {import('./manifest.mjs').TransferKeyDescriptor} 传输密钥描述
  */
-export function gshWrapDescriptor(groupId, fileId, contentKey, H, keyGeneration = 0) {
+export function fileMasterKeyWrapDescriptor(groupId, fileId, contentKey, H, keyGeneration = 0) {
 	return {
-		type: 'gsh-wrap',
+		type: 'file-master-key-wrap',
 		groupId,
 		fileId,
 		keyGeneration,

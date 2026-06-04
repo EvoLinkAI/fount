@@ -3,7 +3,7 @@
  * 【职责】群侧栏列表、频道消息读取与 reaction 事件查询，为 HTTP/Hub 提供聚合读模型。
  * 【原理】遍历 userGroups 物化 state 过滤本机活跃成员；读 messages.jsonl 后 merge、解密、分页并解析 content_ref；为查看者附加 isRemote/authorPubKeyHash。
  * 【数据结构】群列表行、消息行（eventId/content/charId）、reaction 精简事件、分页参数 since/before/limit。
- * 【关联】被 group/routes/groups.mjs、channels.mjs 调用；依赖 chat/dag、chat/gsh、messageMerge、access.mjs。
+ * 【关联】被 group/routes/groups.mjs、channels.mjs 调用；依赖 chat/dag、chat/file_keys、messageMerge、access.mjs。
  */
 import { DEFAULT_STREAM_GENERATING_IDLE_MS } from '../../../../../../scripts/p2p/constants.mjs'
 import { readJsonl } from '../../../../../../scripts/p2p/dag/storage.mjs'

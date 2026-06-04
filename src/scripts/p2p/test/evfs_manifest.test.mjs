@@ -55,7 +55,7 @@ Deno.test('parseEvfsRef rejects malformed refs', async () => {
 Deno.test('manifest acl registry is fail-closed', async () => {
 	const { checkManifestAcl } = await import('../entity/files/manifest_acl_registry.mjs')
 	assertEquals(await checkManifestAcl('vault-wrap', { replicaUsername: 'u', ownerEntityHash: 'x', manifest: {} }), false)
-	assertEquals(await checkManifestAcl('gsh-wrap', { replicaUsername: 'u', ownerEntityHash: 'x', manifest: {} }), false)
+	assertEquals(await checkManifestAcl('file-master-key-wrap', { replicaUsername: 'u', ownerEntityHash: 'x', manifest: {} }), false)
 })
 
 Deno.test('nodeHashFromSeed is stable', async () => {

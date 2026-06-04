@@ -7,7 +7,7 @@ import { decryptH, encryptHForMember } from '../../../../../../../scripts/p2p/gs
 import { isHex64, normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 
-import { flushGshBufferAfterRotation } from './buffer.mjs'
+import { flushPendingDecryptAfterFileKeyRotation } from './buffer.mjs'
 import { appendFileMasterKey, loadFileMasterKeys } from './store.mjs'
 
 /**
@@ -57,6 +57,6 @@ export async function applyFileKeyGrant(username, groupId, grant) {
 		if (gen > maxGen) maxGen = Math.floor(gen)
 	}
 	if (maxGen >= 0)
-		flushGshBufferAfterRotation(username, groupId, maxGen)
+		flushPendingDecryptAfterFileKeyRotation(username, groupId, maxGen)
 	return imported
 }

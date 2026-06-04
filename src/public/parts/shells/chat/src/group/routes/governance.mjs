@@ -24,7 +24,7 @@ import {
 	isBanScope,
 } from '../../chat/governance/banRules.mjs'
 import { signOwnerSuccessionAsLocalAdmin } from '../../chat/governance/ownerSuccessionSign.mjs'
-import { getCurrentFileMasterKey } from '../../chat/gsh/store.mjs'
+import { getCurrentFileMasterKey } from '../../chat/file_keys/store.mjs'
 import {
 	canInChannel,
 	governanceChannelId,
@@ -300,20 +300,20 @@ export function registerGovernanceRoutes(router, authenticate) {
 		const content = { targetPubKeyHash }
 
 		if (action === 'kick') {
-			const { generateHNonce, deriveNewH } = await import('../../../../../../../scripts/p2p/gsh.mjs')
-			const { appendFileMasterKey } = await import('../../chat/gsh/store.mjs')
+			const { generateKeyRotationNonce, deriveNextFileMasterKey } = await import('../../../../../../../scripts/p2p/gsh.mjs')
+			const { appendFileMasterKey } = await import('../../chat/file_keys/store.mjs')
 			const keyEntry = await getCurrentFileMasterKey(username, groupId)
 			if (keyEntry) {
-				const nonce = generateHNonce()
+				const nonce = generateKeyRotationNonce()
 				const newGen = keyEntry.generation + 1
 				content.key_generation = newGen
-				content.new_H_nonce = nonce
+				content.new_key_nonce = nonce
 				const kickEvent = await appendSignedLocalEvent(username, groupId, {
 					type: 'member_kick',
 					timestamp: Date.now(),
 					content,
 				})
-				const newKey = deriveNewH(keyEntry.fileMasterKey, kickEvent.id, nonce)
+				const newKey = deriveNextFileMasterKey(keyEntry.fileMasterKey, kickEvent.id, nonce)
 				await appendFileMasterKey(username, groupId, newGen, newKey)
 				await addGroupBlockedPeers(username, groupId, [{ scope: 'subject', value: targetPubKeyHash }])
 				return res.status(200).json({})
@@ -339,20 +339,20 @@ export function registerGovernanceRoutes(router, authenticate) {
 		if (!isDmPair && !perms[PERMISSIONS.ADMIN] && !perms[PERMISSIONS.MANAGE_ROLES])
 			return res.status(403).json({ error: 'key_rotate requires ADMIN or MANAGE_ROLES' })
 
-		const { generateHNonce, deriveNewH } = await import('../../../../../../../scripts/p2p/gsh.mjs')
-		const { appendFileMasterKey } = await import('../../chat/gsh/store.mjs')
+		const { generateKeyRotationNonce, deriveNextFileMasterKey } = await import('../../../../../../../scripts/p2p/gsh.mjs')
+		const { appendFileMasterKey } = await import('../../chat/file_keys/store.mjs')
 
 		const keyEntry = await getCurrentFileMasterKey(username, groupId)
 		if (!keyEntry)
 			return res.status(400).json({ error: 'No file master key initialized for this group' })
 
-		const nonce = generateHNonce()
+		const nonce = generateKeyRotationNonce()
 		const newGen = keyEntry.generation + 1
 		const event = await appendKeyRotateEvent(username, groupId, {
 			key_generation: newGen,
-			new_H_nonce: nonce,
+			new_key_nonce: nonce,
 		})
-		const newKey = deriveNewH(keyEntry.fileMasterKey, event.id, nonce)
+		const newKey = deriveNextFileMasterKey(keyEntry.fileMasterKey, event.id, nonce)
 		await appendFileMasterKey(username, groupId, newGen, newKey)
 		res.status(200).json({ event, generation: newGen, maxGenerations: 64 })
 	})

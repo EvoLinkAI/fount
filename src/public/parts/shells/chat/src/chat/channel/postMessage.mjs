@@ -3,7 +3,7 @@
  * 【职责】频道发帖：明文/附件上传、GSH 加密 content、分块 file_upload、追加 message DAG 与频道 JSONL。
  * 【原理】postChannelMessage 协调 putEncryptedChunk、appendFileUploadEvent、encryptEventContent、appendSignedLocalEvent；大附件走联邦 replicateChunkToFederation。
  * 【数据结构】uploadMeta { fileId, parts[], contentHash, wrappedKey }；message content 经 channelContent 规范化。
- * 【关联】files/groupFiles、gsh/store、dag/append/channelOps、federation chunks、lib/channelContent。
+ * 【关联】files/groupFiles、file_keys/store、dag/append/channelOps、federation chunks、lib/channelContent。
  */
 import { Buffer } from 'node:buffer'
 import { createHash, randomUUID } from 'node:crypto'
@@ -16,7 +16,7 @@ import { resolveOperatorEntityHash } from '../../../../../../../scripts/p2p/enti
 import { appendSignedLocalEvent } from '../dag/append.mjs'
 import { appendFileUploadEvent } from '../dag/channelOps.mjs'
 import { putEncryptedChunk, syncGroupFileManifest } from '../files/groupFiles.mjs'
-import { getCurrentFileMasterKey } from '../gsh/store.mjs'
+import { getCurrentFileMasterKey } from '../file_keys/store.mjs'
 import {
 	channelMessageAgentText,
 	channelMessageContentObject,

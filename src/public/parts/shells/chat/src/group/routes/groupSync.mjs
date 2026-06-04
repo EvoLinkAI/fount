@@ -20,7 +20,7 @@ import { catchUpGroupFromPeers, listFederationPeersForGroup, requestJoinSnapshot
 import { mintMqttRoomSecret } from '../../chat/federation/mqttCredentials.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../../chat/federation/room.mjs'
 import { listActiveFilesFromState } from '../../chat/files/groupFiles.mjs'
-import { getGshBufferStats } from '../../chat/gsh/buffer.mjs'
+import { getPendingDecryptBufferStats } from '../../chat/file_keys/buffer.mjs'
 import { memberEntityHash } from '../../chat/lib/entityId.mjs'
 import { getGroupMemberEntityHash } from '../../chat/lib/replica.mjs'
 import { getMaterializedSession } from '../../chat/session/dagSession.mjs'
@@ -205,7 +205,7 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			localViewBranchTip: state.localViewBranchTip ?? null,
 			governanceFork: !!state.governanceFork,
 			dagTips: state.dagTips,
-			gshBuffer: getGshBufferStats(username, groupId),
+			pendingDecryptBuffer: getPendingDecryptBufferStats(username, groupId),
 			quarantineCount: quarantineRows.length,
 			fileFolders: state.fileFolders,
 			files: listActiveFilesFromState(state),

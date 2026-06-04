@@ -14,7 +14,7 @@ const handlersByType = new Map()
  */
 
 /**
- * @param {string} type transferKeyDescriptor.type（如 vault-wrap、gsh-wrap）
+ * @param {string} type transferKeyDescriptor.type（如 vault-wrap、file-master-key-wrap）
  * @param {string} ownerId 注册方
  * @param {(context: ManifestAclContext, logicalPath?: string) => Promise<boolean>} handler ACL 检查
  * @returns {void}

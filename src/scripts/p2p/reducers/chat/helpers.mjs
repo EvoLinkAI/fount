@@ -30,15 +30,16 @@ export function clampRepEdge(value) {
 /**
  * @param {object} state 物化状态
  * @param {object} event DAG 事件
- * @param {'kick' | 'rotate'} rotationType GSH 轮换原因
+ * @param {'kick' | 'rotate'} rotationType 文件主密钥轮换原因
  * @param {Record<string, unknown>} [extra] 附加字段
  * @returns {void}
  */
-export function recordGshRotation(state, event, rotationType, extra = {}) {
+export function recordFileMasterKeyRotation(state, event, rotationType, extra = {}) {
 	const generation = event.content?.key_generation
-	const nonce = event.content?.new_H_nonce
+	const nonce = event.content?.new_key_nonce
 	if (!Number.isFinite(generation) || !nonce) return
-	state.gshRotations.push({
+	if (!state.fileMasterKeyRotations) state.fileMasterKeyRotations = []
+	state.fileMasterKeyRotations.push({
 		eventId: event.id,
 		generation,
 		nonce,

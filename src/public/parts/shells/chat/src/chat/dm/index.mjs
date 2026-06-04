@@ -1,7 +1,7 @@
 /**
  * 【文件】dm/index.mjs
  * 【职责】ECDH 双人 DM 群生命周期：按 dmSessionTag 查找、创建群、联邦房间与好友绑定。
- * 【原理】labels 派生会话标签；createGroup + group_meta_update；initGroupH 加密成员 H；validateDmIntroLinkProof 入链。
+ * 【原理】labels 派生会话标签；createGroup + group_meta_update；initGroupFileMasterKey 加密成员 fileMasterKey；validateDmIntroLinkProof 入链。
  * 【数据结构】dmKind/dmSessionTag 元数据；createEcdhDmGroup 返回 groupId、defaultChannelId。
  * 【关联】dm/labels、linkValidate、dag/lifecycle、gsh、friendBinding、federation/room。
  */
@@ -18,8 +18,8 @@ import { setFederationBootstrap } from '../federation/bootstrapStore.mjs'
 import { getFederationSettings } from '../federation/config.mjs'
 import { catchUpGroupFromPeers } from '../federation/index.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../federation/room.mjs'
-import { buildFileKeyGrant } from '../gsh/historicalGrant.mjs'
-import { initGroupFileMasterKey, getCurrentFileMasterKey } from '../gsh/store.mjs'
+import { buildFileKeyGrant } from '../file_keys/historicalGrant.mjs'
+import { initGroupFileMasterKey, getCurrentFileMasterKey } from '../file_keys/store.mjs'
 import { consumeGroupInviteTicket } from '../lib/inviteTickets.mjs'
 import { listUserGroups } from '../lib/userGroups.mjs'
 

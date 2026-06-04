@@ -6,7 +6,7 @@ import { extractInboundSignedEvent, isPlainObject } from '../../../../../../../s
 import { encryptSignedEventForWire } from '../channel_keys/content.mjs'
 import { getState } from '../dag/materialize.mjs'
 import { mergeChannelHistories } from '../dag/queries.mjs'
-import { applyFileKeyGrant, buildFileKeyGrant } from '../gsh/historicalGrant.mjs'
+import { applyFileKeyGrant, buildFileKeyGrant } from '../file_keys/historicalGrant.mjs'
 import { verifyRemoteCheckpoint } from '../lib/checkpointVerifier.mjs'
 import { snapshotPath } from '../lib/paths.mjs'
 
@@ -26,7 +26,7 @@ import { wrapPullResponseInner, unwrapPullResponseEnvelope } from './pullRespons
  * @param {object} [opts.checkpoint] checkpoint
  * @param {object} [opts.archiveSummary] 存档摘要
  * @param {boolean} [opts.includeFileKeyGrant] 是否附带群文件主密钥 grant
- * @param {boolean} [opts.includeChannelKeyRotates] 是否附带频道密钥 rotate 事件
+ * @param {boolean} [opts.includeChannelKeyWraps] 是否附带频道密钥 wrap
  * @returns {Promise<object>} HPKE envelope
  */
 export async function buildPullResponseEnvelope(username, groupId, opts) {
@@ -40,7 +40,7 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 		checkpoint,
 		archiveSummary,
 		includeFileKeyGrant = false,
-		includeChannelKeyRotates = false,
+		includeChannelKeyWraps = false,
 	} = opts
 	/** @type {Record<string, unknown>} */
 	const inner = {}
@@ -60,10 +60,10 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 	}
 	if (includeFileKeyGrant)
 		inner.file_key_grant = await buildFileKeyGrant(username, groupId, recipientEdPubKeyHex)
-	if (includeChannelKeyRotates) {
-		const { collectChannelKeyRotatesForRecipient } = await import('../channel_keys/bootstrap.mjs')
-		const rotates = await collectChannelKeyRotatesForRecipient(username, groupId, recipientEdPubKeyHex)
-		if (rotates.length) inner.channelKeyRotates = rotates
+	if (includeChannelKeyWraps) {
+		const { collectChannelKeyWrapsForRecipient } = await import('../channel_keys/bootstrap.mjs')
+		const wraps = await collectChannelKeyWrapsForRecipient(username, groupId, recipientEdPubKeyHex)
+		if (Object.keys(wraps).length) inner.channelKeyWraps = wraps
 	}
 	const wrapped = wrapPullResponseInner(recipientEdPubKeyHex, inner)
 	return {
@@ -84,12 +84,11 @@ export async function applyPullInner(username, groupId, inner) {
 	if (!isPlainObject(inner)) return { eventsApplied: 0, historiesMerged: 0 }
 	if (inner.file_key_grant)
 		await applyFileKeyGrant(username, groupId, inner.file_key_grant)
-	if (Array.isArray(inner.channelKeyRotates)) {
-		const { applyChannelKeyRotateEvent } = await import('../channel_keys/store.mjs')
+	if (isPlainObject(inner.channelKeyWraps)) {
+		const { applyChannelKeyWrapsFromPull } = await import('../channel_keys/store.mjs')
 		const { resolveLocalEventSigner } = await import('../dag/localSigner.mjs')
 		const { sender } = await resolveLocalEventSigner(username, groupId)
-		for (const event of inner.channelKeyRotates)
-			await applyChannelKeyRotateEvent(username, groupId, event, sender)
+		await applyChannelKeyWrapsFromPull(username, groupId, inner.channelKeyWraps, sender)
 	}
 	if (isPlainObject(inner.checkpoint)) {
 		const checkpointResult = await verifyRemoteCheckpoint(inner.checkpoint, undefined)

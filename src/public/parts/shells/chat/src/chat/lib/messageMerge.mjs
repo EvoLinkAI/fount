@@ -55,6 +55,21 @@ function withFeedbackExtension(row, feedback, feedbackExtension) {
 }
 
 /**
+ * @param {object} row 展示行
+ * @returns {object} 带 decryptView 的行（解密态不污染 content 载荷）
+ */
+function attachDecryptView(row) {
+	const content = row?.content
+	if (!content?.decryptFailed) return row
+	const { decryptFailed, pendingGeneration, ...rest } = content
+	return {
+		...row,
+		content: Object.keys(rest).length ? rest : null,
+		decryptView: { pending: pendingGeneration ?? null },
+	}
+}
+
+/**
  * @param {object[]} messages 频道原始行（含 overlay 事件）
  * @returns {object[]} 折叠后的展示行
  */
@@ -90,14 +105,14 @@ export function mergeChannelMessagesForDisplay(messages) {
 			}
 			if (patch && 'is_generating' in patch)
 				content.is_generating = !!patch.is_generating
-			merged.push(withFeedbackExtension({ ...row, content, wasEdited: true }, feedback, feedbackExtension))
+			merged.push(withFeedbackExtension(attachDecryptView({ ...row, content, wasEdited: true }), feedback, feedbackExtension))
 			continue
 		}
 		if (feedback) {
-			merged.push(withFeedbackExtension(row, feedback, feedbackExtension))
+			merged.push(withFeedbackExtension(attachDecryptView(row), feedback, feedbackExtension))
 			continue
 		}
-		merged.push(row)
+		merged.push(attachDecryptView(row))
 	}
 	return merged
 }

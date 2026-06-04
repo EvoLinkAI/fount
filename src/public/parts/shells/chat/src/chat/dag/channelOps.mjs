@@ -142,15 +142,15 @@ export async function appendUnpinEvent(username, groupId, channelId, targetEvent
 /**
  * @param {string} username 用户名
  * @param {string} groupId 群组 ID
- * @param {{ key_generation: number, new_H_nonce: string }} body 轮换参数
+ * @param {{ key_generation: number, new_key_nonce: string }} body 轮换参数
  * @returns {Promise<object>} 签名事件
  */
 export async function appendKeyRotateEvent(username, groupId, body) {
-	const { key_generation, new_H_nonce } = body
+	const { key_generation, new_key_nonce } = body
 	if (!Number.isFinite(key_generation) || key_generation < 0)
 		throw new Error('key_generation (non-negative integer) required')
-	if (!new_H_nonce?.trim())
-		throw new Error('new_H_nonce required')
+	if (!new_key_nonce?.trim())
+		throw new Error('new_key_nonce required')
 	const { sender, secretKey } = await resolveLocalEventSigner(username, groupId)
 	const { state } = await getState(username, groupId)
 	const permissionsChannelId = governanceChannelId(state)
@@ -163,7 +163,7 @@ export async function appendKeyRotateEvent(username, groupId, body) {
 		type: 'key_rotate',
 		sender,
 		timestamp: Date.now(),
-		content: { key_generation: Math.floor(key_generation), new_H_nonce: new_H_nonce.trim() },
+		content: { key_generation: Math.floor(key_generation), new_key_nonce: new_key_nonce.trim() },
 	}, secretKey)
 }
 

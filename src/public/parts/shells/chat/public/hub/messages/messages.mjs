@@ -13,14 +13,12 @@ import {
 import { showToastI18n } from '../../../../../scripts/toast.mjs'
 import {
 	getChannelMessages,
-	getPinContextMessages,
 	requestChannelHistoryFromPeers,
 	sendGroupMessage,
 } from '../../src/api/groupApi.mjs'
 import { viewerCanAddReactions, viewerCanManageMessages, viewerCanPinMessages } from '../../src/groupViewerPermissions.mjs'
 import { hubEmptyWaveIcon } from '../../src/lib/emojiSvg.mjs'
 import { createMessagePipeline } from '../../src/MessagePipeline.mjs'
-import { applyChannelDisplayChain } from '../../src/ui/channelDisplay.mjs'
 import { refreshChannelPinsBar } from '../banners.mjs'
 import { getChatGestures } from '../chatGestures.mjs'
 import { clearSelectedFiles, selectedFiles, stopVoiceIfRecording } from '../composerFiles.mjs'
@@ -35,6 +33,13 @@ import {
 import { applyAvatarsTo } from '../presence.mjs'
 import { isThreadDrawerOpen } from '../threadDrawer.mjs'
 
+import {
+	consumePendingScrollTarget,
+	ensureMessageLoaded,
+	mergeIncrementalSourceBatch,
+	refreshChannelMessagesView,
+	setPendingScrollTarget,
+} from './channelMessageStore.mjs'
 import { loadNonTextChannel } from './channelTypeRouter.mjs'
 import { bindChannelMessageActions } from './messageActionsHandlers.mjs'
 import { setChannelMessageActionsContext } from './messageActionsState.mjs'
@@ -50,25 +55,17 @@ import { wireMessageReactions } from './reactions.mjs'
 /** @type {ReturnType<typeof setTimeout> | null} */
 let channelIncrementalDebounceTimer = null
 
-/** @type {string | null} 虚拟列表重建后滚动定位的消息 event id */
-let pendingScrollToEventId = null
-
 /**
- * 按顶栏搜索关键词过滤展示行。
- * @param {object[]} messages 物化后的消息行
- * @returns {object[]} 过滤后的消息行
+ * @returns {HTMLElement | null} 消息列表根节点
  */
-function applyChannelSearchFilter(messages) {
-	const searchQuery = hubStore.channelSearchQuery
-	if (!searchQuery) return messages
-	return messages.filter(message => getMessageText(message).toLowerCase().includes(searchQuery))
+export function getMessagesContainer() {
+	const el = document.getElementById('hub-messages')
+	return el instanceof HTMLElement ? el : null
 }
 
-/** 从 API 物化行重建展示列表（分叉链 + 搜索）。 @returns {void} */
+/** @returns {void} */
 function refreshChannelView() {
-	hubStore.channelMessages = applyChannelSearchFilter(
-		applyChannelDisplayChain(hubStore.channelMessagesSource),
-	)
+	refreshChannelMessagesView(getMessageText)
 }
 
 /** @returns {void} */
@@ -237,12 +234,12 @@ function initChannelVirtualList(container) {
 		 */
 		renderItem: (item, index) => renderChannelMessageElement(item, index),
 		initialIndex: (() => {
-			if (!pendingScrollToEventId) return Math.max(0, hubStore.channelMessages.length - 1)
-			const norm = String(pendingScrollToEventId).trim().toLowerCase()
+			const targetId = consumePendingScrollTarget()
+			if (!targetId) return Math.max(0, hubStore.channelMessages.length - 1)
+			const norm = String(targetId).trim().toLowerCase()
 			const idx = hubStore.channelMessages.findIndex(
 				m => String(m.eventId || '').trim().toLowerCase() === norm,
 			)
-			pendingScrollToEventId = null
 			return idx >= 0 ? idx : Math.max(0, hubStore.channelMessages.length - 1)
 		})(),
 		/** @returns {void} */
@@ -385,7 +382,8 @@ export async function loadMessages() {
 
 /** @returns {void} */
 export function scrollToBottom() {
-	const container = document.getElementById('hub-messages')
+	const container = getMessagesContainer()
+	if (!container) return
 	container.scrollTop = container.scrollHeight
 }
 
@@ -406,45 +404,17 @@ function isPendingEventId(eventId) {
 }
 
 /**
- * @param {object[]} rows 消息行
- * @returns {object[]} 按时间排序
- */
-function sortChannelRows(rows) {
-	return [...rows].sort((a, b) => {
-		const ta = Number(a.timestamp) || 0
-		const tb = Number(b.timestamp) || 0
-		if (ta !== tb) return ta - tb
-		return String(a.eventId).localeCompare(String(b.eventId), 'und')
-	})
-}
-
-/**
- * @param {object[]} source 当前 channelMessagesSource
- * @param {object[]} batch 本轮 API 返回行
- * @returns {object[]} 合并后的 source
+ * 合并增量消息批次并清理已确认的 composer pending 行。
+ * @param {import('./channelMessageStore.mjs').ChannelMessageSource} source 当前消息源
+ * @param {object[]} batch 增量行
+ * @returns {import('./channelMessageStore.mjs').ChannelMessageSource} 合并后的源
  */
 function mergeIncrementalChannelBatch(source, batch) {
-	const byId = new Map()
-	for (const row of source) {
-		if (row.pending) continue
-		const eventId = String(row.eventId)
-		if (eventId) byId.set(eventId, row)
-	}
 	const pendingId = hubStore.composerPendingId
-	if (pendingId) {
-		const pending = source.find(row => String(row.eventId) === pendingId)
-		if (pending) byId.set(pendingId, pending)
-	}
-	for (const row of batch) {
-		const eventId = String(row.eventId)
-		if (!eventId) continue
-		byId.set(eventId, row)
-		if (pendingId && eventId !== pendingId) {
-			byId.delete(pendingId)
-			hubStore.composerPendingId = null
-		}
-	}
-	return sortChannelRows([...byId.values()])
+	const merged = mergeIncrementalSourceBatch(source, batch, pendingId)
+	if (pendingId && batch.some(row => String(row.eventId) !== pendingId))
+		hubStore.composerPendingId = null
+	return merged
 }
 
 /**
@@ -459,73 +429,70 @@ function messageIdSelector(messageId) {
 }
 
 /**
- * 将拉取到的消息合并进当前频道视图。
- * @param {object[]} fetched 消息行
- * @returns {Promise<boolean>} 是否合并了新行
+ * 高亮并滚动到已渲染的消息行。
+ * @param {HTMLElement} row 消息 DOM 节点
+ * @returns {void}
  */
-async function mergeFetchedMessagesIntoView(fetched) {
-	if (!Array.isArray(fetched) || !fetched.length) return false
-	const known = new Set(hubStore.channelMessagesSource.map(m => String(m.eventId)))
-	const fresh = fetched.filter(m => {
-		const eventId = String(m.eventId)
-		return eventId && !known.has(eventId)
-	})
-	if (!fresh.length) return false
-	hubStore.channelMessagesSource = sortChannelRows([...fresh, ...hubStore.channelMessagesSource])
-	const container = document.getElementById('hub-channel-messages')
-	if (!(container instanceof HTMLElement)) return true
-	destroyChannelVirtualList()
-	initChannelVirtualList(container)
-	decorateRenderedMessages(container, false)
-	return true
+function highlightMessageRow(row) {
+	row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+	row.classList.add('ring-2', 'ring-primary', 'ring-offset-2')
+	setTimeout(() => row.classList.remove('ring-2', 'ring-primary', 'ring-offset-2'), 2000)
 }
 
 /**
- * 滚动到指定 DAG 消息（引用条点击等）。
+ * 虚拟列表重建后定位到 eventId（数据已由 ensureMessageLoaded 合并）。
+ * @param {HTMLElement} container 消息列表根节点
+ * @param {string} eventId 目标 event id
+ * @returns {void}
+ */
+function rebuildVirtualListAtEvent(container, eventId) {
+	setPendingScrollTarget(eventId)
+	destroyChannelVirtualList()
+	initChannelVirtualList(container)
+	decorateRenderedMessages(container, false)
+}
+
+/**
+ * 滚动到指定 DAG 消息（引用条、置顶、书签等）。
  * @param {string} eventId 消息 event id
  * @returns {Promise<void>}
  */
 export async function scrollToMessageEventId(eventId) {
 	const norm = String(eventId || '').trim()
 	if (!norm) return
-	const container = document.getElementById('hub-channel-messages')
-	if (!(container instanceof HTMLElement)) return
+	const container = getMessagesContainer()
+	if (!container) return
+
 	const sel = messageIdSelector(norm)
-	let existing = sel ? container.querySelector(sel) : null
-	if (!(existing instanceof HTMLElement) && hubStore.currentGroupId && hubStore.currentChannelId) 
-		try {
-			let fetched = (await getPinContextMessages(
-				hubStore.currentGroupId,
-				hubStore.currentChannelId,
-				norm,
-			)).messages || []
-			if (!fetched.some(row => String(row.eventId) === norm)) 
-				fetched = (await getChannelMessages(
-					hubStore.currentGroupId,
-					hubStore.currentChannelId,
-					{ eventIds: [norm] },
-				)).messages || []
-			
-			if (await mergeFetchedMessagesIntoView(fetched))
-				existing = sel ? container.querySelector(sel) : null
-		}
-		catch { /* unavailable */ }
-	
-	if (existing instanceof HTMLElement) {
-		existing.scrollIntoView({ behavior: 'smooth', block: 'center' })
-		existing.classList.add('ring-2', 'ring-primary', 'ring-offset-2')
-		setTimeout(() => existing.classList.remove('ring-2', 'ring-primary', 'ring-offset-2'), 2000)
+	let row = sel ? container.querySelector(sel) : null
+	if (row instanceof HTMLElement) {
+		highlightMessageRow(row)
 		return
 	}
-	pendingScrollToEventId = norm
-	if (hubStore.channelMessages.length && hubStore.channelMessagePipeline) {
-		destroyChannelVirtualList()
-		initChannelVirtualList(container)
-		decorateRenderedMessages(container, false)
-		const row = sel ? container.querySelector(sel) : null
-		row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+	const result = await ensureMessageLoaded(norm)
+	if (!result.ok) return
+
+	refreshChannelView()
+	syncChannelActionsContext()
+
+	row = sel ? container.querySelector(sel) : null
+	if (row instanceof HTMLElement) {
+		highlightMessageRow(row)
+		return
 	}
+
+	if (hubStore.channelMessages.length)
+		rebuildVirtualListAtEvent(container, norm)
+
+	row = sel ? container.querySelector(sel) : null
+	if (row instanceof HTMLElement) highlightMessageRow(row)
 }
+
+/**
+ *
+ */
+export { ensureMessageLoaded } from './channelMessageStore.mjs'
 
 /**
  * 将 POST 落盘的 DAG 事件转为频道消息行。

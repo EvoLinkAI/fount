@@ -2,7 +2,7 @@ import {
 	decryptWithChannelKey,
 	encryptWithChannelKey,
 } from '../../../../../../../scripts/p2p/channel_crypto.mjs'
-import { recordGshPendingDecrypt } from '../gsh/buffer.mjs'
+import { recordPendingChannelDecrypt } from '../file_keys/buffer.mjs'
 
 import { getChannelKeyHex, loadChannelKeysFile } from './store.mjs'
 
@@ -102,12 +102,12 @@ export async function decryptEventContent(username, groupId, channelId, content)
 	const gen = Number(content.generation)
 	const keyHex = await getChannelKeyHex(username, groupId, channelId, gen)
 	if (!keyHex) {
-		recordGshPendingDecrypt(username, groupId, gen)
+		recordPendingChannelDecrypt(username, groupId, gen)
 		return { ok: false, generation: gen, content: null }
 	}
 	const decryptedText = decryptWithChannelKey(content, keyHex, channelId)
 	if (decryptedText == null) {
-		recordGshPendingDecrypt(username, groupId, gen)
+		recordPendingChannelDecrypt(username, groupId, gen)
 		return { ok: false, generation: gen, content: null }
 	}
 	try {

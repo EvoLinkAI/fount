@@ -20,7 +20,7 @@ export async function canReadManifest(replicaUsername, ownerEntityHash, manifest
 		return checkManifestAcl('vault-wrap', context)
 
 	if (isGroupEntityHash(ownerEntityHash))
-		return checkManifestAcl('gsh-wrap', context)
+		return checkManifestAcl('file-master-key-wrap', context)
 
 	return true
 }
@@ -33,6 +33,6 @@ export async function canReadManifest(replicaUsername, ownerEntityHash, manifest
  */
 export async function canWriteManifestPath(replicaUsername, ownerEntityHash, logicalPath) {
 	if (isGroupEntityHash(ownerEntityHash))
-		return checkManifestAcl('gsh-wrap', { replicaUsername, ownerEntityHash, manifest: /** @type {any} */ {} }, logicalPath)
+		return checkManifestAcl('file-master-key-wrap', { replicaUsername, ownerEntityHash, manifest: /** @type {any} */ {} }, logicalPath)
 	return isWritableLocalEntity(replicaUsername, ownerEntityHash)
 }
