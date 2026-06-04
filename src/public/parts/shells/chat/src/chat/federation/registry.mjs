@@ -34,7 +34,7 @@ export const federationPartitionRebindGen = new Map()
 /** @type {Map<string, string>} */
 export const groupFederationOwner = new Map()
 
-/** @type {Map<string, { collected: Set<string>, timer: ReturnType<typeof setTimeout>, resolve: () => void }>} */
+/** @type {Map<string, { collected: Set<string>, remoteSummaries: object[], timer: ReturnType<typeof setTimeout>, resolve: () => void }>} */
 export const pendingTipExchanges = new Map()
 
 /** @type {Map<string, Array<{ resolve: () => void, timer: ReturnType<typeof setTimeout> }>>} gossip 等待：前缀 username:groupId: → suffix */

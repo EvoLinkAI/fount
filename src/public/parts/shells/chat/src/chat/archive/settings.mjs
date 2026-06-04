@@ -23,7 +23,8 @@ export function archiveSettingsFromGroup(groupSettings = {}) {
 }
 
 /**
- * @param {number} wallMs 毫秒时间戳
+ * 归档分桶：仅 UTC 自然月 `YYYY-MM`（与节点本地时区无关）。
+ * @param {number} wallMs HLC wall 毫秒（UTC 语义）
  * @returns {string} `YYYY-MM`
  */
 export function archiveMonthKey(wallMs) {

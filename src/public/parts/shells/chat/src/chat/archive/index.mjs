@@ -11,12 +11,18 @@ import { archiveMonthKey } from './settings.mjs'
  * @returns {object} 规范化 manifest
  */
 function normalizeManifest(raw) {
+	const coverage = raw?.coverage && typeof raw.coverage === 'object' ? raw.coverage : {}
+	const seals = raw?.seals && typeof raw.seals === 'object' ? raw.seals : {}
 	return {
 		version: 1,
+		monthBucketPolicy: 'UTC',
 		channels: raw?.channels && typeof raw.channels === 'object' ? raw.channels : {},
 		archivedEventIds: raw?.archivedEventIds && typeof raw.archivedEventIds === 'object'
 			? raw.archivedEventIds
 			: {},
+		seals,
+		coverage,
+		archive_coverage_complete: raw?.archive_coverage_complete !== false,
 	}
 }
 

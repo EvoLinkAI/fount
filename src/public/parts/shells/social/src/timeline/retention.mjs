@@ -55,10 +55,4 @@ export async function runSocialTimelineMaintenance(username, entityHash, checkpo
 	const count = (await readJsonl(path, { sanitize })).length
 	if (count > policy.compactTrigger && checkpoint?.checkpoint_event_id)
 		await pruneEventsJsonlAfterCheckpoint(path, checkpoint, sanitize)
-	const { materializeTimeline } = await import('./materialize.mjs')
-	const { maybeAppendSocialStateSummary } = await import('./stateSummary.mjs')
-	const events = await readJsonl(path, { sanitize })
-	const view = materializeTimeline(events)
-	const tipId = checkpoint?.checkpoint_event_id || view.tipIds?.[0]
-	if (tipId) await maybeAppendSocialStateSummary(username, entityHash, view, tipId, events)
 }

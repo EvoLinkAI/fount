@@ -3,6 +3,7 @@
  */
 import { writeJsonAtomicSynced } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { extractInboundSignedEvent, isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
+import { loadArchiveManifest, saveArchiveManifest } from '../archive/index.mjs'
 import { encryptSignedEventForWire } from '../channel_keys/content.mjs'
 import { getState } from '../dag/materialize.mjs'
 import { mergeChannelHistories } from '../dag/queries.mjs'
@@ -25,6 +26,7 @@ import { wrapPullResponseInner, unwrapPullResponseEnvelope } from './pullRespons
  * @param {Record<string, object[]>} [opts.channelHistories] 频道历史
  * @param {object} [opts.checkpoint] checkpoint
  * @param {object} [opts.archiveSummary] 存档摘要
+ * @param {object} [opts.archiveManifest] 冷归档 manifest/seal 索引
  * @param {boolean} [opts.includeFileKeyGrant] 是否附带群文件主密钥 grant
  * @param {boolean} [opts.includeChannelKeyWraps] 是否附带频道密钥 wrap
  * @returns {Promise<object>} HPKE envelope
@@ -39,6 +41,7 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 		channelHistories,
 		checkpoint,
 		archiveSummary,
+		archiveManifest,
 		includeFileKeyGrant = false,
 		includeChannelKeyWraps = false,
 	} = opts
@@ -46,6 +49,7 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
 	const inner = {}
 	if (checkpoint) inner.checkpoint = checkpoint
 	if (archiveSummary) inner.archiveSummary = archiveSummary
+	if (archiveManifest) inner.archiveManifest = archiveManifest
 	if (events.length)
 		inner.events = await Promise.all(events.map(ev => encryptSignedEventForWire(username, groupId, ev)))
 	if (channelHistories && isPlainObject(channelHistories)) {
@@ -89,6 +93,19 @@ export async function applyPullInner(username, groupId, inner) {
 		const { resolveLocalEventSigner } = await import('../dag/localSigner.mjs')
 		const { sender } = await resolveLocalEventSigner(username, groupId)
 		await applyChannelKeyWrapsFromPull(username, groupId, inner.channelKeyWraps, sender)
+	}
+	if (isPlainObject(inner.archiveManifest)) {
+		const local = await loadArchiveManifest(username, groupId)
+		await saveArchiveManifest(username, groupId, {
+			...local,
+			...inner.archiveManifest,
+			archivedEventIds: {
+				...local.archivedEventIds,
+				...inner.archiveManifest.archivedEventIds || {},
+			},
+			seals: { ...local.seals, ...inner.archiveManifest.seals || {} },
+			channels: { ...local.channels, ...inner.archiveManifest.channels || {} },
+		})
 	}
 	if (isPlainObject(inner.checkpoint)) {
 		const checkpointResult = await verifyRemoteCheckpoint(inner.checkpoint, undefined)

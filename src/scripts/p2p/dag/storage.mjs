@@ -1,7 +1,8 @@
 import { Buffer } from 'node:buffer'
-import { createWriteStream } from 'node:fs'
+import { createReadStream, createWriteStream } from 'node:fs'
 import { appendFile, mkdir, open, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
+import { createInterface } from 'node:readline'
 
 /**
  * 读取 JSONL 文件并解析为对象数组；缺失或读失败时返回空数组。
@@ -18,6 +19,76 @@ export async function readJsonl(filePath, options = {}) {
 	catch {
 		return []
 	}
+}
+
+/**
+ * 流式读取 JSONL（避免整文件读入内存）。
+ * @param {string} filePath 文件路径
+ * @param {{ sanitize?: (row: object) => object }} [options] 行净化
+ * @returns {AsyncGenerator<object>} 逐行事件
+ */
+export async function* readJsonlStream(filePath, options = {}) {
+	const sanitize = typeof options.sanitize === 'function' ? options.sanitize : row => row
+	let input
+	try {
+		input = createReadStream(filePath, { encoding: 'utf8' })
+	}
+	catch {
+		return
+	}
+	const lines = createInterface({ input, crlfDelay: Infinity })
+	for await (const line of lines) {
+		const trimmed = String(line).trim()
+		if (!trimmed) continue
+		try {
+			yield sanitize(JSON.parse(trimmed))
+		}
+		catch { /* skip bad line */ }
+	}
+}
+
+/**
+ * 流式过滤重写 JSONL：保留 `keep(row)===true` 的行。
+ * @param {string} filePath 目标路径
+ * @param {(row: object) => boolean} keep 保留谓词
+ * @param {{ sanitize?: (row: object) => object }} [options] 读行净化
+ * @returns {Promise<{ kept: number, dropped: number }>} 统计
+ */
+export async function rewriteJsonlKeeping(filePath, keep, options = {}) {
+	const dir = dirname(filePath)
+	await mkdir(dir, { recursive: true })
+	const tmp = `${filePath}.tmp.${process.pid}.${Date.now()}`
+	/** @type {object[]} */
+	const buffer = []
+	let kept = 0
+	let dropped = 0
+	/**
+	 *
+	 */
+	const flush = async () => {
+		if (!buffer.length) return
+		const block = buffer.map(row => `${JSON.stringify(row)}\n`).join('')
+		await appendFile(tmp, block, 'utf8')
+		buffer.length = 0
+	}
+	try {
+		for await (const row of readJsonlStream(filePath, options))
+			if (keep(row)) {
+				buffer.push(row)
+				kept++
+				if (buffer.length >= WRITE_JSONL_CHUNK_LINES)
+					await flush()
+			}
+			else dropped++
+		await flush()
+	}
+	catch { /* source missing */ }
+	if (kept > 0 || dropped > 0) await rename(tmp, filePath)
+	else 
+		try { await writeFile(filePath, '', 'utf8') }
+		catch { /* ok */ }
+	
+	return { kept, dropped }
 }
 
 /**

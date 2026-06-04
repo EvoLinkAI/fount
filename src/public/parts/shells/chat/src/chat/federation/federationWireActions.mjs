@@ -9,6 +9,8 @@ export const FEDERATION_WIRE_ACTION_NAMES = [
 	'fed_bootstrap_response',
 	'fed_join_snapshot_request',
 	'fed_join_snapshot_response',
+	'fed_archive_month_want',
+	'fed_archive_month_response',
 	'discovery_announce',
 	'discovery_query',
 	'discovery_query_response',

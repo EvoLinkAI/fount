@@ -338,6 +338,18 @@ export async function runPostCheckpointMaintenance(username, groupId, checkpoint
 		console.error('dag_fold:', error)
 	}
 
+	try {
+		const { rewireDagPrevToCheckpointTip } = await import('./rewireAfterFold.mjs')
+		await rewireDagPrevToCheckpointTip(
+			username,
+			groupId,
+			checkpointPayload?.checkpoint_event_id,
+		)
+	}
+	catch (error) {
+		console.error('dag_rewire:', error)
+	}
+
 	const compactTrigger = Math.max(256, Number(groupSettings.compactTriggerEventDepth) || 100_000)
 	if (events.length > compactTrigger)
 		try {
@@ -364,13 +376,6 @@ export async function runPostCheckpointMaintenance(username, groupId, checkpoint
 			console.error('hot_messages_trim:', error)
 		}
 
-	try {
-		const { maybeAppendStateSummary } = await import('./stateSummary.mjs')
-		await maybeAppendStateSummary(username, groupId, state, checkpointPayload?.checkpoint_event_id, events)
-	}
-	catch (error) {
-		console.error('state_summary:', error)
-	}
 }
 
 /**

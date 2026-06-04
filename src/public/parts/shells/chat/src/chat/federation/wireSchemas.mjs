@@ -18,7 +18,7 @@ export function parseFedTipPing(payload) {
 	if (!isPlainObject(payload)) return null
 	const nodeHash = String(payload.nodeHash || '').trim()
 	if (!nodeHash) return null
-	return { nodeHash, tips: payload.tips }
+	return { nodeHash, tips: payload.tips, archiveSummary: payload.archiveSummary }
 }
 
 /**
@@ -27,7 +27,7 @@ export function parseFedTipPing(payload) {
  */
 export function parseFedTipPong(payload) {
 	if (!isPlainObject(payload)) return null
-	return { tips: payload.tips }
+	return { tips: payload.tips, archiveSummary: payload.archiveSummary }
 }
 
 /**

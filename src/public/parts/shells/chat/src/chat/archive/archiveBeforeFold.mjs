@@ -8,6 +8,7 @@ import { messagesPath } from '../lib/paths.mjs'
 import { allProtectedHotEventIds } from './hotPosts.mjs'
 import { appendPostSnapshotsToArchive, isEventArchivedInManifest, loadArchiveManifest } from './index.mjs'
 import { buildPostSnapshotsFromLines } from './postSnapshot.mjs'
+import { sealArchiveChannelBatch } from './seal.mjs'
 
 /**
  * @param {string} username replica
@@ -21,6 +22,8 @@ export async function archivePostsBeforeDagFold(username, groupId, state, events
 	const protectedIds = allProtectedHotEventIds(hotPosts)
 	const manifest = await loadArchiveManifest(username, groupId)
 	let archived = 0
+	/** @type {Record<string, string[]>} */
+	const sealedByChannel = {}
 	for (const channelId of Object.keys(state.channels || {})) {
 		const messageEvents = events.filter(ev =>
 			ev.type === 'message' && String(ev.channelId || 'default') === channelId,
@@ -29,9 +32,12 @@ export async function archivePostsBeforeDagFold(username, groupId, state, events
 			.map(ev => ev.id)
 			.filter(id => !protectedIds.has(id) && !isEventArchivedInManifest(manifest, channelId, id))
 		if (!toArchiveIds.length) continue
+		/** @type {string[]} */
+		const batchIds = []
 		const want = new Set(toArchiveIds)
 		const lines = (await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent }))
 			.filter(row => want.has(String(row.eventId).trim()))
+		let added = 0
 		if (!lines.length) {
 			const fromEvents = messageEvents
 				.filter(ev => want.has(ev.id))
@@ -47,13 +53,22 @@ export async function archivePostsBeforeDagFold(username, groupId, state, events
 				}))
 			if (!fromEvents.length) continue
 			const snaps = await buildPostSnapshotsFromLines(username, groupId, channelId, fromEvents, state)
-			archived += await appendPostSnapshotsToArchive(username, groupId, channelId, snaps)
-			continue
+			added = await appendPostSnapshotsToArchive(username, groupId, channelId, snaps)
 		}
-		const snaps = await buildPostSnapshotsFromLines(username, groupId, channelId, lines, state)
-		archived += await appendPostSnapshotsToArchive(username, groupId, channelId, snaps)
+		else {
+			const snaps = await buildPostSnapshotsFromLines(username, groupId, channelId, lines, state)
+			added = await appendPostSnapshotsToArchive(username, groupId, channelId, snaps)
+		}
+		archived += added
+		if (added) {
+			for (const id of toArchiveIds) batchIds.push(id)
+			const last = messageEvents.filter(ev => batchIds.includes(ev.id))
+				.sort((a, b) => Number(b.hlc?.wall ?? 0) - Number(a.hlc?.wall ?? 0))[0]
+			await sealArchiveChannelBatch(username, groupId, channelId, batchIds, last?.id)
+			sealedByChannel[channelId] = batchIds
+		}
 	}
-	return { archived }
+	return { archived, sealedByChannel }
 }
 
 /**

@@ -127,6 +127,16 @@ export function archiveManifestPath(username, groupId) {
 }
 
 /**
+ * 群联邦同步水位（离线起始月、末帧 tipsHash）。
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @returns {string} `sync_state.json` 绝对路径
+ */
+export function groupSyncStatePath(username, groupId) {
+	return join(groupDir(username, groupId), 'sync_state.json')
+}
+
+/**
  * 频道归档目录。
  * @param {string} username replica
  * @param {string} groupId 群 ID

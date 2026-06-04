@@ -23,7 +23,7 @@ import { refreshChannelPinsBar } from '../banners.mjs'
 import { getChatGestures } from '../chatGestures.mjs'
 import { clearSelectedFiles, selectedFiles, stopVoiceIfRecording } from '../composerFiles.mjs'
 import { activeCharPartNames } from '../core/domUtils.mjs'
-import { hubStore } from '../core/state.mjs'
+import { hubStore, setHubState, watchHubState } from '../core/state.mjs'
 import {
 	dismissVolatileStreamPreview,
 	getActiveVolatileStreamIds,
@@ -916,6 +916,20 @@ export async function submitComposer() {
 		if (input instanceof HTMLTextAreaElement)
 			input.dispatchEvent(new Event('input', { bubbles: true }))
 	}
+}
+
+watchHubState('focusedMessageEventId', eventId => {
+	if (!eventId) return
+	void scrollToMessageEventId(String(eventId)).finally(() => setHubState('focusedMessageEventId', null))
+})
+
+/**
+ * 订阅式跳转到消息（写入 hubStore.focusedMessageEventId）。
+ * @param {string | null} eventId 目标 eventId
+ * @returns {void}
+ */
+export function focusMessageEventId(eventId) {
+	setHubState('focusedMessageEventId', eventId ? String(eventId).trim() : null)
 }
 
 /**

@@ -6,12 +6,13 @@
  * 【关联】room.mjs、acl.mjs、pendingRelay.mjs、gossip.mjs、archiveHandshake.mjs、peerPool.mjs、deps.mjs、registry.mjs；DAG 读写在 scripts/p2p 与 dag/ 层。
  */
 import { clampNumber } from '../../../../../../../scripts/clamp.mjs'
+import { readJsonlStream } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { computeDagTipIdsFromEvents } from '../../../../../../../scripts/p2p/governance_branch.mjs'
 import { isWantIdsInBackoff, wantIdsGroupKey } from '../../../../../../../scripts/p2p/want_ids.mjs'
+import { encryptSignedEventForWire } from '../channel_keys/content.mjs'
 import { eventChannelId } from '../dag/authorizeEvent.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { pickFederationTargetPeerIds, reconcilePeerPoolFromRoster } from '../governance/peerPool.mjs'
-import { encryptSignedEventForWire } from '../channel_keys/content.mjs'
 import { eventsPath } from '../lib/paths.mjs'
 
 import {
@@ -19,6 +20,7 @@ import {
 	shouldDeferFederatedRelay,
 } from './acl.mjs'
 import { wireArchiveSummary, loadLocalFederationArchive } from './archiveHandshake.mjs'
+import { pullOfflineStartUtcMonthArchives } from './archiveMonthPull.mjs'
 import { maybeRequestBootstrapAfterCatchup } from './bootstrapRelay.mjs'
 import { federationNodeHash, loadFederationGroupSettings, loadFederationMaterializedState, requireDagDeps } from './deps.mjs'
 import { requestMissingEventsGossip } from './gossip.mjs'
@@ -34,6 +36,8 @@ import {
 import { enqueuePendingRelay } from './pendingRelay.mjs'
 import { EVENT_ID_HEX, forEachFederationRoomSlotInGroup } from './registry.mjs'
 import { ensureFederationPartitionRoom, ensureFederationRoom } from './room.mjs'
+import { maybeJoinSnapshotOnStaleTips } from './staleResync.mjs'
+import { markGroupOnlineSynced } from './sync_state.mjs'
 import { collectRemoteTipsFromPeers } from './tipExchange.mjs'
 
 /**
@@ -137,10 +141,17 @@ export async function catchUpGroupFromPeers(username, groupId, opts = {}) {
 	const { readJsonl } = requireDagDeps()
 	const nodeHash = federationNodeHash(username)
 	const waitMs = clampNumber(opts.waitMs, 400, 4000, 1600)
-	const events = await readJsonl(eventsPath(username, groupId))
-	const eventsById = new Map(events.map(event => [event.id, event]))
+	/** @type {object[]} */
+	const events = []
+	const eventsById = new Map()
+	for await (const event of readJsonlStream(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent }))
+		events.push(event), eventsById.set(event.id, event)
 	const localTips = computeDagTipIdsFromEvents(events)
 	const localArchive = await loadLocalFederationArchive(username, groupId, readJsonl)
+
+	if (!localArchive.checkpoint?.checkpoint_event_id)
+		await maybeJoinSnapshotOnStaleTips(username, groupId, slot, { remoteSummaries: [] })
+
 	/** @returns {Promise<string[]>} 目标 peer id 列表 */
 	const pickTargetPeerIds = () => pickFederationTargetPeerIds(
 		username,
@@ -155,7 +166,7 @@ export async function catchUpGroupFromPeers(username, groupId, opts = {}) {
 	 * @returns {void}
 	 */
 	const sendTipPing = (ping, peerId) => { slot.send('fed_tip_ping', ping, peerId) }
-	const remoteTips = await collectRemoteTipsFromPeers(username, groupId, {
+	const { tipIds: remoteTips, remoteSummaries } = await collectRemoteTipsFromPeers(username, groupId, {
 		waitMs,
 		nodeHash,
 		localTips,
@@ -163,6 +174,9 @@ export async function catchUpGroupFromPeers(username, groupId, opts = {}) {
 		sendTipPing,
 		pickTargetPeerIds,
 	})
+
+	await maybeJoinSnapshotOnStaleTips(username, groupId, slot, { remoteSummaries })
+	void pullOfflineStartUtcMonthArchives(username, groupId, slot).catch(console.error)
 
 	const wantSet = new Set()
 	for (const tipId of remoteTips)
@@ -189,6 +203,8 @@ export async function catchUpGroupFromPeers(username, groupId, opts = {}) {
 		wantIdsRateLimited,
 	}
 	void maybeRequestBootstrapAfterCatchup(username, groupId, catchUpResult, slot)
+	if (localArchive.checkpoint?.local_tips_hash)
+		void markGroupOnlineSynced(username, groupId, localArchive.checkpoint.local_tips_hash).catch(console.error)
 	return catchUpResult
 }
 

@@ -17,6 +17,7 @@ import { getState } from '../../chat/dag/materialize.mjs'
 import { compactGroup } from '../../chat/dag/queries.mjs'
 import { isGroupFederationActive } from '../../chat/federation/groupFederation.mjs'
 import { catchUpGroupFromPeers, listFederationPeersForGroup, requestJoinSnapshotFromPeers } from '../../chat/federation/index.mjs'
+import { markGroupOfflineStarted } from '../../chat/federation/sync_state.mjs'
 import { mintMqttRoomSecret } from '../../chat/federation/mqttCredentials.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../../chat/federation/room.mjs'
 import { listActiveFilesFromState } from '../../chat/files/groupFiles.mjs'
@@ -307,6 +308,15 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			waitMs: req.body.waitMs,
 			extraWantIds: Array.isArray(req.body.extraWantIds) ? req.body.extraWantIds : undefined,
 		}))
+	})
+
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/federation\/offline-mark$/, authenticate, async (req, res) => {
+		const groupId = req.params[0]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username } = membership
+		const wallMs = Number(req.body?.offlineStartedAt) || Date.now()
+		res.status(200).json(await markGroupOfflineStarted(username, groupId, wallMs))
 	})
 
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/federation\/join-snapshot$/, authenticate, async (req, res) => {

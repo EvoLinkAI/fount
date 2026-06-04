@@ -1,5 +1,11 @@
 import { wireAction } from '../../../../../../../../scripts/p2p/trystero_wire_action.mjs'
 import {
+	applyFedArchiveMonthResponse,
+	handleFedArchiveMonthWant,
+	parseFedArchiveMonthResponse,
+	parseFedArchiveMonthWant,
+} from '../archiveMonthPull.mjs'
+import {
 	applyFedBootstrapResponse,
 	handleFedBootstrapRequest,
 	parseFedBootstrapRequest,
@@ -62,6 +68,25 @@ export function registerRelayHandlers(roomContext) {
 		if (!response) return
 		void applyJoinSnapshotResponse(username, groupId, response)
 			.catch(error => console.error('federation: fed_join_snapshot_response apply failed', error))
+	})
+
+	const archiveMonthWant = wireAction(roomContext, 'fed_archive_month_want')
+	const archiveMonthResponse = wireAction(roomContext, 'fed_archive_month_response')
+	archiveMonthWant.on((data, peerId) => {
+		const request = parseFedArchiveMonthWant(data)
+		if (!request) return
+		void handleFedArchiveMonthWant(username, groupId, request, peerId, (payload, targetPeer) => {
+			fedOut.enqueue(2, () => {
+				try { archiveMonthResponse.send(payload, targetPeer) }
+				catch (error) { console.error('federation: fed_archive_month_response failed', error) }
+			})
+		}).catch(error => console.error('federation: fed_archive_month_want failed', error))
+	})
+	archiveMonthResponse.on(data => {
+		const response = parseFedArchiveMonthResponse(data)
+		if (!response) return
+		void applyFedArchiveMonthResponse(username, groupId, response)
+			.catch(error => console.error('federation: fed_archive_month_response apply failed', error))
 	})
 
 	const discoveryAnnounce = wireAction(roomContext, 'discovery_announce')

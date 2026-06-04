@@ -14,10 +14,12 @@ import {
  * @param {object | undefined} opts.archiveSummary wire archive 摘要
  * @param {(ping: object, peerId: string | null) => void} [opts.sendTipPing] 发送 ping
  * @param {() => Promise<string[]>} opts.pickTargetPeerIds 选取目标 peer
- * @returns {Promise<Set<string>>} 收集到的远端 tip id
+ * @returns {Promise<{ tipIds: Set<string>, remoteSummaries: object[] }>} 收集结果
  */
 export async function collectRemoteTipsFromPeers(username, groupId, opts) {
 	const collected = new Set()
+	/** @type {object[]} */
+	const remoteSummaries = []
 
 	return new Promise(resolve => {
 		/**
@@ -26,10 +28,15 @@ export async function collectRemoteTipsFromPeers(username, groupId, opts) {
 		const finish = () => {
 			clearTimeout(timer)
 			deletePendingTipExchange(username, groupId)
-			resolve(collected)
+			resolve({ tipIds: collected, remoteSummaries })
 		}
 		const timer = setTimeout(finish, opts.waitMs)
-		setPendingTipExchange(username, groupId, { collected, timer, resolve: finish })
+		setPendingTipExchange(username, groupId, {
+			collected,
+			remoteSummaries,
+			timer,
+			resolve: finish,
+		})
 
 		void (async () => {
 			if (!opts.sendTipPing) return

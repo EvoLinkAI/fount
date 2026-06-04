@@ -76,7 +76,7 @@ export async function appendChannelMessageEdit(username, groupId, channelId, eve
 	const row = await findChannelMessageRow(username, groupId, channelId, eventId)
 	if (!row) throw new Error('message not found')
 	const targetId = channelMessageTargetId(row)
-	return appendSignedLocalEvent(username, groupId, {
+	const event = await appendSignedLocalEvent(username, groupId, {
 		type: 'message_edit',
 		channelId,
 		timestamp: Date.now(),
@@ -86,6 +86,9 @@ export async function appendChannelMessageEdit(username, groupId, channelId, eve
 			chatLogEntryId: row.content?.chatLogEntryId,
 		},
 	})
+	const { refreshArchivedSnapshotIfPresent } = await import('../archive/refreshSnapshot.mjs')
+	void refreshArchivedSnapshotIfPresent(username, groupId, channelId, targetId).catch(console.error)
+	return event
 }
 
 /**

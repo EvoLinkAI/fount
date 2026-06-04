@@ -4,8 +4,7 @@ import { wireAction } from '../../../../../../../../scripts/p2p/trystero_wire_ac
 import { takeIncomingWantIdsSlot } from '../../../../../../../../scripts/p2p/want_ids.mjs'
 import { extractInboundSignedEvent } from '../../../../../../../../scripts/p2p/wire_ingress.mjs'
 import { pickFederationTargetPeerIds } from '../../governance/peerPool.mjs'
-import { eventsPath } from '../../lib/paths.mjs'
-import { evaluateArchiveHandshake, loadLocalFederationArchive } from '../archiveHandshake.mjs'
+import { evaluateArchiveHandshake, loadLocalFederationArchive, wireArchiveSummary } from '../archiveHandshake.mjs'
 import { handleChannelHistoryResponse } from '../channelHistory.mjs'
 import { loadFederationMaterializedState, requireDagDeps } from '../deps.mjs'
 import {
@@ -17,6 +16,7 @@ import {
 } from '../gossip.mjs'
 import { resolveMemberEdPubKeyHex, validatePullAttestationForGroup } from '../pullAttestation.mjs'
 import { buildPullResponseEnvelope } from '../pullEnvelope.mjs'
+import { getPendingTipExchange } from '../registry.mjs'
 import {
 	hasSeenFederationEvent,
 	ingestRemoteTipsForExchange,
@@ -80,8 +80,12 @@ export function registerSyncHandlers(roomContext) {
 			if (isBlockedPeer(remoteNodeHash)) return
 			ingestRemoteTipsForExchange(username, groupId, tipPing.tips)
 			const { readJsonl } = requireDagDeps()
-			const localEv = await readJsonl(eventsPath(username, groupId))
-			const pong = { nodeHash, tips: computeDagTipIdsFromEvents(localEv) }
+			const localArchive = await loadLocalFederationArchive(username, groupId, readJsonl)
+			const pong = {
+				nodeHash,
+				tips: computeDagTipIdsFromEvents(localArchive.events),
+				archiveSummary: wireArchiveSummary(localArchive.summary),
+			}
 			fedOut.enqueue(3, () => {
 				try { fedTipPong.send(pong, peerId) }
 				catch (error) { console.error('federation: fed_tip_pong failed', error) }
@@ -93,6 +97,9 @@ export function registerSyncHandlers(roomContext) {
 		const tipPong = parseFedTipPong(data)
 		if (!tipPong) return
 		ingestRemoteTipsForExchange(username, groupId, tipPong.tips)
+		const pending = getPendingTipExchange(username, groupId)
+		if (pending && tipPong.archiveSummary && typeof tipPong.archiveSummary === 'object')
+			pending.remoteSummaries.push(tipPong.archiveSummary)
 	})
 
 	gossipRequest.on((data, peerId) => {

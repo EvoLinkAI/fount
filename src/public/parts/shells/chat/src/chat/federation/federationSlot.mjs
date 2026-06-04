@@ -17,6 +17,8 @@ const FED_ACTION_SPECS = {
 	fed_bootstrap_request: [2, 'sendBootstrapRequest'],
 	fed_bootstrap_response: [2, 'sendBootstrapResponse'],
 	fed_join_snapshot_request: [2, 'fed_join_snapshot_request'],
+	fed_archive_month_want: [2, 'fed_archive_month_want'],
+	fed_archive_month_response: [2, 'fed_archive_month_response'],
 	discovery_announce: [3, 'sendDiscoveryAnnounce'],
 	discovery_query: [3, 'sendDiscoveryQuery'],
 	discovery_query_response: [3, 'sendDiscoveryQueryResponse'],

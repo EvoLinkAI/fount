@@ -44,6 +44,8 @@ export const hubStore = {
 	failedPendingPayloads: new Map(),
 	/** 当前文本频道消息搜索关键词（小写）；null 表示未过滤 */
 	channelSearchQuery: null,
+	/** 订阅后 Hub 消息列表滚动/高亮目标 eventId */
+	focusedMessageEventId: null,
 	/** 好友私聊（角色或用户 DM）；角色时与联邦群 `currentGroupId` 互斥，用户 DM 时复用 `currentGroupId` 拉频道消息。 */
 	privateGroup: {
 		groupId: null,
@@ -80,16 +82,17 @@ export const hubStore = {
 	},
 }
 
-/** @type {Map<'currentGroupId'|'currentChannelId'|'currentState', Set<(value: unknown) => void>>} */
+/** @type {Map<'currentGroupId'|'currentChannelId'|'currentState'|'focusedMessageEventId', Set<(value: unknown) => void>>} */
 const hubWatchers = new Map([
 	['currentGroupId', new Set()],
 	['currentChannelId', new Set()],
 	['currentState', new Set()],
+	['focusedMessageEventId', new Set()],
 ])
 
 /**
  * 订阅 Hub 关键字段（试点：group/channel/state）。
- * @param {'currentGroupId'|'currentChannelId'|'currentState'} key 字段名
+ * @param {'currentGroupId'|'currentChannelId'|'currentState'|'focusedMessageEventId'} key 字段名
  * @param {(value: unknown) => void} listener 变更回调
  * @returns {() => void} 取消订阅
  */
@@ -102,7 +105,7 @@ export function watchHubState(key, listener) {
 
 /**
  * 设置 Hub 关键字段并触发订阅回调（值未变化时不触发）。
- * @param {'currentGroupId'|'currentChannelId'|'currentState'} key 字段名
+ * @param {'currentGroupId'|'currentChannelId'|'currentState'|'focusedMessageEventId'} key 字段名
  * @param {unknown} value 新值
  * @returns {void}
  */

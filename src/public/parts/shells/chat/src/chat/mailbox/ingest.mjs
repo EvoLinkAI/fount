@@ -34,7 +34,10 @@ async function consumeChatDagMailbox(username, records) {
  * @returns {void}
  */
 export function registerChatMailboxConsumer() {
-	registerMailboxConsumer(CONSUMER_ID, MAILBOX_APP_CHAT, consumeChatDagMailbox)
+	registerMailboxConsumer(CONSUMER_ID, {
+		app: MAILBOX_APP_CHAT,
+		match: row => Boolean(String(row.groupId || row.envelope?.groupId || '').trim()),
+	}, consumeChatDagMailbox)
 }
 
 /** @returns {void} */

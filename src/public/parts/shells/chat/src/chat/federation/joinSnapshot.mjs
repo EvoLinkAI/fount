@@ -3,9 +3,12 @@
  */
 import { randomUUID } from 'node:crypto'
 
+import { loadArchiveManifest } from '../archive/index.mjs'
+import { wireArchiveManifestForFederation } from '../archive/seal.mjs'
 import { rebuildAndSaveCheckpoint } from '../dag/materialize.mjs'
 import { listChannelMessages } from '../dag/queries.mjs'
 import { pickFederationTargetPeerIds } from '../governance/peerPool.mjs'
+
 
 import { wireArchiveSummary, loadLocalFederationArchive } from './archiveHandshake.mjs'
 import { federationNodeHash, loadFederationGroupSettings, loadFederationMaterializedState, requireDagDeps } from './deps.mjs'
@@ -94,6 +97,7 @@ export async function handleJoinSnapshotRequest(username, groupId, request, peer
 		})
 
 	const localArchive = await loadLocalFederationArchive(username, groupId, readJsonl)
+	const archiveManifest = wireArchiveManifestForFederation(await loadArchiveManifest(username, groupId))
 	const envelope = await buildPullResponseEnvelope(username, groupId, {
 		requestId: request.requestId,
 		requesterNodeHash: request.requesterNodeHash,
@@ -101,6 +105,7 @@ export async function handleJoinSnapshotRequest(username, groupId, request, peer
 		recipientEdPubKeyHex,
 		checkpoint,
 		archiveSummary: wireArchiveSummary(localArchive.summary),
+		archiveManifest,
 		channelHistories,
 		includeFileKeyGrant: true,
 		includeChannelKeyWraps: true,

@@ -7,6 +7,7 @@
 /**
  * @typedef {{
  *   app: string,
+ *   match?: (row: object) => boolean,
  *   handler: MailboxConsumer,
  * }} MailboxConsumerEntry
  */
@@ -16,12 +17,21 @@ const consumers = new Map()
 
 /**
  * @param {string} consumerId 如 chat/dag
- * @param {string} app 应用命名空间（与 record.app 精确匹配）
- * @param {MailboxConsumer} handler 返回已交付 record id 列表
+ * @param {string | { app: string, match?: (row: object) => boolean }} appOrOpts 应用名或选项
+ * @param {MailboxConsumer} [handler] 返回已交付 record id 列表（第二参为 string 时必填）
  * @returns {void}
  */
-export function registerMailboxConsumer(consumerId, app, handler) {
-	consumers.set(String(consumerId), { app: String(app), handler })
+export function registerMailboxConsumer(consumerId, appOrOpts, handler) {
+	if (typeof appOrOpts === 'string') {
+		consumers.set(String(consumerId), { app: String(appOrOpts), handler })
+		return
+	}
+	const opts = appOrOpts
+	consumers.set(String(consumerId), {
+		app: String(opts.app),
+		match: typeof opts.match === 'function' ? opts.match : undefined,
+		handler,
+	})
 }
 
 /**
@@ -40,8 +50,11 @@ export function unregisterMailboxConsumer(consumerId) {
 export async function dispatchMailboxRecordsToConsumers(username, records) {
 	/** @type {Set<string>} */
 	const delivered = new Set()
-	for (const { app, handler } of consumers.values()) {
-		const scoped = records.filter(row => String(row?.app || '') === app)
+	for (const { app, match, handler } of consumers.values()) {
+		const scoped = records.filter(row => {
+			if (String(row?.app || '') !== app) return false
+			return match ? match(row) : true
+		})
 		if (!scoped.length) continue
 		try {
 			const ids = await handler(username, scoped)
