@@ -1,5 +1,5 @@
+import { sortedPrevEventIds } from './dag/index.mjs'
 import {
-	ancestorClosureFromTip,
 	authzFoldOrderIds,
 	descendantClosureFromTip,
 } from './governance_branch.mjs'
@@ -63,28 +63,17 @@ export function computeRetentionKeepIds(order, byId, opts) {
 
 	/** @type {Set<string>} */
 	const keep = new Set()
+	/** @type {Set<string>} */
+	const ancestorSeeds = new Set()
 
-	/**
-	 *
-	 * @param eventId
-	 */
-	/**
-	 * @param {string} eventId 分支上某事件 id
-	 */
-	const addAncestorsOnBranch = eventId => {
-		for (const id of ancestorClosureFromTip(eventId, byId))
-			if (branchSet.has(id)) keep.add(id)
-	}
-
-	if (checkpointTipId && branchSet.has(checkpointTipId)) 
+	if (checkpointTipId && branchSet.has(checkpointTipId))
 		for (const id of descendantClosureFromTip(checkpointTipId, byId))
 			if (branchSet.has(id)) keep.add(id)
-	
 
 	for (let index = branchOrder.length - 1; index >= 0; index--) {
 		const ev = byId.get(branchOrder[index])
 		if (ev && anchorTypes.has(ev.type)) {
-			addAncestorsOnBranch(branchOrder[index])
+			ancestorSeeds.add(branchOrder[index])
 			break
 		}
 	}
@@ -92,13 +81,23 @@ export function computeRetentionKeepIds(order, byId, opts) {
 	for (const id of branchOrder) {
 		const ev = byId.get(id)
 		const wall = Number(ev?.hlc?.wall ?? 0)
-		if (wall >= cutoffWall) addAncestorsOnBranch(id)
+		if (wall >= cutoffWall) ancestorSeeds.add(id)
 	}
 
-	if (branchOrder.length > maxDepth) 
+	if (branchOrder.length > maxDepth)
 		for (const id of branchOrder.slice(-maxDepth))
-			addAncestorsOnBranch(id)
-	
+			ancestorSeeds.add(id)
+
+	const stack = [...ancestorSeeds]
+	while (stack.length) {
+		const id = stack.pop()
+		if (!id || !branchSet.has(id) || keep.has(id)) continue
+		keep.add(id)
+		const event = byId.get(id)
+		if (!event) continue
+		for (const parentId of sortedPrevEventIds(event.prev_event_ids))
+			if (branchSet.has(parentId)) stack.push(parentId)
+	}
 
 	if (!keep.size)
 		for (const id of branchOrder) keep.add(id)

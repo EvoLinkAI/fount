@@ -1,7 +1,7 @@
 /**
  * 物化维护：在 DAG 折叠前将非热区帖写入冷归档。
  */
-import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
+import { readJsonl, rewriteJsonlKeeping } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { sanitizeFederatedEvent } from '../events/wire.mjs'
 import { messagesPath } from '../lib/paths.mjs'
 
@@ -79,17 +79,14 @@ export async function archivePostsBeforeDagFold(username, groupId, state, events
  * @returns {Promise<void>} 无返回值
  */
 export async function trimMessagesJsonlToHotWindow(username, groupId, hotPosts) {
-	const { mkdir, writeFile } = await import('node:fs/promises')
-	const { dirname } = await import('node:path')
 	const { getState } = await import('../dag/materialize.mjs')
 	const { state } = await getState(username, groupId)
 	const protectedIds = allProtectedHotEventIds(hotPosts)
+	const hotTypes = new Set(['message_edit', 'message_delete', 'message_feedback', 'reaction_add', 'reaction_remove'])
 	for (const channelId of Object.keys(state.channels || {})) {
 		const path = messagesPath(username, groupId, channelId)
-		const lines = await readJsonl(path, { sanitize: sanitizeFederatedEvent })
-		const kept = lines.filter(row => protectedIds.has(String(row.eventId).trim())
-			|| ['message_edit', 'message_delete', 'message_feedback', 'reaction_add', 'reaction_remove'].includes(row.type))
-		await mkdir(dirname(path), { recursive: true })
-		await writeFile(path, kept.map(JSON.stringify).join('\n') + (kept.length ? '\n' : ''), 'utf8')
+		await rewriteJsonlKeeping(path, row =>
+			protectedIds.has(String(row.eventId).trim()) || hotTypes.has(row.type),
+		{ sanitize: sanitizeFederatedEvent })
 	}
 }

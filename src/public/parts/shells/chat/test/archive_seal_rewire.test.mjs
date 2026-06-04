@@ -1,5 +1,4 @@
 /* global Deno */
-import { join } from 'node:path'
 
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
 
@@ -15,20 +14,14 @@ Deno.test('normalizeSealEventIds sorts unique hex ids', () => {
 	assertEquals(normalizeSealEventIds([B, A, A]), [A, B])
 })
 
-Deno.test('fold rewire: D.prev points to checkpoint after C removed', async () => {
-	const dir = await Deno.makeTempDir()
-	const eventsPath = join(dir, 'events.jsonl')
-	const row = { id: D, type: 'message', prev_event_ids: [CP.replace(/c/g, 'e')], hlc: { wall: 4 } }
-	await Deno.writeTextFile(eventsPath, `${JSON.stringify(row)}\n`)
-	const { sortedPrevEventIds } = await import('../../../../../scripts/p2p/dag/index.mjs')
-	const parents = sortedPrevEventIds(row.prev_event_ids)
-	const next = sortedPrevEventIds([...parents.filter(() => false), CP])
-	assertEquals(next, [CP])
-	const out = { ...row, prev_event_ids: next }
-	await Deno.writeTextFile(eventsPath, `${JSON.stringify(out)}\n`)
-	const text = await Deno.readTextFile(eventsPath)
-	const parsed = JSON.parse(text.trim())
-	assertEquals(parsed.prev_event_ids, [CP])
+Deno.test('topological order tolerates dangling prev after fold (no rewire)', async () => {
+	const missing = CP.replace(/c/g, 'e')
+	const row = { id: D, type: 'message', prev_event_ids: [missing], hlc: { wall: 4 } }
+	const { topologicalCanonicalOrder } = await import('../../../../../scripts/p2p/dag/index.mjs')
+	assertEquals(topologicalCanonicalOrder([row]), [D])
+	const { ancestorClosureFromTip } = await import('../../../../../scripts/p2p/governance_branch.mjs')
+	const byId = new Map([[D, row]])
+	assertEquals([...ancestorClosureFromTip(D, byId)], [D])
 })
 
 Deno.test('archiveMonthKey uses UTC month boundary', () => {
