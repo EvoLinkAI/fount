@@ -6,25 +6,19 @@ import { archiveMonthKey } from '../archive/settings.mjs'
 import { groupSyncStatePath } from '../lib/paths.mjs'
 import { safeReadJson } from '../lib/utils.mjs'
 
-/**
- * @param {object | null} raw 磁盘 JSON
- * @returns {object} 规范化 sync_state
- */
-function normalizeSyncState(raw) {
-	return {
-		offlineStartedAt: Number(raw?.offlineStartedAt) || 0,
-		offlineStartUtcMonth: String(raw?.offlineStartUtcMonth || '').trim(),
-		tipsHashAtLastSync: String(raw?.tipsHashAtLastSync || '').trim().toLowerCase(),
-	}
+const EMPTY_SYNC_STATE = {
+	offlineStartedAt: 0,
+	offlineStartUtcMonth: '',
+	tipsHashAtLastSync: '',
 }
 
 /**
  * @param {string} username replica
  * @param {string} groupId 群 ID
- * @returns {Promise<object>} sync_state
+ * @returns {Promise<object>} syncState
  */
 export async function loadGroupSyncState(username, groupId) {
-	return normalizeSyncState(await safeReadJson(groupSyncStatePath(username, groupId)))
+	return await safeReadJson(groupSyncStatePath(username, groupId)) ?? { ...EMPTY_SYNC_STATE }
 }
 
 /**
@@ -34,7 +28,7 @@ export async function loadGroupSyncState(username, groupId) {
  * @returns {Promise<object>} 写入后的状态
  */
 export async function saveGroupSyncState(username, groupId, patch) {
-	const next = normalizeSyncState({ ...await loadGroupSyncState(username, groupId), ...patch })
+	const next = { ...await loadGroupSyncState(username, groupId), ...patch }
 	await writeJsonAtomicSynced(groupSyncStatePath(username, groupId), next)
 	return next
 }
@@ -43,14 +37,13 @@ export async function saveGroupSyncState(username, groupId, patch) {
  * 记录本次离线开始时刻（关客户端/退群前调用）。
  * @param {string} username replica
  * @param {string} groupId 群 ID
- * @param {number} [wallMs] 默认 `Date.now()`
- * @returns {Promise<object>} 更新后的 sync_state
+ * @param {number} [wallMs=Date.now()] 离线起始 wall 时间戳
+ * @returns {Promise<object>} 更新后的 syncState
  */
 export async function markGroupOfflineStarted(username, groupId, wallMs = Date.now()) {
-	const at = Number(wallMs) || Date.now()
 	return saveGroupSyncState(username, groupId, {
-		offlineStartedAt: at,
-		offlineStartUtcMonth: archiveMonthKey(at),
+		offlineStartedAt: wallMs,
+		offlineStartUtcMonth: archiveMonthKey(wallMs),
 	})
 }
 
@@ -59,11 +52,11 @@ export async function markGroupOfflineStarted(username, groupId, wallMs = Date.n
  * @param {string} username replica
  * @param {string} groupId 群 ID
  * @param {string} tipsHash 本地 `local_tips_hash`
- * @returns {Promise<object>} 更新后的 sync_state
+ * @returns {Promise<object>} 更新后的 syncState
  */
 export async function markGroupOnlineSynced(username, groupId, tipsHash) {
 	return saveGroupSyncState(username, groupId, {
-		tipsHashAtLastSync: String(tipsHash || '').trim().toLowerCase(),
+		tipsHashAtLastSync: tipsHash.trim().toLowerCase(),
 		offlineStartedAt: 0,
 	})
 }

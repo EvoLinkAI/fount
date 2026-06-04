@@ -25,7 +25,7 @@ function taskPath(username, groupId, fileId) {
  * @returns {object} 规范化任务
  */
 function normalizeTask(task) {
-	const chunks = task?.chunks && typeof task.chunks === 'object' ? task.chunks : {}
+	const chunks = task?.chunks || {}
 	/** @type {Record<string, string>} */
 	const normalizedChunks = {}
 	for (const [hash, state] of Object.entries(chunks)) {

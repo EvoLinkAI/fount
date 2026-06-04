@@ -1,4 +1,3 @@
-import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 
@@ -82,34 +81,21 @@ export async function putVaultFileManifest(username, entityHash, opts) {
  * @returns {Promise<object>} 索引项
  */
 export async function registerVaultFile(username, entityHash, manifest) {
-	const index = await loadVaultIndex(username, entityHash)
+	if (!manifest.logicalPath) throw new Error('logicalPath required')
 	const fileId = manifest.fileId || randomUUID()
-	let logicalPath = manifest.logicalPath
-	if (!logicalPath && !manifest.dataBase64)
-		throw new Error('logicalPath required')
-	if (manifest.dataBase64) {
-		const buffer = Buffer.from(String(manifest.dataBase64), 'base64')
-		const stored = await putVaultFileManifest(username, entityHash, {
-			fileId,
-			plaintext: buffer,
-			name: manifest.name,
-			mimeType: manifest.mimeType,
-			visibility: manifest.visibility,
-		})
-		logicalPath = stored.logicalPath
-	}
 	const entry = {
 		fileId,
 		name: manifest.name || fileId,
 		mimeType: manifest.mimeType || 'application/octet-stream',
 		size: Number(manifest.size) || 0,
-		evfsPath: logicalPath,
+		evfsPath: manifest.logicalPath,
 		contentHash: manifest.contentHash || '',
 		visibility: manifest.visibility || 'followers',
 		shareId: manifest.shareId || randomUUID(),
 		vaultGroupId: vaultGroupId(entityHash),
 		createdAt: Date.now(),
 	}
+	const index = await loadVaultIndex(username, entityHash)
 	index[fileId] = entry
 	await saveVaultIndex(username, entityHash, index)
 	return entry

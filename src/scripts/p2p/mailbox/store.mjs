@@ -118,7 +118,7 @@ export async function storeMailboxRecord(username, record) {
 	if (tier === 'quarantine' && hop > 0) return false
 	const app = String(record.app || '').trim()
 	if (!app) return false
-	const id = record.id || mailboxEnvelopeId(record.envelope)
+	const id = mailboxEnvelopeId(record.envelope)
 	const rows = await readAll(username)
 	if (rows.some(row => row.id === id)) return false
 	const ttlMs = Number(record.ttlMs) || defaultTtlMsForTier(tier)

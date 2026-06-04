@@ -20,11 +20,11 @@ import { appendValidatedRemoteEvent } from '../../chat/dag/remoteIngest.mjs'
 import { sanitizeFederatedEvent } from '../../chat/events/wire.mjs'
 import { isGroupFederationActive } from '../../chat/federation/groupFederation.mjs'
 import { ensureFederationRoom, invalidateFederationRoomCache } from '../../chat/federation/room.mjs'
+import { buildFileKeyGrant } from '../../chat/file_keys/historicalGrant.mjs'
+import { getCurrentFileMasterKey } from '../../chat/file_keys/store.mjs'
 import { saveGovernanceBranchTip } from '../../chat/governance/branchStore.mjs'
 import { forkGroupFromBranch } from '../../chat/governance/fork.mjs'
 import { blockOpposingForkBranch } from '../../chat/governance/forkBlockOpposing.mjs'
-import { buildFileKeyGrant } from '../../chat/file_keys/historicalGrant.mjs'
-import { getCurrentFileMasterKey } from '../../chat/file_keys/store.mjs'
 import { eventsPath } from '../../chat/lib/paths.mjs'
 import { canGovSlash, resolveActiveMemberKeyForLocalUser } from '../access.mjs'
 import { validateLocalAuthzBatch } from '../localAuthz.mjs'
@@ -129,7 +129,7 @@ export function registerDagRoutes(router, authenticate) {
 	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/events$/, authenticate, async (req, res) => {
 		const { username } = await getUserByReq(req)
 		const groupId = req.params[0]
-		const events = Array.isArray(req.body) ? req.body : req.body?.events
+		const events = req.body?.events
 		if (!Array.isArray(events))
 			return res.status(400).json({ error: 'events array required' })
 

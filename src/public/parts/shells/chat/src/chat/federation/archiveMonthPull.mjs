@@ -29,7 +29,7 @@ import {
 	signPullAttestation,
 	validateActivePullAttestationForGroup,
 } from './pullAttestation.mjs'
-import { loadGroupSyncState } from './sync_state.mjs'
+import { loadGroupSyncState } from './syncState.mjs'
 
 const WAIT_MS = 5000
 

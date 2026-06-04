@@ -18,7 +18,7 @@ const FEDERATION_PRIVATE_EVENT_TYPES = new Set(['follow', 'unfollow', 'follow_ap
 async function resolveFederationRequesterContext(username, requesterNodeHash, ownerEntityHash) {
 	const owner = String(ownerEntityHash).toLowerCase()
 	const localNode = getNodeHash(username)
-	const requesterNode = String(requesterNodeHash || '').trim().toLowerCase() || null
+	const requesterNode = requesterNodeHash?.trim().toLowerCase() || null
 	const ownerView = await getTimelineMaterialized(username, owner)
 	const isProtected = Boolean(ownerView.socialMeta?.isProtected)
 

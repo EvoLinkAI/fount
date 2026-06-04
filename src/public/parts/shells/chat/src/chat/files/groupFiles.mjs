@@ -13,6 +13,7 @@ import { saveFileManifest, storeManifestParts } from '../../../../../../../scrip
 import { groupEntityHash } from '../../../../../../../scripts/p2p/entity/group_entity.mjs'
 import { getChunk, hasChunk, putChunk } from '../../../../../../../scripts/p2p/files/chunk_store.mjs'
 import { normalizeFileManifest } from '../../../../../../../scripts/p2p/files/manifest.mjs'
+import { BLOB_STORAGE_LOCATOR_RE, isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import {
 	decryptConvergentCiphertext,
 	decryptRandomCiphertext,
@@ -22,7 +23,6 @@ import {
 	unwrapContentKey,
 	wrapContentKey,
 } from '../../../../../../../scripts/p2p/key_crypto.mjs'
-import { BLOB_STORAGE_LOCATOR_RE, isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { penalizeChunkStorageFailure } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import { createLocalStoragePlugin } from '../../../../../../../scripts/p2p/storage_plugins.mjs'
 import { resolveActiveMemberKeyForLocalUser } from '../../group/access.mjs'
@@ -346,7 +346,7 @@ export async function getDecryptedFile(username, groupId, meta, blamePeerKey) {
 	const parts = Array.isArray(meta?.parts) ? meta.parts : null
 	if (parts?.length) {
 		const sorted = [...parts].sort((a, b) => Number(a.index ?? 0) - Number(b.index ?? 0))
-		const fileId = String(meta?.fileId || meta?.id || '').trim() || String(meta?.contentHash || '').trim()
+		const fileId = String(meta?.fileId || '').trim()
 		const chunkHashes = sorted
 			.map(part => String(part?.ciphertextHash || ciphertextHashFromLocator(part?.storageLocator || '') || '').trim().toLowerCase())
 			.filter(isHex64)
@@ -445,7 +445,7 @@ export async function getDecryptedFile(username, groupId, meta, blamePeerKey) {
 			ceMode: meta.ceMode || 'convergent',
 			wrappedKey: meta.wrappedKey || null,
 			keyGeneration: meta.key_generation ?? null,
-			fileId: String(meta?.fileId || meta?.id || '').trim() || String(meta?.contentHash || '').trim(),
+			fileId: String(meta?.fileId || '').trim(),
 		},
 		blamePeerKey,
 	)

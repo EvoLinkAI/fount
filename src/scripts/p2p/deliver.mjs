@@ -10,7 +10,7 @@ import { ensureUserRoom } from './user_room.mjs'
  * @returns {Promise<boolean>} 是否已发送
  */
 export async function deliver(username, toNodeHash, actionName, payload) {
-	const target = String(toNodeHash || '').trim().toLowerCase()
+	const target = String(toNodeHash).trim().toLowerCase()
 	if (!target) return false
 	const { sendToNode } = await import('./trust_graph.mjs')
 	return sendToNode(username, target, actionName, payload)
@@ -27,10 +27,7 @@ export async function deliver(username, toNodeHash, actionName, payload) {
 export async function deliverToUserRoomPeers(username, actionName, payload, exceptPeerId = null, limit = 6) {
 	const slot = await ensureUserRoom(username)
 	if (!slot) return 0
-	const body = {
-		...payload && typeof payload === 'object' ? payload : { data: payload },
-		nodeHash: getNodeHash(username),
-	}
+	const body = { ...payload, nodeHash: getNodeHash(username) }
 	let sent = 0
 	const peers = slot.getRoster()
 		.filter(({ peerId }) => peerId && peerId !== exceptPeerId)

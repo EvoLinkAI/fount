@@ -140,7 +140,7 @@ async function writeFollowerEntry(target, followers) {
  * @returns {Promise<void>}
  */
 export async function updateFollowerIndex(username, targetEntityHash, follow) {
-	const target = String(targetEntityHash || '').toLowerCase()
+	const target = String(targetEntityHash).toLowerCase()
 	if (!parseEntityHash(target)) return
 	await queueFollowerIndexMutation(target, async () => {
 		const set = new Set(await readFollowerEntry(target))
@@ -160,7 +160,7 @@ export async function updateFollowerIndex(username, targetEntityHash, follow) {
 export async function projectFollowerIndexFromTimelineEvent(replicaUsername, timelineOwnerEntityHash, event) {
 	if (!['follow', 'unfollow'].includes(event?.type)) return
 	const operator = resolveOperatorEntityHash(replicaUsername)
-	const owner = String(timelineOwnerEntityHash || '').toLowerCase()
+	const owner = String(timelineOwnerEntityHash).toLowerCase()
 	if (!operator || owner !== operator.toLowerCase()) return
 	const target = event.content?.targetEntityHash?.toLowerCase()
 	if (!target) return
@@ -173,7 +173,7 @@ export async function projectFollowerIndexFromTimelineEvent(replicaUsername, tim
  * @returns {Promise<string[]>} replica 登录名
  */
 export async function listReplicaUsernamesFollowing(entityHash) {
-	const target = String(entityHash || '').toLowerCase()
+	const target = String(entityHash).toLowerCase()
 	if (!parseEntityHash(target)) return []
 	return readFollowerEntry(target)
 }

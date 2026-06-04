@@ -54,7 +54,7 @@ export function sortMissingArchiveMonths(items, priorityMonth = '') {
  */
 export async function syncMissingArchiveMonths(username, groupId, slot, opts = {}) {
 	if (!slot) return { pulled: 0, incomplete: 0, skipped: 0 }
-	const { loadGroupSyncState } = await import('../federation/sync_state.mjs')
+	const { loadGroupSyncState } = await import('../federation/syncState.mjs')
 	const sync = await loadGroupSyncState(username, groupId)
 	const priorityMonth = opts.priorityMonth
 		|| sync.offlineStartUtcMonth

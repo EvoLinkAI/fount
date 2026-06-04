@@ -27,7 +27,8 @@ export function parseFedTipPing(payload) {
  */
 export function parseFedTipPong(payload) {
 	if (!isPlainObject(payload)) return null
-	return { tips: payload.tips, archiveSummary: payload.archiveSummary }
+	const archiveSummary = isPlainObject(payload.archiveSummary) ? payload.archiveSummary : null
+	return { tips: payload.tips, archiveSummary }
 }
 
 /**

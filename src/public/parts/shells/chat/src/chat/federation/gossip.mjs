@@ -1,8 +1,8 @@
 /**
  * 【文件】federation/gossip.mjs
  * 【职责】联邦 gossip 协议：发起 wantIds 请求、处理 gossip_response、去重转发、等待补洞完成，并校验远端 checkpoint。
- * 【原理】requestMissingEventsGossip 先读本地，缺失则经 room.sendGossipRequest 带 archiveSummary 与 ttl；邻居在 room 内应答或继续转发（ttl 递减）。handleGossipResponse 仅接受 requesterId=本 nodeId 的批次，appendValidatedRemoteEvent 后 notifyGossipWaiters。入站请求侧 dedupe 与 want_ids 限速在 room 与 scripts/p2p/want_ids 协作。
- * 【数据结构】请求 { wantIds, ttl, requesterId, archiveSummary }；响应 { events, checkpoint?, channelHistories? }；pendingGossipRequests 按排序后的 wantIds 键等待。
+ * 【原理】requestMissingEventsGossip 先读本地，缺失则经 room.sendGossipRequest 带 archiveSummary、attestation 与 ttl；邻居在 room 内 HPKE 应答或继续转发（ttl 递减）。handleGossipResponse 仅接受 requesterNodeHash=本 nodeHash 的 HPKE envelope，applyPullInner 后 notifyGossipWaiters。入站请求侧 dedupe 与 want_ids 限速在 room 与 scripts/p2p/want_ids 协作。
+ * 【数据结构】请求 { wantIds, ttl, requesterNodeHash, archiveSummary, attestation }；响应 HPKE envelope；pendingGossipRequests 按排序后的 wantIds 键等待。
  * 【关联】room.mjs、archiveHandshake.mjs、registry.mjs、peerPool.mjs、checkpointVerifier.mjs、index catchUpGroupFromPeers。
  */
 import { createDedupeSlot } from '../../../../../../../scripts/p2p/dedupe_slot.mjs'
@@ -186,23 +186,15 @@ export async function handleGossipResponse(username, groupId, data) {
  * 按 ID 查询本地事件，可选经联邦 gossip 补洞。
  * @param {string} username 用户名
  * @param {string} groupId 群组 ID
- * @param {{ wantIds?: string[], peerEvents?: unknown[], awaitGossip?: boolean }} [query] 查询与可选对端事件
- * @returns {Promise<{ found: boolean, events: object[], stillMissing: string[], mergedFromPeer: number, rateLimited: boolean }>} 补洞结果
+ * @param {{ wantIds?: string[], awaitGossip?: boolean }} [query] 查询选项
+ * @returns {Promise<{ found: boolean, events: object[], stillMissing: string[], rateLimited: boolean }>} 补洞结果
  */
 export async function requestMissingEventsGossip(username, groupId, query = {}) {
-	const { readJsonl, appendValidatedRemoteEvent } = requireDagDeps()
+	const { readJsonl } = requireDagDeps()
 	const nodeHash = federationNodeHash(username)
 	const wantIds = [...new Set(
 		(query.wantIds || []).filter(isHex64),
 	)]
-
-	let mergedFromPeer = 0
-	for (const rawEvent of query.peerEvents || []) {
-		const signedEvent = extractInboundSignedEvent(rawEvent, groupId)
-		if (!signedEvent) continue
-		if (await appendValidatedRemoteEvent(username, groupId, signedEvent, { logFailures: false }) === 'ok')
-			mergedFromPeer++
-	}
 
 	/**
 	 * @returns {Promise<{ filled: object[], stillMissing: string[] }>} 本地已命中与仍缺 id
@@ -271,7 +263,6 @@ export async function requestMissingEventsGossip(username, groupId, query = {}) 
 		found: !wantIds.length || !stillMissing.length,
 		events: filled,
 		stillMissing,
-		mergedFromPeer,
 		rateLimited,
 	}
 }

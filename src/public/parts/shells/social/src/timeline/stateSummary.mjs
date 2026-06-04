@@ -28,7 +28,7 @@ function findLastEventOfType(events, type) {
 export function buildSocialStateSummaryContent(view, entityHash, tipId) {
 	const owner = String(entityHash).toLowerCase()
 	const following = [...view.following || []].map(h => String(h).toLowerCase()).sort()
-	const postKeys = [...view.posts || []].map(p => socialPostKey(owner, p.id || p.postId)).sort()
+	const postKeys = [...view.posts || []].map(p => socialPostKey(owner, p.postId)).sort()
 	return {
 		tipId,
 		followingHash: createHash('sha256').update(canonicalStringify(following)).digest('hex'),

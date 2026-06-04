@@ -38,20 +38,15 @@ export async function uploadSocialMedia(files) {
 export function renderMediaHtml(mediaRefs) {
 	if (!Array.isArray(mediaRefs) || !mediaRefs.length) return ''
 	const items = mediaRefs.map(ref => {
-		const url = mediaRefUrl(typeof ref === 'object' ? ref : {})
-		const mimeType = typeof ref === 'object' ? ref.mimeType || '' : ''
-		const kind = typeof ref === 'object' && ref.kind
-			? ref.kind
-			: mimeType.startsWith('video/')
-				? 'video'
-				: 'image'
+		const url = mediaRefUrl(ref)
+		const mimeType = ref.mimeType || ''
+		const kind = ref.kind || (mimeType.startsWith('video/') ? 'video' : 'image')
 		if (!url) return ''
 		if (kind === 'image')
 			return `<img src="${url}" alt="" loading="lazy" class="post-media-item" />`
 		if (kind === 'video')
 			return `<video src="${url}" controls preload="metadata" class="post-media-item post-media-video"></video>`
-		const name = typeof ref === 'object' ? ref.name || '' : ''
-		return `<a href="${url}" class="post-media-file link-btn" download>${name || 'file'}</a>`
+		return `<a href="${url}" class="post-media-file link-btn" download>${ref.name || 'file'}</a>`
 	}).join('')
 	return `<div class="post-media">${items}</div>`
 }

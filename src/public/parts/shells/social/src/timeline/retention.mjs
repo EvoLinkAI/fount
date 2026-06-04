@@ -43,10 +43,7 @@ export async function runSocialTimelineMaintenance(username, entityHash, checkpo
 	 * @param {object} row 事件行
 	 * @returns {object} 规范化行
 	 */
-	const sanitize = row => {
-		try { return canonicalizeSignedTimelineEvent(row) }
-		catch { return row }
-	}
+	const sanitize = row => canonicalizeSignedTimelineEvent(row)
 	await enforceTimelineEventRetention(path, checkpoint, {
 		maxDepth: policy.maxDepth,
 		maxMs: policy.maxMs,

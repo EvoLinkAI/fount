@@ -8,7 +8,7 @@ const ENTITY_HASH_RE = /^[\da-f]{128}$/u
  * @returns {string} DAG groupId
  */
 export function timelineGroupId(entityHash) {
-	const id = String(entityHash || '').trim().toLowerCase()
+	const id = String(entityHash).trim().toLowerCase()
 	if (!ENTITY_HASH_RE.test(id)) throw new Error('invalid entityHash')
 	return `social-timeline:${id}`
 }
@@ -18,7 +18,7 @@ export function timelineGroupId(entityHash) {
  * @returns {string} vault 逻辑库 groupId
  */
 export function vaultGroupId(entityHash) {
-	const id = String(entityHash || '').trim().toLowerCase()
+	const id = String(entityHash).trim().toLowerCase()
 	if (!ENTITY_HASH_RE.test(id)) throw new Error('invalid entityHash')
 	return `social-vault:${id}`
 }

@@ -98,7 +98,7 @@ export function registerSyncHandlers(roomContext) {
 		if (!tipPong) return
 		ingestRemoteTipsForExchange(username, groupId, tipPong.tips)
 		const pending = getPendingTipExchange(username, groupId)
-		if (pending && tipPong.archiveSummary && typeof tipPong.archiveSummary === 'object')
+		if (pending && tipPong.archiveSummary)
 			pending.remoteSummaries.push(tipPong.archiveSummary)
 	})
 

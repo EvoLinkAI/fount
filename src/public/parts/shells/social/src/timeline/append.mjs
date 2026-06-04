@@ -107,7 +107,7 @@ export async function appendTimelineEvent(username, entityHash, event) {
 		groupId,
 		sender,
 		charId: event.charId ?? null,
-		timestamp: Number(event.timestamp) || Date.now(),
+		timestamp: event.timestamp ?? Date.now(),
 		hlc,
 		prev_event_ids,
 		content: event.content ?? {},

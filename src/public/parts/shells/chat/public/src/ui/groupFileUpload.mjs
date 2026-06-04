@@ -299,7 +299,7 @@ export function createFileHandlers(hub) {
 					},
 				).catch(() => { })
 
-			const fileIdForEvfs = String(meta?.fileId || meta?.id || '').trim()
+			const fileIdForEvfs = String(meta?.fileId || '').trim()
 			const entityHash = groupEntityHash(groupId)
 			const plainRes = await fetch(entityFileUrl(entityHash, `chat/${fileIdForEvfs}`), { credentials: 'include' })
 			if (!plainRes.ok) {

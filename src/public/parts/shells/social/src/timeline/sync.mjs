@@ -58,27 +58,27 @@ export async function ingestRemoteTimelineEvent(username, entityHash, event) {
  * @returns {Promise<number>} 导入条数
  */
 export async function syncTimelineForEntity(username, entityHash) {
-	const id = String(entityHash).toLowerCase()
+	const timelineOwner = entityHash.toLowerCase()
 	const { readTimelineEvents } = await import('./append.mjs')
 
 	let imported = 0
 	let afterEventId = null
-	const local = await readTimelineEvents(username, id)
+	const local = await readTimelineEvents(username, timelineOwner)
 	if (local.length) afterEventId = local[local.length - 1].id
 
 	for (let round = 0; round < FEDERATED_TIMELINE_PULL_MAX_ROUNDS; round++) {
 		const { data: responses, errors } = await collectSocialRpcMerged(username, {
 			type: 'social_timeline_pull_request',
-			entityHash: id,
+			entityHash: timelineOwner,
 			afterEventId,
 		}, 3000, 8)
 		if (errors.length)
-			console.warn('social: timeline pull neighbor errors', { entityHash: id, count: errors.length })
+			console.warn('social: timeline pull neighbor errors', { entityHash: timelineOwner, count: errors.length })
 
 		let roundImported = 0
 		for (const row of responses)
 			for (const event of row.events || [])
-				if (await ingestRemoteTimelineEvent(username, id, event)) {
+				if (await ingestRemoteTimelineEvent(username, timelineOwner, event)) {
 					roundImported++
 					afterEventId = event.id
 				}
@@ -88,7 +88,7 @@ export async function syncTimelineForEntity(username, entityHash) {
 	}
 
 	const { reprocessFollowApproveVaults } = await import('../vault_crypto/followApproveImport.mjs')
-	await reprocessFollowApproveVaults(username, id)
+	await reprocessFollowApproveVaults(username, timelineOwner)
 	return imported
 }
 
@@ -124,15 +124,15 @@ export async function syncFollowingTimelines(username, options = {}) {
  * @returns {Promise<object[]>} 可见事件切片
  */
 export async function buildFederatedTimelinePullResponse(username, entityHash, afterEventId, requesterNodeHash) {
-	const id = entityHash.toLowerCase()
+	const timelineOwner = entityHash.toLowerCase()
 	const { readTimelineEvents } = await import('./append.mjs')
-	const events = await readTimelineEvents(username, id)
+	const events = await readTimelineEvents(username, timelineOwner)
 	const afterId = afterEventId?.trim() || ''
 	const start = afterId ? events.findIndex(event => event.id === afterId) + 1 : 0
 	const slice = start > 0 ? events.slice(start) : events
 	return filterEventsForFederatedPull(
 		username,
-		id,
+		timelineOwner,
 		slice.slice(0, FEDERATED_TIMELINE_PULL_BATCH),
 		requesterNodeHash,
 	)
