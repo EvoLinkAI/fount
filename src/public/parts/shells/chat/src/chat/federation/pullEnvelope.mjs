@@ -10,6 +10,7 @@ import { mergeChannelHistories } from '../dag/queries.mjs'
 import { applyFileKeyGrant, buildFileKeyGrant } from '../file_keys/historicalGrant.mjs'
 import { verifyRemoteCheckpoint } from '../lib/checkpointVerifier.mjs'
 import { snapshotPath } from '../lib/paths.mjs'
+import { safeReadJson } from '../lib/utils.mjs'
 
 import { requireDagDeps } from './deps.mjs'
 import { wrapPullResponseInner, unwrapPullResponseEnvelope } from './pullResponse.mjs'
@@ -82,9 +83,10 @@ export async function buildPullResponseEnvelope(username, groupId, opts) {
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
  * @param {object} inner 解密后的 inner
+ * @param {{ allowCheckpoint?: boolean, pullRequestId?: string }} [opts] checkpoint 应用选项
  * @returns {Promise<{ eventsApplied: number, historiesMerged: number }>} 应用统计
  */
-export async function applyPullInner(username, groupId, inner) {
+export async function applyPullInner(username, groupId, inner, opts = {}) {
 	if (!isPlainObject(inner)) return { eventsApplied: 0, historiesMerged: 0 }
 	if (inner.file_key_grant)
 		await applyFileKeyGrant(username, groupId, inner.file_key_grant)
@@ -104,15 +106,36 @@ export async function applyPullInner(username, groupId, inner) {
 				...inner.archiveManifest.archivedEventIds || {},
 			},
 			seals: { ...local.seals, ...inner.archiveManifest.seals || {} },
+			monthDigests: (() => {
+				const merged = { ...local.monthDigests }
+				for (const [ch, months] of Object.entries(inner.archiveManifest.monthDigests || {})) {
+					if (!months || typeof months !== 'object') continue
+					merged[ch] = { ...merged[ch], ...months }
+				}
+				return merged
+			})(),
 			channels: { ...local.channels, ...inner.archiveManifest.channels || {} },
 		})
 	}
-	if (isPlainObject(inner.checkpoint)) {
-		const checkpointResult = await verifyRemoteCheckpoint(inner.checkpoint, undefined)
-			.catch(() => ({ valid: false }))
-		if (checkpointResult.valid) {
-			await writeJsonAtomicSynced(snapshotPath(username, groupId), inner.checkpoint)
-			await getState(username, groupId, { skipWalRepair: true })
+	if (isPlainObject(inner.checkpoint) && opts.allowCheckpoint !== false) {
+		const pullRequestId = String(opts.pullRequestId || '').trim()
+		if (pullRequestId) {
+			const localCheckpoint = await safeReadJson(snapshotPath(username, groupId))
+			const remoteEpoch = Number(inner.checkpoint.epoch_id) || 0
+			const localEpoch = Number(localCheckpoint?.epoch_id) || 0
+			const remoteTips = String(inner.checkpoint.local_tips_hash || '').trim().toLowerCase()
+			const localTips = String(localCheckpoint?.local_tips_hash || '').trim().toLowerCase()
+			const shouldApply = !localCheckpoint?.checkpoint_event_id
+				|| remoteEpoch > localEpoch
+				|| (remoteEpoch === localEpoch && remoteTips && remoteTips !== localTips)
+			if (shouldApply) {
+				const checkpointResult = await verifyRemoteCheckpoint(inner.checkpoint, undefined)
+					.catch(() => ({ valid: false }))
+				if (checkpointResult.valid) {
+					await writeJsonAtomicSynced(snapshotPath(username, groupId), inner.checkpoint)
+					await getState(username, groupId, { skipWalRepair: true })
+				}
+			}
 		}
 	}
 	let eventsApplied = 0

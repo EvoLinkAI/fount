@@ -1,9 +1,10 @@
 /**
  * Hub 横幅与固定 DOM 节点的声明式绑定（订阅 hubStore / watchHubState）。
  */
+import { getGroupState } from '../../src/api/groupApi.mjs'
 import { getMailboxPendingCount, refreshMailboxPendingCount } from '../hubNotifications.mjs'
 
-import { hubStore, watchHubState } from './state.mjs'
+import { hubStore, setHubState, watchHubState } from './state.mjs'
 
 /** @typedef {{
  *   id: string
@@ -80,6 +81,19 @@ function mailboxBannerDataset() {
 	return { count: String(Number(hubStore.mailboxPendingCount) || 0) }
 }
 
+/** @returns {boolean} 是否显示冷归档缺口横幅 */
+function archiveCoverageBannerVisible() {
+	return hubStore.currentMode === 'groups'
+		&& !!hubStore.currentGroupId
+		&& !!hubStore.currentState?.isMember
+		&& hubStore.currentState?.archiveCoverage?.complete === false
+}
+
+/** @returns {string} i18n 键 */
+function archiveCoverageBannerI18n() {
+	return 'chat.hub.banners.archiveCoverageIncomplete'
+}
+
 /** @returns {boolean} 是否显示联邦同步横幅 */
 function syncBannerVisible() {
 	return !!hubStore.syncBanner?.visible
@@ -116,6 +130,12 @@ const BANNER_BINDINGS = [
 		textId: 'hub-plaintext-main-banner-text',
 		visible: plaintextBannerVisible,
 		i18n: plaintextBannerI18n,
+	},
+	{
+		id: 'hub-archive-coverage-banner',
+		textId: 'hub-archive-coverage-banner-text',
+		visible: archiveCoverageBannerVisible,
+		i18n: archiveCoverageBannerI18n,
 	},
 	{
 		id: 'hub-quarantine-banner',
@@ -188,6 +208,17 @@ export function wireHubBannerBindings() {
 	watchHubState('currentGroupId', refreshBoundBanners)
 	watchHubState('currentChannelId', refreshBoundBanners)
 	watchHubState('currentState', refreshBoundBanners)
+	document.getElementById('hub-archive-sync-btn')?.addEventListener('click', () => {
+		const groupId = hubStore.currentGroupId
+		if (!groupId) return
+		void fetch(`/api/parts/shells:chat/groups/${encodeURIComponent(groupId)}/archive/sync`, {
+			method: 'POST',
+			credentials: 'include',
+		}).then(async () => {
+			setHubState('currentState', await getGroupState(groupId))
+			refreshBoundBanners()
+		}).catch(console.error)
+	})
 	refreshBoundBanners()
 }
 

@@ -108,6 +108,7 @@ export function wireArchiveManifestForFederation(manifest) {
 		monthBucketPolicy: manifest.monthBucketPolicy,
 		channels: manifest.channels,
 		seals: manifest.seals,
+		monthDigests: manifest.monthDigests,
 		coverage: manifest.coverage,
 		archive_coverage_complete: manifest.archive_coverage_complete !== false,
 	}

@@ -14,6 +14,9 @@
  */
 import { readJsonl } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { HEX_ID_64 as EVENT_ID_HEX } from '../../../../../../../scripts/p2p/hexIds.mjs'
+import { isEventArchivedInManifest, loadArchiveManifest } from '../archive/index.mjs'
+import { postSnapshotToMessageLine } from '../archive/postSnapshot.mjs'
+import { readArchiveMonth } from '../archive/reader.mjs'
 import { appendSignedLocalEvent } from '../dag/append.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 import { getState } from '../dag/materialize.mjs'
@@ -56,9 +59,19 @@ export async function findChannelMessageRow(username, groupId, channelId, eventI
 		}
 
 	const lines = await readJsonl(messagesPath(username, groupId, channelId), { sanitize: sanitizeFederatedEvent })
-	return lines.find(row =>
+	const hot = lines.find(row =>
 		row.type === 'message' && String(row.eventId).toLowerCase() === eventIdNorm,
-	) || null
+	)
+	if (hot) return hot
+
+	const manifest = await loadArchiveManifest(username, groupId)
+	if (!isEventArchivedInManifest(manifest, channelId, eventIdNorm)) return null
+	const month = manifest.archivedEventIds[channelId]?.[eventIdNorm]
+	if (!month) return null
+	const snaps = await readArchiveMonth(username, groupId, channelId, month)
+	const snap = snaps.find(s => String(s.eventId).trim().toLowerCase() === eventIdNorm)
+	if (!snap) return null
+	return postSnapshotToMessageLine(snap)
 }
 
 /**
@@ -103,7 +116,7 @@ export async function appendChannelMessageDelete(username, groupId, channelId, e
 	const row = await findChannelMessageRow(username, groupId, channelId, eventId)
 	if (!row) throw new Error('message not found')
 	const targetId = channelMessageTargetId(row)
-	return appendSignedLocalEvent(username, groupId, {
+	const event = await appendSignedLocalEvent(username, groupId, {
 		type: 'message_delete',
 		channelId,
 		timestamp: Date.now(),
@@ -112,6 +125,10 @@ export async function appendChannelMessageDelete(username, groupId, channelId, e
 			chatLogEntryId: row.content?.chatLogEntryId,
 		},
 	})
+	const { refreshArchivedSnapshotIfPresent } = await import('../archive/refreshSnapshot.mjs')
+	void refreshArchivedSnapshotIfPresent(username, groupId, channelId, targetId, { markDeleted: true })
+		.catch(console.error)
+	return event
 }
 
 /**

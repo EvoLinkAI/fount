@@ -178,7 +178,7 @@ export async function handleGossipResponse(username, groupId, data) {
 			if (signedEvent?.id) receivedIds.add(signedEvent.id)
 		}
 
-	await applyPullInner(username, groupId, inner)
+	await applyPullInner(username, groupId, inner, { allowCheckpoint: false })
 	notifyGossipWaiters(username, groupId, receivedIds)
 }
 

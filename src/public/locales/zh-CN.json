@@ -1840,6 +1840,8 @@
 				"quarantine": "有 ${count} 条联邦事件因时钟偏差暂存于隔离区，待系统时间恢复后自动重放。",
 				"mailboxPending": "离线 mailbox 中有 ${count} 条待投递消息。",
 				"syncing": "正在与联邦邻居同步…",
+				"archiveCoverageIncomplete": "部分月份冷归档尚未从联邦同步完成。",
+				"archiveSyncButton": "同步归档",
 				"forkGovernance": "权限记录存在分叉，当前为本地视图。",
 				"forkTips": "检测到 ${count} 个未合并分支，消息顺序可能不一致。",
 				"forkTipLabel": "DAG 叶",

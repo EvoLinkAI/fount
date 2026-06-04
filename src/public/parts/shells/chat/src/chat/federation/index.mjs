@@ -20,7 +20,7 @@ import {
 	shouldDeferFederatedRelay,
 } from './acl.mjs'
 import { wireArchiveSummary, loadLocalFederationArchive } from './archiveHandshake.mjs'
-import { pullOfflineStartUtcMonthArchives } from './archiveMonthPull.mjs'
+import { syncMissingArchiveMonths } from '../archive/syncMonths.mjs'
 import { maybeRequestBootstrapAfterCatchup } from './bootstrapRelay.mjs'
 import { federationNodeHash, loadFederationGroupSettings, loadFederationMaterializedState, requireDagDeps } from './deps.mjs'
 import { requestMissingEventsGossip } from './gossip.mjs'
@@ -176,7 +176,7 @@ export async function catchUpGroupFromPeers(username, groupId, opts = {}) {
 	})
 
 	await maybeJoinSnapshotOnStaleTips(username, groupId, slot, { remoteSummaries })
-	void pullOfflineStartUtcMonthArchives(username, groupId, slot).catch(console.error)
+	void syncMissingArchiveMonths(username, groupId, slot).catch(console.error)
 
 	const wantSet = new Set()
 	for (const tipId of remoteTips)

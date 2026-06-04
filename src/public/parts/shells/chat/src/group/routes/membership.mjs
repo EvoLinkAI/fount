@@ -172,8 +172,11 @@ export function registerMembershipRoutes(router, authenticate) {
 		void catchUpGroupFromPeers(username, groupId).then(async () => {
 			const { ensureFederationRoom } = await import('../../chat/federation/room.mjs')
 			const { requestJoinSnapshotFromPeers } = await import('../../chat/federation/joinSnapshot.mjs')
+			const { syncMissingArchiveMonths } = await import('../../chat/archive/syncMonths.mjs')
 			const slot = await ensureFederationRoom(username, groupId)
-			if (slot) await requestJoinSnapshotFromPeers(username, groupId, slot)
+			if (!slot) return
+			await requestJoinSnapshotFromPeers(username, groupId, slot)
+			void syncMissingArchiveMonths(username, groupId, slot).catch(console.error)
 		}).catch(console.error)
 		res.status(200).json({
 			groupId,

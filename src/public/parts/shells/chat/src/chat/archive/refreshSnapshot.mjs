@@ -8,7 +8,7 @@ import { findChannelMessageRow } from '../channel/messageMutations.mjs'
 import { getState } from '../dag/materialize.mjs'
 import { channelArchivePath } from '../lib/paths.mjs'
 
-import { isEventArchivedInManifest, loadArchiveManifest } from './index.mjs'
+import { isEventArchivedInManifest, loadArchiveManifest, saveArchiveManifest } from './index.mjs'
 import { buildPostSnapshotsFromLines } from './postSnapshot.mjs'
 import { sealArchiveChannelBatch } from './seal.mjs'
 
@@ -17,9 +17,10 @@ import { sealArchiveChannelBatch } from './seal.mjs'
  * @param {string} groupId 群 ID
  * @param {string} channelId 频道 ID
  * @param {string} eventId message eventId
+ * @param {{ markDeleted?: boolean }} [opts] 强制标记 deleted
  * @returns {Promise<boolean>} 是否已更新归档行
  */
-export async function refreshArchivedSnapshotIfPresent(username, groupId, channelId, eventId) {
+export async function refreshArchivedSnapshotIfPresent(username, groupId, channelId, eventId, opts = {}) {
 	const id = String(eventId || '').trim().toLowerCase()
 	if (!id) return false
 	const manifest = await loadArchiveManifest(username, groupId)
@@ -29,12 +30,22 @@ export async function refreshArchivedSnapshotIfPresent(username, groupId, channe
 
 	const { state } = await getState(username, groupId)
 	const row = await findChannelMessageRow(username, groupId, channelId, id)
-	if (!row) return false
+	if (!row && !opts.markDeleted) return false
+	/** @type {object} */
+	const workRow = row || {
+		eventId: id,
+		type: 'message',
+		channelId,
+		sender: state.messageSenderIndex?.[id]?.sender || '',
+		charId: state.messageSenderIndex?.[id]?.charId || null,
+		content: {},
+	}
 	const edited = state.messageOverlay?.editHistory?.get(id)
-	if (edited) row.content = edited
-	const snaps = await buildPostSnapshotsFromLines(username, groupId, channelId, [row], state)
+	if (edited) workRow.content = edited
+	const snaps = await buildPostSnapshotsFromLines(username, groupId, channelId, [workRow], state)
 	const snap = snaps[0]
 	if (!snap) return false
+	if (opts.markDeleted) snap.deleted = true
 
 	const path = channelArchivePath(username, groupId, channelId, month)
 	/** @type {object[]} */
@@ -49,7 +60,10 @@ export async function refreshArchivedSnapshotIfPresent(username, groupId, channe
 	
 	if (!replaced) return false
 	await writeFile(path, rows.map(JSON.stringify).join('\n') + '\n', 'utf8')
+	const { refreshManifestMonthDigest } = await import('./monthDigest.mjs')
+	await refreshManifestMonthDigest(username, groupId, channelId, month, manifest)
 	const batchIds = Object.keys(manifest.archivedEventIds[channelId] || {})
 	await sealArchiveChannelBatch(username, groupId, channelId, batchIds, id)
+	await saveArchiveManifest(username, groupId, manifest)
 	return true
 }

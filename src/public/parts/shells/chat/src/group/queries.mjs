@@ -109,15 +109,68 @@ export async function readChannelReactionEvents(username, groupId, channelId) {
  * @param {object[]} lines 原始消息行
  * @returns {Promise<object[]>}  enriched 消息行
  */
-async function finalizeChannelMessagesForViewer(username, groupId, state, lines) {
+/**
+ * @param {object[]} lines 消息行
+ * @param {object[]} voteCastEvents vote_cast 事件
+ * @returns {Promise<object[]>} 带 voteSummary 的行
+ */
+async function attachVoteSummaries(lines, voteCastEvents) {
+	const hasBallot = lines.some(line => Array.isArray(line.content?.options))
+	if (!hasBallot || !voteCastEvents.length) return lines
+	const { tallyVoteChoices } = await import('../../public/src/lib/voteTally.mjs')
+	const merged = [...lines, ...voteCastEvents]
+	return lines.map(line => {
+		if (!Array.isArray(line.content?.options)) return line
+		const counts = tallyVoteChoices(merged, line.eventId)
+		return {
+			...line,
+			extension: {
+				...line.extension,
+				voteSummary: Object.fromEntries(counts),
+			},
+		}
+	})
+}
+
+/**
+ *
+ * @param username
+ * @param groupId
+ * @param state
+ * @param lines
+ * @param channelId
+ */
+/**
+ * @param {string} username 用户
+ * @param {string} groupId 群 ID
+ * @param {object} state 物化状态
+ * @param {object[]} lines 消息行
+ * @param {string} [channelId] 频道 ID
+ * @returns {Promise<object[]>}  enriched 消息行
+ */
+async function finalizeChannelMessagesForViewer(username, groupId, state, lines, channelId = 'default') {
 	const viewerPubKeyHash = await resolveActiveMemberKeyForLocalUser(username, groupId, state)
 	if (!viewerPubKeyHash) throw new Error('Not a member')
 	const streamGeneratingIdleMs = Number(state.groupSettings?.streamGeneratingIdleMs)
+	let work = markStaleGeneratingMessages(
+		lines,
+		Number.isFinite(streamGeneratingIdleMs) && streamGeneratingIdleMs > 0 ? streamGeneratingIdleMs : undefined,
+	)
+	if (work.some(line => Array.isArray(line.content?.options))) {
+		const events = await readJsonl(eventsPath(username, groupId), { sanitize: sanitizeFederatedEvent })
+		const voteCastEvents = events
+			.filter(event => event.type === 'vote_cast' && (event.channelId || 'default') === channelId)
+			.map(event => ({
+				type: event.type,
+				sender: event.sender,
+				content: event.content,
+				eventId: event.id,
+				timestamp: event.hlc?.wall,
+			}))
+		work = await attachVoteSummaries(work, voteCastEvents)
+	}
 	return enrichChannelMessagesForViewer(
-		await resolveContentRefsInMessageLines(username, markStaleGeneratingMessages(
-			lines,
-			Number.isFinite(streamGeneratingIdleMs) && streamGeneratingIdleMs > 0 ? streamGeneratingIdleMs : undefined,
-		)),
+		await resolveContentRefsInMessageLines(username, work),
 		viewerPubKeyHash,
 	)
 }
@@ -158,7 +211,7 @@ export async function readChannelMessagesForUser(username, groupId, channelId, p
 			})
 		}
 		lines = mergeChannelMessagesForDisplay(lines)
-		return finalizeChannelMessagesForViewer(username, groupId, state, lines)
+		return finalizeChannelMessagesForViewer(username, groupId, state, lines, channelId)
 	}
 
 	let lines
@@ -171,7 +224,7 @@ export async function readChannelMessagesForUser(username, groupId, channelId, p
 			fetchFromPeers: true,
 		})
 		lines = mergeChannelMessagesForDisplay(lines)
-		return finalizeChannelMessagesForViewer(username, groupId, state, lines)
+		return finalizeChannelMessagesForViewer(username, groupId, state, lines, channelId)
 	}
 
 	lines = await listChannelMessages(username, groupId, channelId, {
@@ -190,7 +243,7 @@ export async function readChannelMessagesForUser(username, groupId, channelId, p
 		if (beforeIndex !== -1) lines = lines.slice(0, beforeIndex)
 	}
 	if (Number.isFinite(messageLimit) && messageLimit > 0) lines = lines.slice(-messageLimit)
-	return finalizeChannelMessagesForViewer(username, groupId, state, lines)
+	return finalizeChannelMessagesForViewer(username, groupId, state, lines, channelId)
 }
 
 /**
@@ -203,6 +256,28 @@ export async function readChannelMessagesForUser(username, groupId, channelId, p
  */
 export async function readPinNeighborhoodForUser(username, groupId, channelId, pinEventId) {
 	const checkpoint = await safeReadJson(snapshotPath(username, groupId))
-	const eventIds = checkpoint?.hot_posts?.pinContexts?.[channelId]?.[pinEventId] || [pinEventId]
+	const pinNorm = String(pinEventId).trim().toLowerCase()
+	let eventIds = checkpoint?.hot_posts?.pinContexts?.[channelId]?.[pinEventId]
+		|| checkpoint?.hot_posts?.pinContexts?.[channelId]?.[pinNorm]
+	if (!eventIds || eventIds.length <= 1) {
+		const { state } = await getState(username, groupId)
+		const { archiveSettingsFromGroup } = await import('../chat/archive/settings.mjs')
+		const { listChannelMessages } = await import('../chat/dag/queries.mjs')
+		const pinContext = archiveSettingsFromGroup(state.groupSettings).pinContext
+		const all = await listChannelMessages(username, groupId, channelId, {
+			includeArchive: true,
+			decrypt: false,
+			fetchFromPeers: false,
+			limitCap: 50_000,
+			limit: 50_000,
+		})
+		const idx = all.findIndex(row => String(row.eventId).trim().toLowerCase() === pinNorm)
+		if (idx >= 0) {
+			const start = Math.max(0, idx - pinContext)
+			const end = Math.min(all.length, idx + pinContext + 1)
+			eventIds = all.slice(start, end).map(row => row.eventId)
+		}
+		else eventIds = [pinEventId]
+	}
 	return readChannelMessagesForUser(username, groupId, channelId, { eventIds })
 }

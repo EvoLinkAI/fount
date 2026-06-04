@@ -1,10 +1,10 @@
 import { wireAction } from '../../../../../../../../scripts/p2p/trystero_wire_action.mjs'
 import {
-	applyFedArchiveMonthResponse,
 	handleFedArchiveMonthWant,
+	noteFedArchiveMonthResponse,
 	parseFedArchiveMonthResponse,
 	parseFedArchiveMonthWant,
-} from '../archiveMonthPull.mjs'
+} from '../archiveMonthWire.mjs'
 import {
 	applyFedBootstrapResponse,
 	handleFedBootstrapRequest,
@@ -82,11 +82,11 @@ export function registerRelayHandlers(roomContext) {
 			})
 		}).catch(error => console.error('federation: fed_archive_month_want failed', error))
 	})
-	archiveMonthResponse.on(data => {
+	archiveMonthResponse.on((data, peerId) => {
 		const response = parseFedArchiveMonthResponse(data)
 		if (!response) return
-		void applyFedArchiveMonthResponse(username, groupId, response)
-			.catch(error => console.error('federation: fed_archive_month_response apply failed', error))
+		const remoteNodeHash = roomContext.peerToNode?.get(peerId) || ''
+		noteFedArchiveMonthResponse(username, groupId, response, remoteNodeHash)
 	})
 
 	const discoveryAnnounce = wireAction(roomContext, 'discovery_announce')

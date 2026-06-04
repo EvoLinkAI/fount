@@ -77,6 +77,9 @@ export async function buildPostSnapshotFromRow(row, state, username, groupId) {
 		displayAvatar: display.avatar || undefined,
 	})
 	const pins = overlayPinsForChannel(state.messageOverlay, channelId)
+	const prevIds = Array.isArray(row.prev_event_ids)
+		? [...row.prev_event_ids].map(id => String(id).trim().toLowerCase()).filter(isHex64)
+		: undefined
 	return {
 		eventId,
 		channelId,
@@ -89,6 +92,7 @@ export async function buildPostSnapshotFromRow(row, state, username, groupId) {
 		reactions: reactionsForMessage(state.messageOverlay, eventId),
 		pinned: pins.includes(eventId),
 		deleted: state.messageOverlay?.deletedIds?.has(eventId) || false,
+		...prevIds?.length ? { prev_event_ids: prevIds } : {},
 	}
 }
 
@@ -130,6 +134,9 @@ export function postSnapshotToMessageLine(snap) {
 		timestamp: snap.timestamp,
 		hlc: snap.hlc,
 		content: snap.content,
+		...Array.isArray(snap.prev_event_ids) && snap.prev_event_ids.length
+			? { prev_event_ids: snap.prev_event_ids }
+			: {},
 		extension: {
 			reactions: snap.reactions,
 			display: snap.display,

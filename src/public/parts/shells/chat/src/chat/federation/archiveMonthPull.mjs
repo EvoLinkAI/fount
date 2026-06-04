@@ -1,26 +1,33 @@
 /**
- * 回归仅拉 `offlineStartUtcMonth` 单月冷归档；失败标 historyIncomplete。
+ * 冷归档按月联邦拉取：PullAttestation + 多 peer 信誉 digest 仲裁。
  */
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 
-import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
-import { materializeFromCheckpoint } from '../../../../../../../scripts/p2p/materialized_state.mjs'
+import { penalizeArchiveServeMismatch } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 import { loadArchiveManifest, saveArchiveManifest } from '../archive/index.mjs'
-import { verifyArchiveSeal } from '../archive/seal.mjs'
+import {
+	digestArchiveMonthBody,
+	pickArchiveMonthByReputation,
+} from '../archive/monthDigest.mjs'
 import { archiveMonthKey } from '../archive/settings.mjs'
 import { pickFederationTargetPeerIds } from '../governance/peerPool.mjs'
-import { channelArchivePath, snapshotPath } from '../lib/paths.mjs'
-import { safeReadJson } from '../lib/utils.mjs'
+import { channelArchivePath } from '../lib/paths.mjs'
 
-import { federationNodeHash, loadFederationGroupSettings } from './deps.mjs'
+import { markArchiveMonthIncomplete } from './archiveMonthMark.mjs'
+export { parseFedArchiveMonthResponse, parseFedArchiveMonthWant } from './archiveMonthWire.mjs'
+import { federationNodeHash, loadFederationGroupSettings, loadFederationMaterializedState } from './deps.mjs'
+import {
+	signPullAttestation,
+	validateActivePullAttestationForGroup,
+} from './pullAttestation.mjs'
 import { loadGroupSyncState } from './sync_state.mjs'
 
-/** @type {Map<string, { resolve: (v: object | null) => void, timer: ReturnType<typeof setTimeout> }>} */
-const pendingMonthPulls = new Map()
-
 const WAIT_MS = 5000
+
+/** @type {Map<string, { candidates: object[], resolve: (v: object | null) => void, timer: ReturnType<typeof setTimeout> }>} */
+const pendingMonthPulls = new Map()
 
 /**
  * @param {string} username 用户
@@ -33,47 +40,6 @@ function monthPullWaitKey(username, groupId, requestId) {
 }
 
 /**
- * @param {unknown} payload wire 载荷
- * @returns {object | null} 解析后的 want
- */
-export function parseFedArchiveMonthWant(payload) {
-	if (!isPlainObject(payload)) return null
-	const groupId = String(payload.groupId || '').trim()
-	const channelId = String(payload.channelId || '').trim()
-	const utcMonth = String(payload.utcMonth || '').trim()
-	const requestId = String(payload.requestId || '').trim()
-	if (!groupId || !channelId || !/^\d{4}-\d{2}$/u.test(utcMonth) || !requestId) return null
-	return {
-		groupId,
-		channelId,
-		utcMonth,
-		requestId,
-		requesterNodeHash: String(payload.requesterNodeHash || '').trim(),
-	}
-}
-
-/**
- * @param {unknown} payload wire 载荷
- * @returns {object | null} 解析后的 response
- */
-export function parseFedArchiveMonthResponse(payload) {
-	if (!isPlainObject(payload)) return null
-	const requestId = String(payload.requestId || '').trim()
-	const channelId = String(payload.channelId || '').trim()
-	const utcMonth = String(payload.utcMonth || '').trim()
-	if (!requestId || !channelId || !/^\d{4}-\d{2}$/u.test(utcMonth)) return null
-	return {
-		requestId,
-		channelId,
-		utcMonth,
-		body: typeof payload.body === 'string' ? payload.body : '',
-		seal: isPlainObject(payload.seal) ? payload.seal : null,
-		complete: payload.complete !== false,
-		reason: String(payload.reason || '').trim(),
-	}
-}
-
-/**
  * @param {string} username replica
  * @param {string} groupId 群 ID
  * @param {object} request want
@@ -83,6 +49,9 @@ export function parseFedArchiveMonthResponse(payload) {
  */
 export async function handleFedArchiveMonthWant(username, groupId, request, peerId, sendResponse) {
 	if (request.groupId !== groupId) return
+	const fedState = await loadFederationMaterializedState(username, groupId)
+	if (!fedState || !await validateActivePullAttestationForGroup(fedState, groupId, request.attestation))
+		return
 	const path = channelArchivePath(username, groupId, request.channelId, request.utcMonth)
 	const manifest = await loadArchiveManifest(username, groupId)
 	const seal = manifest.seals?.[request.channelId] || null
@@ -113,53 +82,49 @@ export async function handleFedArchiveMonthWant(username, groupId, request, peer
 }
 
 /**
+ * 收集对端单月归档应答（多 peer 仲裁用）。
  * @param {string} username replica
  * @param {string} groupId 群 ID
  * @param {object} response 响应
- * @returns {Promise<{ applied: boolean }>} 是否写入磁盘
+ * @param {string} peerNodeHash 对端 nodeHash
+ * @returns {void}
  */
-export async function applyFedArchiveMonthResponse(username, groupId, response) {
+export function noteFedArchiveMonthResponse(username, groupId, response, peerNodeHash) {
 	const key = monthPullWaitKey(username, groupId, response.requestId)
 	const pending = pendingMonthPulls.get(key)
-	if (pending) {
-		clearTimeout(pending.timer)
-		pendingMonthPulls.delete(key)
-		pending.resolve(response)
-	}
-	if (!response.complete || !response.body) {
-		await markArchiveMonthIncomplete(username, groupId, response.channelId, response.utcMonth, response.reason || 'pull_failed')
+	if (!pending) return
+	pending.candidates.push({
+		peerNodeHash: String(peerNodeHash || '').trim(),
+		body: response.body,
+		seal: response.seal,
+		complete: response.complete,
+		reason: response.reason,
+	})
+}
+
+/**
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @param {object} winner 仲裁赢家
+ * @returns {Promise<{ applied: boolean }>} 是否写入
+ */
+export async function applyArchiveMonthWinner(username, groupId, winner) {
+	if (!winner?.body || !winner.channelId || !winner.utcMonth)
 		return { applied: false }
-	}
 	const manifest = await loadArchiveManifest(username, groupId)
-	if (response.seal) {
-		const checkpoint = await safeReadJson(snapshotPath(username, groupId))
-		const state = materializeFromCheckpoint(checkpoint)
-		/** @type {string | null} */
-		let ownerHex = null
-		for (const member of Object.values(state.members || {})) 
-			if (member?.role === 'owner' && isHex64(member.pubKeyHex)) {
-				ownerHex = String(member.pubKeyHex).trim().toLowerCase()
-				break
-			}
-		
-		if (ownerHex) {
-			const { Buffer } = await import('node:buffer')
-			const ok = await verifyArchiveSeal(response.seal, new Uint8Array(Buffer.from(ownerHex, 'hex')))
-			if (!ok) {
-				await markArchiveMonthIncomplete(username, groupId, response.channelId, response.utcMonth, 'seal_invalid')
-				return { applied: false }
-			}
-		}
-	}
+	const { digest } = digestArchiveMonthBody(winner.body)
 	const { writeFile, mkdir } = await import('node:fs/promises')
 	const { dirname } = await import('node:path')
-	const path = channelArchivePath(username, groupId, response.channelId, response.utcMonth)
+	const path = channelArchivePath(username, groupId, winner.channelId, winner.utcMonth)
 	await mkdir(dirname(path), { recursive: true })
-	await writeFile(path, response.body.endsWith('\n') ? response.body : `${response.body}\n`, 'utf8')
-	if (!manifest.channels[response.channelId]) manifest.channels[response.channelId] = { months: [] }
-	if (!manifest.channels[response.channelId].months.includes(response.utcMonth))
-		manifest.channels[response.channelId].months.push(response.utcMonth)
-	if (manifest.coverage?.[response.channelId]) delete manifest.coverage[response.channelId]
+	await writeFile(path, winner.body.endsWith('\n') ? winner.body : `${winner.body}\n`, 'utf8')
+	if (!manifest.channels[winner.channelId]) manifest.channels[winner.channelId] = { months: [] }
+	if (!manifest.channels[winner.channelId].months.includes(winner.utcMonth))
+		manifest.channels[winner.channelId].months.push(winner.utcMonth)
+	if (!manifest.monthDigests) manifest.monthDigests = {}
+	if (!manifest.monthDigests[winner.channelId]) manifest.monthDigests[winner.channelId] = {}
+	if (digest) manifest.monthDigests[winner.channelId][winner.utcMonth] = digest
+	if (manifest.coverage?.[winner.channelId]) delete manifest.coverage[winner.channelId]
 	manifest.archive_coverage_complete = Object.values(manifest.coverage || {})
 		.every(row => row?.complete !== false)
 	await saveArchiveManifest(username, groupId, manifest)
@@ -169,24 +134,87 @@ export async function applyFedArchiveMonthResponse(username, groupId, response) 
 /**
  * @param {string} username replica
  * @param {string} groupId 群 ID
+ * @param {object} slot 联邦槽
  * @param {string} channelId 频道
  * @param {string} utcMonth `YYYY-MM`
- * @param {string} reason 缺口原因
- * @returns {Promise<void>}
+ * @param {Map<string, string>} peerToNode peerId → nodeHash
+ * @returns {Promise<{ applied: boolean, reason: string }>} 拉取结果
  */
-export async function markArchiveMonthIncomplete(username, groupId, channelId, utcMonth, reason) {
+export async function pullArchiveMonthQuorum(username, groupId, slot, channelId, utcMonth, peerToNode) {
+	const nodeHash = federationNodeHash(username)
+	const groupSettings = await loadFederationGroupSettings(username, groupId)
+	const targets = await pickFederationTargetPeerIds(
+		username,
+		groupId,
+		slot.getRoster(),
+		groupSettings,
+		nodeHash,
+	)
+	const requestId = randomUUID()
+	const attestation = await signPullAttestation(username, groupId, { requestId })
+	const request = {
+		requestId,
+		groupId,
+		channelId,
+		utcMonth,
+		requesterNodeHash: nodeHash,
+		attestation,
+	}
+	const waitKey = monthPullWaitKey(username, groupId, requestId)
+	const collectPromise = new Promise(resolve => {
+		const timer = setTimeout(() => {
+			const bucket = pendingMonthPulls.get(waitKey)
+			pendingMonthPulls.delete(waitKey)
+			resolve(bucket?.candidates || [])
+		}, WAIT_MS)
+		pendingMonthPulls.set(waitKey, { candidates: [], timer })
+	})
+	if (targets.length)
+		for (const peerId of targets)
+			slot.send('fed_archive_month_want', request, peerId)
+	else
+		slot.send('fed_archive_month_want', request, null)
+
+	const candidates = await collectPromise
+	if (!candidates.length) {
+		await markArchiveMonthIncomplete(username, groupId, channelId, utcMonth, 'timeout')
+		return { applied: false, reason: 'timeout' }
+	}
+
 	const manifest = await loadArchiveManifest(username, groupId)
-	if (!manifest.coverage) manifest.coverage = {}
-	manifest.coverage[channelId] = { complete: false, utcMonth, reason }
-	manifest.archive_coverage_complete = false
-	await saveArchiveManifest(username, groupId, manifest)
+	const picked = await pickArchiveMonthByReputation(
+		candidates,
+		username,
+		groupId,
+		manifest,
+		channelId,
+		utcMonth,
+	)
+	if (!picked.winner) {
+		for (const row of candidates)
+			if (row.peerNodeHash)
+				penalizeArchiveServeMismatch(username, groupId, row.peerNodeHash)
+		await markArchiveMonthIncomplete(username, groupId, channelId, utcMonth, picked.reason)
+		return { applied: false, reason: picked.reason }
+	}
+
+	const winnerDigest = picked.digest
+	for (const row of candidates) {
+		if (!row.peerNodeHash || !row.complete || !row.body) continue
+		const { digest } = digestArchiveMonthBody(row.body)
+		if (digest && digest !== winnerDigest)
+			penalizeArchiveServeMismatch(username, groupId, row.peerNodeHash)
+	}
+
+	const applied = (await applyArchiveMonthWinner(username, groupId, picked.winner)).applied
+	return { applied, reason: applied ? 'ok' : 'apply_failed' }
 }
 
 /**
  * @param {string} username replica
  * @param {string} groupId 群 ID
  * @param {object} slot 联邦槽
- * @returns {Promise<{ pulled: number, incomplete: number }>} 拉取与缺口统计
+ * @returns {Promise<{ pulled: number, incomplete: number }>} 统计
  */
 export async function pullOfflineStartUtcMonthArchives(username, groupId, slot) {
 	const sync = await loadGroupSyncState(username, groupId)
@@ -203,54 +231,32 @@ export async function pullOfflineStartUtcMonthArchives(username, groupId, slot) 
 			channels.push(channelId)
 	}
 
-	const nodeHash = federationNodeHash(username)
-	const groupSettings = await loadFederationGroupSettings(username, groupId)
-	const targets = await pickFederationTargetPeerIds(
-		username,
-		groupId,
-		slot.getRoster(),
-		groupSettings,
-		nodeHash,
-	)
+	const peerToNode = new Map()
+	for (const row of slot.getRoster?.() || []) {
+		const peerId = row?.peerId
+		const remoteNodeHash = row?.remoteNodeHash
+		if (peerId && remoteNodeHash) peerToNode.set(peerId, remoteNodeHash)
+	}
 
 	let pulled = 0
 	let incomplete = 0
 	for (const channelId of channels) {
-		const path = channelArchivePath(username, groupId, channelId, utcMonth)
 		try {
-			await readFile(path, 'utf8')
+			await readFile(channelArchivePath(username, groupId, channelId, utcMonth), 'utf8')
 			continue
 		}
 		catch { /* missing */ }
 
-		const requestId = randomUUID()
-		const request = {
-			requestId,
+		const { applied } = await pullArchiveMonthQuorum(
+			username,
 			groupId,
+			slot,
 			channelId,
 			utcMonth,
-			requesterNodeHash: nodeHash,
-		}
-		const responsePromise = new Promise(resolve => {
-			const timer = setTimeout(() => {
-				pendingMonthPulls.delete(monthPullWaitKey(username, groupId, requestId))
-				resolve(null)
-			}, WAIT_MS)
-			pendingMonthPulls.set(monthPullWaitKey(username, groupId, requestId), { resolve, timer })
-		})
-		if (targets.length)
-			for (const peerId of targets)
-				slot.send('fed_archive_month_want', request, peerId)
-		else
-			slot.send('fed_archive_month_want', request, null)
-
-		const response = await responsePromise
-		if (response && (await applyFedArchiveMonthResponse(username, groupId, response)).applied)
-			pulled++
-		else {
-			await markArchiveMonthIncomplete(username, groupId, channelId, utcMonth, 'timeout')
-			incomplete++
-		}
+			peerToNode,
+		)
+		if (applied) pulled++
+		else incomplete++
 	}
 	return { pulled, incomplete }
 }

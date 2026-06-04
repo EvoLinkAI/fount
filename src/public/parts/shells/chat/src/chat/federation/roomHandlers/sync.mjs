@@ -184,6 +184,8 @@ export function registerSyncHandlers(roomContext) {
 				limit,
 				limitCap: 500,
 				decrypt: false,
+				includeArchive: true,
+				fetchFromPeers: false,
 			})
 			if (!messages.length || !peerId) return
 			fedOut.enqueue(2, () => {

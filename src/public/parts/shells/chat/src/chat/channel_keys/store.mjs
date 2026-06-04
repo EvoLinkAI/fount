@@ -177,13 +177,17 @@ export async function applyChannelKeyWrapsFromPull(username, groupId, wrapsByCha
 	if (!wrapsByChannel || typeof wrapsByChannel !== 'object') return 0
 	let imported = 0
 	for (const [channelId, row] of Object.entries(wrapsByChannel)) {
-		const generation = Number(row?.generation)
-		const wrap = row?.wrap
-		if (!channelId || !Number.isFinite(generation) || !wrap) continue
-		const ok = await applyChannelKeyRotateEvent(username, groupId, {
-			content: { channelId, generation, wraps: { [normalizeHex64(selfPubKeyHash)]: wrap } },
-		}, selfPubKeyHash)
-		if (ok) imported++
+		/** @type {Array<{ generation?: number, wrap?: object }>} */
+		const entries = Array.isArray(row) ? row : [row]
+		for (const entry of entries) {
+			const generation = Number(entry?.generation)
+			const wrap = entry?.wrap
+			if (!channelId || !Number.isFinite(generation) || !wrap) continue
+			const ok = await applyChannelKeyRotateEvent(username, groupId, {
+				content: { channelId, generation, wraps: { [normalizeHex64(selfPubKeyHash)]: wrap } },
+			}, selfPubKeyHash)
+			if (ok) imported++
+		}
 	}
 	return imported
 }

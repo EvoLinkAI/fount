@@ -114,6 +114,31 @@ export async function validatePullAttestationForGroup(state, groupId, attestatio
 }
 
 /**
+ * 仅 active 成员可拉取/提供冷归档明文（fed_archive_month）。
+ * @param {object | null | undefined} state 物化群状态
+ * @param {string} requesterPubKeyHash 请求方 pubKeyHash
+ * @returns {boolean}
+ */
+export function isActivePullMember(state, requesterPubKeyHash) {
+	const key = normalizeHex64(requesterPubKeyHash)
+	if (!isHex64(key)) return false
+	return state?.members?.[key]?.status === 'active'
+}
+
+/**
+ * @param {object | null | undefined} state 物化群状态
+ * @param {string} groupId 群 ID
+ * @param {import('./fedPullWire.mjs').PullAttestation} attestation attestation
+ * @returns {Promise<boolean>} active 成员 + 签名校验
+ */
+export async function validateActivePullAttestationForGroup(state, groupId, attestation) {
+	if (!isActivePullMember(state, attestation?.requesterPubKeyHash)) return false
+	const edHex = resolveMemberEdPubKeyHex(state, attestation.requesterPubKeyHash)
+	if (!edHex) return false
+	return verifyPullAttestation(attestation, groupId, Buffer.from(edHex, 'hex'))
+}
+
+/**
  * @param {string} username 本地用户
  * @param {string} groupId 群 ID
  * @returns {Promise<string | null>} 本机成员 Ed25519 公钥 hex

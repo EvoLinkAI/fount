@@ -37,11 +37,13 @@ import {
 	resolveNodePartitionIds,
 } from '../src/chat/federation/partitions.mjs'
 import {
+	isActivePullMember,
 	isHistoricalPullMember,
 	pullAttestationSignBytes,
 	validatePullAttestationForGroup,
 	verifyPullAttestation,
 } from '../src/chat/federation/pullAttestation.mjs'
+import { parseFedArchiveMonthWant } from '../src/chat/federation/archiveMonthWire.mjs'
 import { wrapPullResponseInner, unwrapPullResponseEnvelope } from '../src/chat/federation/pullResponse.mjs'
 import { parseGossipRequest } from '../src/chat/federation/wireSchemas.mjs'
 
@@ -152,6 +154,42 @@ Deno.test('gossip request requires attestation', () => {
 		requesterNodeHash: 'n1',
 		attestation: att,
 	})?.wantIds.length, 1)
+})
+
+Deno.test('fed archive month want requires attestation', () => {
+	assertEquals(parseFedArchiveMonthWant({
+		groupId: 'g1',
+		channelId: 'general',
+		utcMonth: '2024-01',
+		requestId: 'r1',
+	}), null)
+	const sender = 'c'.repeat(64)
+	assertEquals(parseFedArchiveMonthWant({
+		groupId: 'g1',
+		channelId: 'general',
+		utcMonth: '2024-01',
+		requestId: 'r1',
+		requesterNodeHash: 'n1',
+		attestation: {
+			requesterPubKeyHash: sender,
+			groupId: 'g1',
+			requestId: 'r1',
+			timestamp: Date.now(),
+			signature: '00'.repeat(64),
+		},
+	})?.requestId, 'r1')
+})
+
+Deno.test('active pull member rejects kicked', () => {
+	const key = 'c'.repeat(64)
+	const state = {
+		members: {
+			[key]: { status: 'active', pubKeyHex: 'd'.repeat(64) },
+			['e'.repeat(64)]: { status: 'kicked', pubKeyHex: 'f'.repeat(64) },
+		},
+	}
+	assertEquals(isActivePullMember(state, key), true)
+	assertEquals(isActivePullMember(state, 'e'.repeat(64)), false)
 })
 
 Deno.test('historical pull member policy', () => {

@@ -30,5 +30,6 @@
 - **DAG WAL**: `events.jsonl` — foldable process events (`message_edit`, reactions, pin/unpin); archived `message` rows removed only after cold archive + `dagFoldAfterArchive`.
 - **Read path**: `listChannelMessages({ includeArchive: true })` merges hot + archive; `before` pagination may call `requestChannelHistoryFromPeers` when local miss.
 - **Cleanup**: admins delete cold months via settings UI → `DELETE .../archive?before=YYYY-MM` (does not silent-prune DAG).
+- **Archive sync**: `POST .../archive/sync` triggers `syncMissingArchiveMonths`; Hub banner when `archiveCoverage.complete === false`.
 - **Display**: Hub prefers `content.displayName` / `content.displayAvatar` on archived or folded posts, then live profile.
 - **Message navigation**: `messages/channelMessageStore.mjs` owns fetch/merge by `eventId` (`ensureMessageLoaded`); `messages.mjs` only scrolls/highlights DOM (`scrollToMessageEventId`).

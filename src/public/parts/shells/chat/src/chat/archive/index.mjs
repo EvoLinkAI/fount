@@ -13,6 +13,7 @@ import { archiveMonthKey } from './settings.mjs'
 function normalizeManifest(raw) {
 	const coverage = raw?.coverage && typeof raw.coverage === 'object' ? raw.coverage : {}
 	const seals = raw?.seals && typeof raw.seals === 'object' ? raw.seals : {}
+	const monthDigests = raw?.monthDigests && typeof raw.monthDigests === 'object' ? raw.monthDigests : {}
 	return {
 		version: 1,
 		monthBucketPolicy: 'UTC',
@@ -21,6 +22,7 @@ function normalizeManifest(raw) {
 			? raw.archivedEventIds
 			: {},
 		seals,
+		monthDigests,
 		coverage,
 		archive_coverage_complete: raw?.archive_coverage_complete !== false,
 	}
@@ -104,6 +106,8 @@ export async function appendPostSnapshotsToArchive(username, groupId, channelId,
 		await mkdir(dirname(path), { recursive: true })
 		const block = rows.map(JSON.stringify).join('\n') + '\n'
 		await appendFile(path, block, 'utf8')
+		const { refreshManifestMonthDigest } = await import('./monthDigest.mjs')
+		await refreshManifestMonthDigest(username, groupId, channelId, month, manifest)
 	}
 	if (added) await saveArchiveManifest(username, groupId, manifest)
 	return added

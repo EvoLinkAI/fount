@@ -114,7 +114,10 @@ export async function listChannelMessages(username, groupId, channelId, q = {}) 
 	let slice
 	if (!q.before) slice = lines.slice(-limit)
 	else {
-		const beforeIndex = lines.findIndex(line => line.eventId === q.before)
+		const beforeNorm = String(q.before).trim().toLowerCase()
+		const beforeIndex = lines.findIndex(line =>
+			String(line.eventId).trim().toLowerCase() === beforeNorm,
+		)
 		slice = beforeIndex <= 0 ? [] : lines.slice(Math.max(0, beforeIndex - limit), beforeIndex)
 	}
 	if (!slice.length && q.before && q.fetchFromPeers !== false) {

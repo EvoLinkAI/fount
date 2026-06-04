@@ -229,6 +229,14 @@ export function registerGroupSyncRoutes(router, authenticate) {
 			serializableState.reputationLedger = state.reputationLedger.slice(-50)
 			serializableState.inviteEdges = state.inviteEdges.slice(0, 200)
 		}
+		if (active) {
+			const { loadArchiveManifest } = await import('../../chat/archive/index.mjs')
+			const manifest = await loadArchiveManifest(username, groupId)
+			serializableState.archiveCoverage = {
+				complete: manifest.archive_coverage_complete !== false,
+				channels: manifest.coverage || {},
+			}
+		}
 		res.status(200).json({ state: serializableState })
 	})
 
@@ -340,6 +348,19 @@ export function registerGroupSyncRoutes(router, authenticate) {
 		const { username } = membership
 		const { summarizeArchiveStorage } = await import('../../chat/archive/index.mjs')
 		res.status(200).json({ files: await summarizeArchiveStorage(username, groupId) })
+	})
+
+	router.post(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/archive\/sync$/, authenticate, async (req, res) => {
+		const groupId = req.params[0]
+		const membership = await resolveGroupMember(req, res, groupId)
+		if (!membership) return
+		const { username } = membership
+		const { ensureFederationRoom } = await import('../../chat/federation/room.mjs')
+		const { syncMissingArchiveMonths } = await import('../../chat/archive/syncMonths.mjs')
+		const slot = await ensureFederationRoom(username, groupId)
+		if (!slot)
+			return res.status(503).json({ error: 'federation room unavailable' })
+		res.status(200).json(await syncMissingArchiveMonths(username, groupId, slot))
 	})
 
 	router.delete(/^\/api\/parts\/shells:chat\/groups\/([^/]+)\/archive$/, authenticate, async (req, res) => {

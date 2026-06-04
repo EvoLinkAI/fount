@@ -12,6 +12,7 @@ import {
 	RELAY_BUMP_DEDUPE_MS,
 	relayBumpIsDuplicate,
 } from './reputation_relay_dedupe.mjs'
+import { pickNodeScoreFromReputation } from './reputation_pick_score.mjs'
 import { invalidateTrustGraphCache } from './trust_graph_cache.mjs'
 import { recordWantIdsBackoff, wantIdsPeerKey } from './want_ids.mjs'
 
@@ -24,6 +25,7 @@ const PENALTY_UNKNOWN_WANT = 0.12
 const PENALTY_MESSAGE_RATE = 0.15
 const CHUNK_STORE_REP_BUMP = 0.03
 const CHUNK_FETCH_FAIL_PENALTY = 0.08
+const ARCHIVE_SERVE_MISMATCH_PENALTY = 0.08
 const RELAY_REP_BUMP = 0.02
 const DEFAULT_SLASH_ALERT_TTL_MS = 86_400_000
 const MAX_RELAY_BUMP_SEEN = 2000
@@ -240,6 +242,21 @@ export function penalizeChunkStorageFailure(username, groupId, blamePeerKey) {
 }
 
 /**
+ * 冷归档联邦应答 digest 与仲裁赢家不一致时惩罚对端。
+ * @param {string} username 用户
+ * @param {string} groupId 群 scope
+ * @param {string} peerNodeHash 对端 nodeHash
+ * @returns {void}
+ */
+export function penalizeArchiveServeMismatch(username, groupId, peerNodeHash) {
+	const id = String(peerNodeHash || '').trim()
+	if (!id) return
+	void mutateReputation(username, data => {
+		adjustNodeReputation(data, id, groupId, -ARCHIVE_SERVE_MISMATCH_PENALTY)
+	})
+}
+
+/**
  * @param {object | null | undefined} groupSettings 群设置
  * @returns {number} 毫秒
  */
@@ -393,9 +410,5 @@ export function seedMemberReputationFromIntroducer(username, memberPubKeyHash, i
  * @returns {number} 信誉分
  */
 export function pickNodeScore(username, nodeId, groupId = '') {
-	const row = loadReputation(username).byNodeHash[nodeId]
-	if (!row) return 0
-	const gid = String(groupId || '').trim()
-	if (gid && row.scopes?.[gid] != null) return Number(row.scopes[gid])
-	return Number(row.score ?? 0)
+	return pickNodeScoreFromReputation(loadReputation(username), nodeId, groupId)
 }

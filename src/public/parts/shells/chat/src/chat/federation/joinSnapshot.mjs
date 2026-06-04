@@ -28,7 +28,8 @@ export { parseJoinSnapshotRequest, parseJoinSnapshotResponse } from './fedPullWi
  * 入群快照响应中每频道附带的历史消息条数上限。
  */
 export const JOIN_SNAPSHOT_PER_CHANNEL = 500
-const SNAPSHOT_WAIT_MS = 4000
+const SNAPSHOT_WAIT_MS = 8000
+const SNAPSHOT_RETRY_MAX = 1
 
 /** @type {Map<string, { resolve: (v: object | null) => void, timer: ReturnType<typeof setTimeout> }>} */
 const pendingSnapshots = new Map()
@@ -61,7 +62,7 @@ export async function applyJoinSnapshotResponse(username, groupId, envelope) {
 	}
 	const inner = await unwrapPullEnvelopeForLocalMember(username, groupId, envelope)
 	if (!inner) return { applied: false, channels: 0 }
-	await applyPullInner(username, groupId, inner)
+	await applyPullInner(username, groupId, inner, { pullRequestId: envelope.requestId })
 	return {
 		applied: true,
 		channels: Object.keys(inner.channelHistories || {}).length,
@@ -123,33 +124,42 @@ export async function requestJoinSnapshotFromPeers(username, groupId, slot) {
 	const { readJsonl } = requireDagDeps()
 	const nodeHash = federationNodeHash(username)
 	const localArchive = await loadLocalFederationArchive(username, groupId, readJsonl)
-	const requestId = randomUUID()
-	const attestation = await signPullAttestation(username, groupId, { requestId })
-	const request = {
-		requestId,
-		requesterNodeHash: nodeHash,
-		requesterPubKeyHash: attestation.requesterPubKeyHash,
-		groupId,
-		tipsHash: localArchive.summary?.tipsHash || '',
-		attestation,
-	}
-	const responsePromise = new Promise(resolve => {
-		const timer = setTimeout(() => {
-			pendingSnapshots.delete(snapshotWaitKey(username, groupId, requestId))
-			resolve(null)
-		}, SNAPSHOT_WAIT_MS)
-		pendingSnapshots.set(snapshotWaitKey(username, groupId, requestId), { resolve, timer })
-	})
 	const groupSettings = await loadFederationGroupSettings(username, groupId)
 	const roster = slot.getRoster()
-	const targets = await pickFederationTargetPeerIds(username, groupId, roster, groupSettings, nodeHash)
-	if (targets.length)
-		for (const peerId of targets)
-			slot.send('fed_join_snapshot_request',request, peerId)
-	else
-		slot.send('fed_join_snapshot_request',request, null)
 
-	const envelope = await responsePromise
+	/**
+	 * @returns {Promise<object | null>}
+	 */
+	const sendOnce = async () => {
+		const requestId = randomUUID()
+		const attestation = await signPullAttestation(username, groupId, { requestId })
+		const request = {
+			requestId,
+			requesterNodeHash: nodeHash,
+			requesterPubKeyHash: attestation.requesterPubKeyHash,
+			groupId,
+			tipsHash: localArchive.summary?.tipsHash || '',
+			attestation,
+		}
+		const responsePromise = new Promise(resolve => {
+			const timer = setTimeout(() => {
+				pendingSnapshots.delete(snapshotWaitKey(username, groupId, requestId))
+				resolve(null)
+			}, SNAPSHOT_WAIT_MS)
+			pendingSnapshots.set(snapshotWaitKey(username, groupId, requestId), { resolve, timer })
+		})
+		const targets = await pickFederationTargetPeerIds(username, groupId, roster, groupSettings, nodeHash)
+		if (targets.length)
+			for (const peerId of targets)
+				slot.send('fed_join_snapshot_request', request, peerId)
+		else
+			slot.send('fed_join_snapshot_request', request, null)
+		return responsePromise
+	}
+
+	let envelope = await sendOnce()
+	for (let attempt = 0; !envelope && attempt < SNAPSHOT_RETRY_MAX; attempt++)
+		envelope = await sendOnce()
 	if (!envelope) return { applied: false, channels: 0 }
 	return await applyJoinSnapshotResponse(username, groupId, envelope)
 }
