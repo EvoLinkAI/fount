@@ -1,10 +1,11 @@
 /**
  * 频道域密钥 K_ch：HPKE 包装（X25519 ECIES）与 AES-GCM 消息信封（scheme: ckg）。
+ * CKG 解密 payload 不可脱离外层 DAG Ed25519 签名上下文单独传递或信任。
  */
 import { Buffer } from 'node:buffer'
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto'
 
-import { decryptH, encryptHForMember } from './gsh.mjs'
+import { unwrapMasterKeyForMember, wrapMasterKeyForMember } from './key_crypto.mjs'
 
 /** @typedef {{ ephemPub: string, iv: string, ciphertext: string, authTag: string }} HpkeWrapBlob */
 
@@ -23,7 +24,7 @@ export function generateChannelKey() {
  * @returns {HpkeWrapBlob} HPKE 包装结果
  */
 export function wrapChannelKey(channelKeyHex, memberEdPubKeyHex) {
-	return encryptHForMember(channelKeyHex, memberEdPubKeyHex)
+	return wrapMasterKeyForMember(channelKeyHex, memberEdPubKeyHex)
 }
 
 /**
@@ -32,7 +33,7 @@ export function wrapChannelKey(channelKeyHex, memberEdPubKeyHex) {
  * @returns {string | null} K_ch hex
  */
 export function unwrapChannelKey(wrap, myEdPrivKeySeed) {
-	return decryptH(wrap, myEdPrivKeySeed)
+	return unwrapMasterKeyForMember(wrap, myEdPrivKeySeed)
 }
 
 /**

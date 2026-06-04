@@ -1,21 +1,28 @@
 /**
- * 冷归档按月联邦拉取：PullAttestation + 多 peer 信誉 digest 仲裁。
+ * 冷归档按月联邦拉取：PullAttestation + chunk meta + 多 peer 信誉 digest 仲裁。
  */
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 
 import { penalizeArchiveServeMismatch } from '../../../../../../../scripts/p2p/reputation_user.mjs'
-import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 import { loadArchiveManifest, saveArchiveManifest } from '../archive/index.mjs'
+import {
+	prepareArchiveMonthChunkMeta,
+	resolveArchiveMonthCandidateBody,
+} from '../archive/monthChunks.mjs'
 import {
 	digestArchiveMonthBody,
 	pickArchiveMonthByReputation,
 } from '../archive/monthDigest.mjs'
+import { assertArchiveSealChainValid } from '../archive/seal.mjs'
 import { archiveMonthKey } from '../archive/settings.mjs'
 import { pickFederationTargetPeerIds } from '../governance/peerPool.mjs'
 import { channelArchivePath } from '../lib/paths.mjs'
 
 import { markArchiveMonthIncomplete } from './archiveMonthMark.mjs'
+/**
+ *
+ */
 export { parseFedArchiveMonthResponse, parseFedArchiveMonthWant } from './archiveMonthWire.mjs'
 import { federationNodeHash, loadFederationGroupSettings, loadFederationMaterializedState } from './deps.mjs'
 import {
@@ -55,9 +62,9 @@ export async function handleFedArchiveMonthWant(username, groupId, request, peer
 	const path = channelArchivePath(username, groupId, request.channelId, request.utcMonth)
 	const manifest = await loadArchiveManifest(username, groupId)
 	const seal = manifest.seals?.[request.channelId] || null
-	let body = ''
+	let bodyUtf8 = ''
 	try {
-		body = await readFile(path, 'utf8')
+		bodyUtf8 = await readFile(path, 'utf8')
 	}
 	catch {
 		sendResponse({
@@ -66,17 +73,20 @@ export async function handleFedArchiveMonthWant(username, groupId, request, peer
 			utcMonth: request.utcMonth,
 			complete: false,
 			reason: 'missing',
-			body: '',
+			digest: '',
+			parts: [],
 			seal,
 		}, peerId)
 		return
 	}
+	const { digest, parts } = await prepareArchiveMonthChunkMeta(username, bodyUtf8)
 	sendResponse({
 		requestId: request.requestId,
 		channelId: request.channelId,
 		utcMonth: request.utcMonth,
 		complete: true,
-		body,
+		digest,
+		parts,
 		seal,
 	}, peerId)
 }
@@ -95,7 +105,8 @@ export function noteFedArchiveMonthResponse(username, groupId, response, peerNod
 	if (!pending) return
 	pending.candidates.push({
 		peerNodeHash: String(peerNodeHash || '').trim(),
-		body: response.body,
+		digest: response.digest,
+		parts: response.parts,
 		seal: response.seal,
 		complete: response.complete,
 		reason: response.reason,
@@ -109,15 +120,21 @@ export function noteFedArchiveMonthResponse(username, groupId, response, peerNod
  * @returns {Promise<{ applied: boolean }>} 是否写入
  */
 export async function applyArchiveMonthWinner(username, groupId, winner) {
-	if (!winner?.body || !winner.channelId || !winner.utcMonth)
-		return { applied: false }
+	if (!winner?.channelId || !winner?.utcMonth) return { applied: false }
+	if (typeof winner.body !== 'string') return { applied: false }
 	const manifest = await loadArchiveManifest(username, groupId)
+	if (winner.seal) {
+		const localSeal = manifest.seals?.[winner.channelId] || null
+		if (!await assertArchiveSealChainValid(username, groupId, winner.channelId, winner.seal, localSeal))
+			return { applied: false }
+	}
 	const { digest } = digestArchiveMonthBody(winner.body)
 	const { writeFile, mkdir } = await import('node:fs/promises')
 	const { dirname } = await import('node:path')
 	const path = channelArchivePath(username, groupId, winner.channelId, winner.utcMonth)
 	await mkdir(dirname(path), { recursive: true })
-	await writeFile(path, winner.body.endsWith('\n') ? winner.body : `${winner.body}\n`, 'utf8')
+	const bodyText = winner.body.endsWith('\n') ? winner.body : `${winner.body}\n`
+	await writeFile(path, bodyText, 'utf8')
 	if (!manifest.channels[winner.channelId]) manifest.channels[winner.channelId] = { months: [] }
 	if (!manifest.channels[winner.channelId].months.includes(winner.utcMonth))
 		manifest.channels[winner.channelId].months.push(winner.utcMonth)
@@ -129,6 +146,28 @@ export async function applyArchiveMonthWinner(username, groupId, winner) {
 		.every(row => row?.complete !== false)
 	await saveArchiveManifest(username, groupId, manifest)
 	return { applied: true }
+}
+
+/**
+ * @param {string} username replica
+ * @param {string} groupId 群 ID
+ * @param {object} slot 联邦槽
+ * @param {Array<object>} candidates 原始候选
+ * @returns {Promise<object[]>} 含 body 的候选
+ */
+async function resolveArchiveMonthCandidates(username, groupId, slot, candidates) {
+	/** @type {object[]} */
+	const resolved = []
+	for (const row of candidates) {
+		const body = await resolveArchiveMonthCandidateBody(username, groupId, slot, row)
+		if (body === null) {
+			if (row.peerNodeHash)
+				penalizeArchiveServeMismatch(username, groupId, row.peerNodeHash)
+			continue
+		}
+		resolved.push({ ...row, body })
+	}
+	return resolved
 }
 
 /**
@@ -175,10 +214,16 @@ export async function pullArchiveMonthQuorum(username, groupId, slot, channelId,
 	else
 		slot.send('fed_archive_month_want', request, null)
 
-	const candidates = await collectPromise
-	if (!candidates.length) {
+	const rawCandidates = await collectPromise
+	if (!rawCandidates.length) {
 		await markArchiveMonthIncomplete(username, groupId, channelId, utcMonth, 'timeout')
 		return { applied: false, reason: 'timeout' }
+	}
+
+	const candidates = await resolveArchiveMonthCandidates(username, groupId, slot, rawCandidates)
+	if (!candidates.length) {
+		await markArchiveMonthIncomplete(username, groupId, channelId, utcMonth, 'chunk_fetch_failed')
+		return { applied: false, reason: 'chunk_fetch_failed' }
 	}
 
 	const manifest = await loadArchiveManifest(username, groupId)
@@ -200,7 +245,7 @@ export async function pullArchiveMonthQuorum(username, groupId, slot, channelId,
 
 	const winnerDigest = picked.digest
 	for (const row of candidates) {
-		if (!row.peerNodeHash || !row.complete || !row.body) continue
+		if (!row.peerNodeHash || !row.complete || row.body == null) continue
 		const { digest } = digestArchiveMonthBody(row.body)
 		if (digest && digest !== winnerDigest)
 			penalizeArchiveServeMismatch(username, groupId, row.peerNodeHash)

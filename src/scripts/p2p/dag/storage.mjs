@@ -67,7 +67,9 @@ export async function rewriteJsonlKeeping(filePath, keep, options = {}) {
 	 */
 	const flush = async () => {
 		if (!buffer.length) return
-		const block = buffer.map(row => `${JSON.stringify(row)}\n`).join('')
+		let block = ''
+		for (const row of buffer)
+			block += `${JSON.stringify(row)}\n`
 		await appendFile(tmp, block, 'utf8')
 		buffer.length = 0
 	}
@@ -153,9 +155,10 @@ export async function writeJsonl(filePath, records) {
 	const stream = createWriteStream(tmp, { encoding: 'utf8' })
 	try {
 		for (let i = 0; i < records.length; i += WRITE_JSONL_CHUNK_LINES) {
-			const chunk = records.slice(i, i + WRITE_JSONL_CHUNK_LINES)
-				.map(record => `${JSON.stringify(record)}\n`)
-				.join('')
+			let chunk = ''
+			const end = Math.min(records.length, i + WRITE_JSONL_CHUNK_LINES)
+			for (let j = i; j < end; j++)
+				chunk += `${JSON.stringify(records[j])}\n`
 			if (!stream.write(chunk))
 				await new Promise(resolve => stream.once('drain', resolve))
 		}

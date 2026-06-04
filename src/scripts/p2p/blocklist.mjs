@@ -4,6 +4,7 @@ import { createLruMap } from '../memo.mjs'
 import { compositeKey } from './composite_key.mjs'
 import { parseEntityHash } from './entity_id.mjs'
 import { isHex64, normalizeHex64 } from './hexIds.mjs'
+import { withAsyncMutex } from './utils/async_mutex.mjs'
 
 const DATA_NAME = 'blocklist'
 const INDEX_BY_USER_MAX = 256
@@ -20,9 +21,6 @@ const INDEX_BY_USER_MAX = 256
 /** @type {ReturnType<typeof createLruMap<string, BlocklistIndex>>} */
 const indexByUser = createLruMap(INDEX_BY_USER_MAX)
 
-/** @type {Map<string, Promise<void>>} */
-const blocklistWriteChains = new Map()
-
 /**
  * 串行化拉黑表写路径，避免并发 load/save 覆写。
  * @param {string} username replica 登录名
@@ -30,16 +28,7 @@ const blocklistWriteChains = new Map()
  * @returns {Promise<void>}
  */
 function mutateBlocklist(username, mutator) {
-	const prev = blocklistWriteChains.get(username) || Promise.resolve()
-	const task = prev.catch(() => { }).then(async () => {
-		await mutator()
-	})
-	const finalTask = task.finally(() => {
-		if (blocklistWriteChains.get(username) === finalTask)
-			blocklistWriteChains.delete(username)
-	})
-	blocklistWriteChains.set(username, finalTask)
-	return task
+	return withAsyncMutex(`blocklist:${username}`, mutator)
 }
 
 /**

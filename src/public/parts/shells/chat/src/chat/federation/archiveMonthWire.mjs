@@ -1,7 +1,9 @@
 /**
  * 冷归档按月联邦 wire 解析（无 DAG/peerPool 依赖，供单元测试 import）。
  */
+import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
+import { parseArchiveMonthWireParts } from '../archive/monthChunks.mjs'
 
 /**
  * @param {unknown} payload wire 载荷
@@ -36,13 +38,21 @@ export function parseFedArchiveMonthResponse(payload) {
 	const channelId = String(payload.channelId || '').trim()
 	const utcMonth = String(payload.utcMonth || '').trim()
 	if (!requestId || !channelId || !/^\d{4}-\d{2}$/u.test(utcMonth)) return null
+	if (typeof payload.body === 'string' && payload.body.length) return null
+	const complete = payload.complete !== false
+	const digest = String(payload.digest || '').trim().toLowerCase()
+	const parts = complete
+		? parseArchiveMonthWireParts(payload.parts) ?? null
+		: []
+	if (complete && (!isHex64(digest) || parts === null)) return null
 	return {
 		requestId,
 		channelId,
 		utcMonth,
-		body: typeof payload.body === 'string' ? payload.body : '',
+		digest: complete ? digest : '',
+		parts: complete ? parts : [],
 		seal: isPlainObject(payload.seal) ? payload.seal : null,
-		complete: payload.complete !== false,
+		complete,
 		reason: String(payload.reason || '').trim(),
 	}
 }

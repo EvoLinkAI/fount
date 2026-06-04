@@ -7,7 +7,7 @@ import {
 	encryptConvergentPlaintext,
 	encryptRandomPlaintext,
 	wrapContentKey,
-} from '../gsh.mjs'
+} from '../key_crypto.mjs'
 
 import { normalizeFileManifest, publicTransferKeyDescriptor } from './manifest.mjs'
 

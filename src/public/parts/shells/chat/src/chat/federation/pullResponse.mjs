@@ -1,7 +1,7 @@
 /**
  * 联邦补拉 HPKE 响应封装与解包。
  */
-import { encryptUtf8ForMember, decryptUtf8ForMember } from '../../../../../../../scripts/p2p/gsh.mjs'
+import { encryptUtf8ForMember, decryptUtf8ForMember } from '../../../../../../../scripts/p2p/key_crypto.mjs'
 
 /**
  * @param {string} recipientEdPubKeyHex 接收方 Ed25519 公钥 hex

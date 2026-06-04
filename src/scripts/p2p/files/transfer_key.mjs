@@ -5,7 +5,7 @@ import {
 	decryptConvergentCiphertext,
 	decryptRandomCiphertext,
 	unwrapContentKey,
-} from '../gsh.mjs'
+} from '../key_crypto.mjs'
 
 /**
  * @typedef {import('./manifest.mjs').FileManifest} FileManifest
@@ -15,7 +15,7 @@ import {
 /**
  * @param {TransferKeyDescriptor} descriptor 传递密钥描述符
  * @param {FileManifest} manifest manifest
- * @param {{ getGroupFileMasterKey?: (groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultH?: (entityHash: string) => Promise<Buffer | string | null> }} deps 密钥源
+ * @param {{ getGroupFileMasterKey?: (groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultMasterKey?: (entityHash: string) => Promise<Buffer | string | null> }} deps 密钥源
  * @returns {Promise<Buffer | null>} contentKey；plain/convergent 返回 null（按 contentHash 派生）
  */
 export async function resolveContentKey(descriptor, manifest, deps = {}) {
@@ -35,8 +35,8 @@ export async function resolveContentKey(descriptor, manifest, deps = {}) {
 	if (type === 'vault-wrap') {
 		const entityHash = descriptor.entityHash
 		const fileId = descriptor.fileId
-		if (!entityHash || !fileId || !descriptor.wrappedKey || !deps.getVaultH) return null
-		const vaultKey = await deps.getVaultH(String(entityHash))
+		if (!entityHash || !fileId || !descriptor.wrappedKey || !deps.getVaultMasterKey) return null
+		const vaultKey = await deps.getVaultMasterKey(String(entityHash))
 		if (!vaultKey) return null
 		return unwrapContentKey(descriptor.wrappedKey, vaultKey, fileId)
 	}
@@ -66,7 +66,7 @@ export function decryptPart(encryptedPartBytes, manifest, contentKey) {
 /**
  * @param {FileManifest} manifest manifest
  * @param {Array<Buffer | Uint8Array>} partBytes 按序密文块
- * @param {{ getGroupFileMasterKey?: Function, getVaultH?: Function }} deps 密钥源
+ * @param {{ getGroupFileMasterKey?: Function, getVaultMasterKey?: Function }} deps 密钥源
  * @returns {Promise<Buffer | null>} 完整明文
  */
 export async function assembleManifestPlaintext(manifest, partBytes, deps = {}) {

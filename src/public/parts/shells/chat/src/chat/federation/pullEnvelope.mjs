@@ -4,6 +4,7 @@
 import { writeJsonAtomicSynced } from '../../../../../../../scripts/p2p/dag/storage.mjs'
 import { extractInboundSignedEvent, isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 import { loadArchiveManifest, saveArchiveManifest } from '../archive/index.mjs'
+import { assertArchiveSealChainValid } from '../archive/seal.mjs'
 import { encryptSignedEventForWire } from '../channel_keys/content.mjs'
 import { getState } from '../dag/materialize.mjs'
 import { mergeChannelHistories } from '../dag/queries.mjs'
@@ -98,6 +99,14 @@ export async function applyPullInner(username, groupId, inner, opts = {}) {
 	}
 	if (isPlainObject(inner.archiveManifest)) {
 		const local = await loadArchiveManifest(username, groupId)
+		/** @type {Record<string, object>} */
+		const mergedSeals = { ...local.seals }
+		for (const [channelId, remoteSeal] of Object.entries(inner.archiveManifest.seals || {})) {
+			if (!remoteSeal || typeof remoteSeal !== 'object') continue
+			const localSeal = local.seals?.[channelId] || null
+			if (await assertArchiveSealChainValid(username, groupId, channelId, remoteSeal, localSeal))
+				mergedSeals[channelId] = remoteSeal
+		}
 		await saveArchiveManifest(username, groupId, {
 			...local,
 			...inner.archiveManifest,
@@ -105,7 +114,7 @@ export async function applyPullInner(username, groupId, inner, opts = {}) {
 				...local.archivedEventIds,
 				...inner.archiveManifest.archivedEventIds || {},
 			},
-			seals: { ...local.seals, ...inner.archiveManifest.seals || {} },
+			seals: mergedSeals,
 			monthDigests: (() => {
 				const merged = { ...local.monthDigests }
 				for (const [ch, months] of Object.entries(inner.archiveManifest.monthDigests || {})) {

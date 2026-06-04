@@ -2,13 +2,13 @@ import { Buffer } from 'node:buffer'
 
 import { publicKeyFromSeed } from '../../../../../../scripts/p2p/crypto.mjs'
 import { getFederationIdentitySecret } from '../../../../../../scripts/p2p/federation/identity.mjs'
-import { decryptH } from '../../../../../../scripts/p2p/gsh.mjs'
+import { unwrapMasterKeyForMember } from '../../../../../../scripts/p2p/key_crypto.mjs'
 import { normalizeHex64, isHex64 } from '../../../../../../scripts/p2p/hexIds.mjs'
 
-import { saveVaultGsh } from './vault.mjs'
+import { saveVaultMasterKey } from './vault.mjs'
 
 /**
- * 从 follow_approve 事件导入 vault H（关注者侧解密）。
+ * 从 follow_approve 事件导入 vault 主密钥（关注者侧解密）。
  * @param {string} username 本地用户
  * @param {string} entityHash 时间线 owner
  * @param {object} event 签名事件
@@ -27,11 +27,11 @@ export async function tryImportFollowApproveVault(username, entityHash, event) {
 	const myPubHex = normalizeHex64(Buffer.from(publicKeyFromSeed(secretKey)).toString('hex'))
 	if (myPubHex !== targetPubKeyHex) return false
 
-	const hHex = decryptH(encrypted, secretKey)
-	if (!hHex || !isHex64(hHex)) return false
+	const masterKeyHex = unwrapMasterKeyForMember(encrypted, secretKey)
+	if (!masterKeyHex || !isHex64(masterKeyHex)) return false
 
-	await saveVaultGsh(username, entityHash, {
-		H: hHex,
+	await saveVaultMasterKey(username, entityHash, {
+		masterKey: masterKeyHex,
 		generation: Number(event.content?.generation ?? 0),
 	})
 	return true

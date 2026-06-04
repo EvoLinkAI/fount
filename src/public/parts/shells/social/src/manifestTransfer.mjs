@@ -3,7 +3,7 @@ import {
 	unregisterTransferKeyDeps,
 } from '../../../../../scripts/p2p/files/transfer_key_registry.mjs'
 
-import { loadVaultGsh } from './gsh/vault.mjs'
+import { loadVaultMasterKey } from './vault_crypto/vault.mjs'
 
 const OWNER_ID = 'social'
 
@@ -18,9 +18,9 @@ export function registerSocialManifestTransfer() {
 		 * @param {string} entityHash vault entity
 		 * @returns {Promise<Buffer | string | null>} 密钥材料
 		 */
-		async getVaultH(replicaUsername, entityHash) {
-			const state = await loadVaultGsh(replicaUsername, entityHash)
-			return state.H
+		async getVaultMasterKey(replicaUsername, entityHash) {
+			const state = await loadVaultMasterKey(replicaUsername, entityHash)
+			return state.masterKey
 		},
 	})
 }

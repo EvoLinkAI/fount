@@ -46,6 +46,8 @@ export const hubStore = {
 	channelSearchQuery: null,
 	/** 订阅后 Hub 消息列表滚动/高亮目标 eventId */
 	focusedMessageEventId: null,
+	/** 虚拟列表重建时的 scoped 滚动锚点 */
+	pendingScrollTarget: null,
 	/** 好友私聊（角色或用户 DM）；角色时与联邦群 `currentGroupId` 互斥，用户 DM 时复用 `currentGroupId` 拉频道消息。 */
 	privateGroup: {
 		groupId: null,

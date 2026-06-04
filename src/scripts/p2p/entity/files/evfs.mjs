@@ -96,8 +96,8 @@ export async function readManifestPlaintext(replicaUsername, manifest, opts = {}
 		getGroupFileMasterKey: rawDeps.getGroupFileMasterKey
 			? (groupId, keyGeneration) => rawDeps.getGroupFileMasterKey(replicaUsername, groupId, keyGeneration)
 			: undefined,
-		getVaultH: rawDeps.getVaultH
-			? entityHash => rawDeps.getVaultH(replicaUsername, entityHash)
+		getVaultMasterKey: rawDeps.getVaultMasterKey
+			? entityHash => rawDeps.getVaultMasterKey(replicaUsername, entityHash)
 			: undefined,
 	}
 	return assembleManifestPlaintext(manifest, partBytes, deps)

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 
 import { getEntityProfile } from './feed.mjs'
-import { maybeDecryptPostContent } from './gsh/vault.mjs'
+import { maybeDecryptPostContent } from './vault_crypto/vault.mjs'
 import { savedPostsPath } from './paths.mjs'
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
 

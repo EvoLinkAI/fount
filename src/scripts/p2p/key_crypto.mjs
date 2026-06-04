@@ -1,10 +1,5 @@
 /**
- * GSH（Group Secret Hash）统一加密方案（§11）
- *
- * H 是 32 字节随机群秘密哈希，存储在本节点 `gsh.json`。
- * 所有消息/文件密钥均由 H 通过 HMAC-SHA256 推导，无需每成员单独分发密钥。
- *
- * 禁止：mailbox-ECDH、Megolm、Sender-Keys、encrypted_mailbox_batch。
+ * 群/实体主密钥 KDF 与 ECIES 封装（频道 K_ch、fileMasterKey、vault master key）。
  */
 
 import { Buffer } from 'node:buffer'
@@ -21,7 +16,7 @@ const KDF_CACHE_MAX = 512
 const kdfCache = createLruMap(KDF_CACHE_MAX)
 
 /** 清空 KDF 派生缓存（H 轮换后调用）。 */
-export function clearGshKdfCache() {
+export function clearMasterKeyKdfCache() {
 	kdfCache.clear()
 }
 
@@ -217,11 +212,11 @@ function edPrivToX25519(seed) {
  * 使用临时 X25519 密钥对 + ECDH（ECIES 模式），ephemeral key 保证 forward secrecy。
  * wrapKey = SHA256(sharedSecret)；iv 随机生成。
  *
- * @param {string} H_hex 当前群秘密（hex）
+ * @param {string} masterKeyHex 当前群秘密（hex）
  * @param {string} memberEdPubKeyHex 新成员 Ed25519 公钥（hex，64字符）
  * @returns {{ ephemPub: string, iv: string, ciphertext: string, authTag: string }} ECIES 加密结果（ephemPub + AES-GCM 密文）
  */
-export function encryptHForMember(H_hex, memberEdPubKeyHex) {
+export function wrapMasterKeyForMember(masterKeyHex, memberEdPubKeyHex) {
 	const memberX25519Pub = edPubToX25519(Buffer.from(memberEdPubKeyHex, 'hex'))
 	const ephemPriv = x25519.utils.randomSecretKey()
 	const ephemPub = x25519.getPublicKey(ephemPriv)
@@ -229,7 +224,7 @@ export function encryptHForMember(H_hex, memberEdPubKeyHex) {
 	const wrapKey = createHash('sha256').update(sharedSecret).digest()
 	const iv = randomBytes(12)
 	const cipher = createCipheriv('aes-256-gcm', wrapKey, iv)
-	const H_bytes = Buffer.from(H_hex, 'hex')
+	const H_bytes = Buffer.from(masterKeyHex, 'hex')
 	const ciphertext = Buffer.concat([cipher.update(H_bytes), cipher.final()])
 	const authTag = cipher.getAuthTag()
 	return {
@@ -243,11 +238,11 @@ export function encryptHForMember(H_hex, memberEdPubKeyHex) {
 /**
  * 用本节点 Ed25519 私钥种子解密 `peer_invite` 中的 `encrypted_H`（§11.1）。
  *
- * @param {{ ephemPub: string, iv: string, ciphertext: string, authTag: string }} encryptedH `encryptHForMember` 的输出对象
+ * @param {{ ephemPub: string, iv: string, ciphertext: string, authTag: string }} encryptedH `wrapMasterKeyForMember` 的输出对象
  * @param {Uint8Array} myEdPrivKeySeed 32 字节私钥种子
  * @returns {string | null} 解密后的 H（hex）；失败返回 null
  */
-export function decryptH(encryptedH, myEdPrivKeySeed) {
+export function unwrapMasterKeyForMember(encryptedH, myEdPrivKeySeed) {
 	try {
 		const myX25519Priv = edPrivToX25519(myEdPrivKeySeed)
 		const ephemPub = Buffer.from(encryptedH.ephemPub, 'base64')

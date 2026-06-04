@@ -3,7 +3,7 @@
  */
 import { randomUUID } from 'node:crypto'
 
-import { decryptUtf8ForMember, encryptUtf8ForMember } from '../../../../../../../scripts/p2p/gsh.mjs'
+import { decryptUtf8ForMember, encryptUtf8ForMember } from '../../../../../../../scripts/p2p/key_crypto.mjs'
 import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 import { pickFederationTargetPeerIds } from '../governance/peerPool.mjs'

@@ -8,12 +8,13 @@ import {
 	seedReputationFromIntro,
 	subjectiveSlashPenalty,
 } from './reputation.mjs'
+import { pickNodeScoreFromReputation } from './reputation_pick_score.mjs'
 import {
 	RELAY_BUMP_DEDUPE_MS,
 	relayBumpIsDuplicate,
 } from './reputation_relay_dedupe.mjs'
-import { pickNodeScoreFromReputation } from './reputation_pick_score.mjs'
 import { invalidateTrustGraphCache } from './trust_graph_cache.mjs'
+import { withAsyncMutex } from './utils/async_mutex.mjs'
 import { recordWantIdsBackoff, wantIdsPeerKey } from './want_ids.mjs'
 
 const DATA_NAME = 'reputation'
@@ -106,9 +107,6 @@ const REPUTATION_BY_USER_MAX = 256
 /** @type {ReturnType<typeof createLruMap<string, ReputationFile>>} */
 const reputationByUser = createLruMap(REPUTATION_BY_USER_MAX)
 
-/** @type {Map<string, Promise<void>>} */
-const reputationWriteChains = new Map()
-
 /**
  * 串行化信誉表突变，避免跨 await 的陈旧闭包覆盖。
  * @param {string} username 用户
@@ -116,18 +114,11 @@ const reputationWriteChains = new Map()
  * @returns {Promise<void>}
  */
 function mutateReputation(username, mutator) {
-	const prev = reputationWriteChains.get(username) || Promise.resolve()
-	const task = prev.catch(() => { }).then(async () => {
+	return withAsyncMutex(`reputation:${username}`, async () => {
 		const data = loadReputation(username)
 		await mutator(data)
 		saveReputation(username, data)
 	})
-	const finalTask = task.finally(() => {
-		if (reputationWriteChains.get(username) === finalTask)
-			reputationWriteChains.delete(username)
-	})
-	reputationWriteChains.set(username, finalTask)
-	return task
 }
 
 /**

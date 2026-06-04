@@ -2,37 +2,48 @@ import { Buffer } from 'node:buffer'
 import { randomUUID, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 
-import { deriveSocialPostKey, encryptHForMember, generateFileMasterKey } from '../../../../../../scripts/p2p/gsh.mjs'
+import {
+	deriveSocialPostKey,
+	generateFileMasterKey,
+	wrapMasterKeyForMember,
+} from '../../../../../../scripts/p2p/key_crypto.mjs'
 import { vaultGroupId } from '../../../../../../scripts/p2p/social_namespace.mjs'
 import { vaultStatePath } from '../paths.mjs'
 
 /**
- * 读取或初始化 GSH vault 状态（H 与 generation）。
+ * 读取或初始化 vault 主密钥状态。
  * @param {string} username 用户
  * @param {string} entityHash owner
- * @returns {Promise<{ H: string, generation: number }>} GSH vault 状态
+ * @returns {Promise<{ masterKey: string, generation: number }>} vault 主密钥状态
  */
-export async function loadVaultGsh(username, entityHash) {
+export async function loadVaultMasterKey(username, entityHash) {
 	try {
-		return JSON.parse(await readFile(vaultStatePath(username, entityHash), 'utf8'))
+		const raw = JSON.parse(await readFile(vaultStatePath(username, entityHash), 'utf8'))
+		return {
+			masterKey: String(raw.masterKey || raw.H || ''),
+			generation: Number(raw.generation) || 0,
+		}
 	}
 	catch {
-		const state = { H: generateFileMasterKey(), generation: 0 }
-		await saveVaultGsh(username, entityHash, state)
+		const state = { masterKey: generateFileMasterKey(), generation: 0 }
+		await saveVaultMasterKey(username, entityHash, state)
 		return state
 	}
 }
 
 /**
- * 持久化 GSH vault 状态。
+ * 持久化 vault 主密钥状态。
  * @param {string} username 用户
  * @param {string} entityHash owner
- * @param {{ H: string, generation: number }} state vault 状态
+ * @param {{ masterKey: string, generation: number }} state vault 状态
  * @returns {Promise<void>}
  */
-export async function saveVaultGsh(username, entityHash, state) {
+export async function saveVaultMasterKey(username, entityHash, state) {
 	await mkdir(`${vaultStatePath(username, entityHash).replace(/[/\\][^/\\]+$/, '')}`, { recursive: true })
-	await writeFile(vaultStatePath(username, entityHash), JSON.stringify(state, null, '\t'), 'utf8')
+	await writeFile(vaultStatePath(username, entityHash), JSON.stringify({
+		masterKey: state.masterKey,
+		generation: state.generation,
+	}, null, '\t'), 'utf8')
 }
 
 /**
@@ -69,7 +80,7 @@ function decryptAesGcm(envelope, key) {
 }
 
 /**
- * 对 followers 可见帖加密 content（GSH 方案）。
+ * 对 followers 可见帖加密 content。
  * @param {string} username 用户
  * @param {string} entityHash owner
  * @param {string} postKeyId 帖子密钥 id（client 生成 UUID，独立于 event.id）
@@ -79,8 +90,8 @@ function decryptAesGcm(envelope, key) {
  */
 export async function maybeEncryptPostContent(username, entityHash, postKeyId, content, visibility) {
 	if (visibility !== 'followers') return content
-	const { H } = await loadVaultGsh(username, entityHash)
-	const key = deriveSocialPostKey(H, postKeyId)
+	const { masterKey } = await loadVaultMasterKey(username, entityHash)
+	const key = deriveSocialPostKey(masterKey, postKeyId)
 	const payload = JSON.stringify(content)
 	const encrypted = encryptAesGcm(payload, key)
 	return {
@@ -92,7 +103,7 @@ export async function maybeEncryptPostContent(username, entityHash, postKeyId, c
 }
 
 /**
- * 解密 GSH 加密帖 content；失败返回 null。
+ * 解密 vault 加密帖 content；失败返回 null。
  * @param {string} username 用户
  * @param {string} entityHash owner
  * @param {object} content 事件 content
@@ -100,23 +111,23 @@ export async function maybeEncryptPostContent(username, entityHash, postKeyId, c
  */
 export async function maybeDecryptPostContent(username, entityHash, content) {
 	if (content.scheme !== 'gsh-social') return null
-	const { H } = await loadVaultGsh(username, entityHash)
-	const key = deriveSocialPostKey(H, content.postKeyId)
+	const { masterKey } = await loadVaultMasterKey(username, entityHash)
+	const key = deriveSocialPostKey(masterKey, content.postKeyId)
 	return JSON.parse(decryptAesGcm(content, key))
 }
 
 /**
- * 构建 follow_approve 事件的 GSH 载荷片段。
+ * 构建 follow_approve 事件的 vault 载荷片段。
  * @param {string} username owner 用户
  * @param {string} entityHash owner
  * @param {string} followerPubKeyHex 关注者公钥
  * @returns {Promise<object>} follow_approve 载荷片段
  */
 export async function buildFollowApprovePayload(username, entityHash, followerPubKeyHex) {
-	const { H } = await loadVaultGsh(username, entityHash)
+	const { masterKey } = await loadVaultMasterKey(username, entityHash)
 	return {
 		targetPubKeyHex: followerPubKeyHex,
-		encrypted_H: encryptHForMember(H, followerPubKeyHex),
+		encrypted_H: wrapMasterKeyForMember(masterKey, followerPubKeyHex),
 		vaultGroupId: vaultGroupId(entityHash),
 	}
 }

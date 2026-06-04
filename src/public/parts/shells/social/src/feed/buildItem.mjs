@@ -1,5 +1,5 @@
 import { socialPostKey } from '../../../../../../scripts/p2p/social/post_key.mjs'
-import { maybeDecryptPostContent } from '../gsh/vault.mjs'
+import { maybeDecryptPostContent } from '../vault_crypto/vault.mjs'
 
 /**
  * @param {{ likes: Map<string, number>, reposts: Map<string, number>, replies: Map<string, number> }} engagement 互动计数索引

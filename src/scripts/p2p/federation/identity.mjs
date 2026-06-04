@@ -5,6 +5,7 @@ import { events } from '../../../server/events.mjs'
 import { assignShellData, loadData, saveData } from '../../../server/setting_loader.mjs'
 import { keyPairFromSeed } from '../crypto.mjs'
 import { isHex64 } from '../hexIds.mjs'
+import { normalizeMailboxSettings } from '../mailbox/settings.mjs'
 
 const NODE_SEED_HEX_RE = /^[0-9a-f]{64}$/iu
 
@@ -15,6 +16,11 @@ const NODE_SEED_HEX_RE = /^[0-9a-f]{64}$/iu
 export function ensureFederationDefaults(username) {
 	ensureNodeIdentityPubKey(username)
 	ensureNodeSeed(username)
+	const data = loadData(username, 'federation') || {}
+	if (!data.mailbox || typeof data.mailbox !== 'object') {
+		data.mailbox = normalizeMailboxSettings({})
+		saveData(username, 'federation')
+	}
 	return getFederationSettings(username)
 }
 
@@ -91,6 +97,8 @@ export function saveFederationSettings(username, patch) {
 		if (normalized.length >= 16)
 			assignShellData(username, 'chat', 'dmIntro', { nonce: normalized, rotatedAt: Date.now() })
 	}
+	if (patch.mailbox && typeof patch.mailbox === 'object')
+		data.mailbox = normalizeMailboxSettings({ ...data.mailbox, ...patch.mailbox })
 	saveData(username, 'federation')
 	events.emit('federation-settings-changed', { username })
 	return getFederationSettings(username)

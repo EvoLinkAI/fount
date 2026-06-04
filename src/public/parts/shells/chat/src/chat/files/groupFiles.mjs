@@ -21,7 +21,7 @@ import {
 	encryptRandomPlaintext,
 	unwrapContentKey,
 	wrapContentKey,
-} from '../../../../../../../scripts/p2p/gsh.mjs'
+} from '../../../../../../../scripts/p2p/key_crypto.mjs'
 import { BLOB_STORAGE_LOCATOR_RE, isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { penalizeChunkStorageFailure } from '../../../../../../../scripts/p2p/reputation_user.mjs'
 import { createLocalStoragePlugin } from '../../../../../../../scripts/p2p/storage_plugins.mjs'

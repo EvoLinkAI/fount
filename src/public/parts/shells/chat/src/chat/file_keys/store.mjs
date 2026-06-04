@@ -6,7 +6,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 import { debugLog } from '../../../../../../../scripts/debug_log.mjs'
-import { clearGshKdfCache, deriveNextFileMasterKey } from '../../../../../../../scripts/p2p/gsh.mjs'
+import { clearMasterKeyKdfCache, deriveNextFileMasterKey } from '../../../../../../../scripts/p2p/key_crypto.mjs'
 import { fileMasterKeysPath } from '../lib/paths.mjs'
 
 /** 最多保留多少代历史密钥（用于解密旧文件块） */
@@ -117,7 +117,7 @@ export async function appendFileMasterKey(username, groupId, generation, fileMas
 	if (data.generations.some(g => g.gen === generation)) return
 	data.generations.push({ gen: generation, fileMasterKey: fileMasterKeyHex })
 	data.generations.sort((a, b) => a.gen - b.gen)
-	clearGshKdfCache()
+	clearMasterKeyKdfCache()
 	await saveFileMasterKeys(username, groupId, data)
 }
 

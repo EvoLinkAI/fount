@@ -7,6 +7,8 @@ import { canonicalStringify } from '../../../../../../../scripts/p2p/canonical_j
 import { isHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { pickNodeScoreFromReputation } from '../../../../../../../scripts/p2p/reputation_pick_score.mjs'
 
+import { validateArchiveSealForGroup } from './seal.mjs'
+
 /** 至少 2 个独立 peer 同 digest 时可接受（无正信誉时） */
 export const ARCHIVE_QUORUM_PEER_MIN = 2
 
@@ -110,6 +112,8 @@ export async function pickArchiveMonthByReputation(candidates, username, groupId
 		if (!row.complete || !row.body) continue
 		const peer = String(row.peerNodeHash || '').trim()
 		if (!peer) continue
+		if (row.seal && !await validateArchiveSealForGroup(username, groupId, row.seal))
+			continue
 		const { digest, snapshots } = digestArchiveMonthBody(row.body)
 		if (!digest) continue
 		const inv = inventoryCheck(manifest, channelId, month, snapshots)

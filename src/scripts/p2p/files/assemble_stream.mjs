@@ -6,7 +6,7 @@ import { FEDERATION_CHUNK_MAX_BYTES } from '../constants.mjs'
 import {
 	encryptConvergentPlaintext,
 	encryptRandomPlaintext,
-} from '../gsh.mjs'
+} from '../key_crypto.mjs'
 
 import { decryptPart } from './transfer_key.mjs'
 

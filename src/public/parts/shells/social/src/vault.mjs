@@ -7,7 +7,7 @@ import { buildFileManifestFromEnc, encryptPlaintextToParts, vaultWrapDescriptor 
 import { vaultGroupId } from '../../../../../scripts/p2p/social_namespace.mjs'
 import { getUserDictionary } from '../../../../../server/auth.mjs'
 
-import { loadVaultGsh } from './gsh/vault.mjs'
+import { loadVaultMasterKey } from './vault_crypto/vault.mjs'
 
 /**
  * 返回 vault 文件索引路径。
@@ -56,9 +56,9 @@ async function saveVaultIndex(username, entityHash, index) {
 export async function putVaultFileManifest(username, entityHash, opts) {
 	const fileId = opts.fileId || randomUUID()
 	const logicalPath = `shells/social/vault/${fileId}`
-	const { H } = await loadVaultGsh(username, entityHash)
+	const { masterKey } = await loadVaultMasterKey(username, entityHash)
 	const enc = encryptPlaintextToParts(opts.plaintext, 'random')
-	const descriptor = vaultWrapDescriptor(entityHash, fileId, enc.contentKey, H)
+	const descriptor = vaultWrapDescriptor(entityHash, fileId, enc.contentKey, masterKey)
 	const manifest = buildFileManifestFromEnc({
 		ownerEntityHash: entityHash,
 		logicalPath,

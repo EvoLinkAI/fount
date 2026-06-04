@@ -9,24 +9,32 @@ import { mergeChannelMessagesForDisplay } from '../../src/chat/lib/messageMerge.
 import { applyChannelDisplayChain } from '../../src/ui/channelDisplay.mjs'
 import { hubStore } from '../core/state.mjs'
 
-/** @type {string | null} 虚拟列表重建时的滚动锚点 eventId */
-let pendingScrollToEventId = null
-
 /**
  * @param {string | null} eventId 目标 eventId；null 清除
  * @returns {void}
  */
 export function setPendingScrollTarget(eventId) {
-	pendingScrollToEventId = eventId ? String(eventId).trim() : null
+	if (!eventId) {
+		hubStore.pendingScrollTarget = null
+		return
+	}
+	hubStore.pendingScrollTarget = {
+		groupId: hubStore.currentGroupId,
+		channelId: hubStore.currentChannelId,
+		eventId: String(eventId).trim(),
+	}
 }
 
 /**
- * @returns {string | null} 消费并清除待滚动锚点
+ * @returns {string | null} 消费并清除待滚动锚点（群/频道不匹配则丢弃）
  */
 export function consumePendingScrollTarget() {
-	const id = pendingScrollToEventId
-	pendingScrollToEventId = null
-	return id
+	const target = hubStore.pendingScrollTarget
+	hubStore.pendingScrollTarget = null
+	if (!target?.eventId) return null
+	if (target.groupId !== hubStore.currentGroupId) return null
+	if (target.channelId !== hubStore.currentChannelId) return null
+	return target.eventId
 }
 
 /**

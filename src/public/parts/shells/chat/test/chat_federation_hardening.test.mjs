@@ -43,7 +43,7 @@ import {
 	validatePullAttestationForGroup,
 	verifyPullAttestation,
 } from '../src/chat/federation/pullAttestation.mjs'
-import { parseFedArchiveMonthWant } from '../src/chat/federation/archiveMonthWire.mjs'
+import { parseFedArchiveMonthResponse, parseFedArchiveMonthWant } from '../src/chat/federation/archiveMonthWire.mjs'
 import { wrapPullResponseInner, unwrapPullResponseEnvelope } from '../src/chat/federation/pullResponse.mjs'
 import { parseGossipRequest } from '../src/chat/federation/wireSchemas.mjs'
 
@@ -177,6 +177,24 @@ Deno.test('fed archive month want requires attestation', () => {
 			timestamp: Date.now(),
 			signature: '00'.repeat(64),
 		},
+	})?.requestId, 'r1')
+})
+
+Deno.test('fed archive month response requires digest and parts', () => {
+	assertEquals(parseFedArchiveMonthResponse({
+		requestId: 'r1',
+		channelId: 'general',
+		utcMonth: '2024-01',
+		complete: true,
+		body: 'inline forbidden',
+	}), null)
+	assertEquals(parseFedArchiveMonthResponse({
+		requestId: 'r1',
+		channelId: 'general',
+		utcMonth: '2024-01',
+		complete: true,
+		digest: 'd'.repeat(64),
+		parts: [{ hash: 'e'.repeat(64), size: 0, index: 0 }],
 	})?.requestId, 'r1')
 })
 

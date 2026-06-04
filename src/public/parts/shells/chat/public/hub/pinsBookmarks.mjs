@@ -141,18 +141,13 @@ export async function refreshPinsBookmarks() {
 					const bookmarkGroup = bookmarkRow.getAttribute('data-bookmark-group')
 					const bookmarkChannelId = bookmarkRow.getAttribute('data-bookmark-channel')
 					const bookmarkEventId = bookmarkRow.getAttribute('data-bookmark-event')
-					if (bookmarkGroup && bookmarkGroup !== hubStore.currentGroupId) {
+					if (bookmarkGroup && bookmarkGroup !== hubStore.currentGroupId) 
 						await selectGroup(bookmarkGroup, bookmarkChannelId || undefined)
-						if (bookmarkEventId)
-							document.querySelector(`#hub-messages [data-message-id="${bookmarkEventId}"]`)
-								?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-						return
-					}
-					if (bookmarkChannelId && bookmarkChannelId !== hubStore.currentChannelId) await selectChannel(bookmarkChannelId)
+					
+					else if (bookmarkChannelId && bookmarkChannelId !== hubStore.currentChannelId)
+						await selectChannel(bookmarkChannelId)
 					else if (bookmarkChannelId) await loadMessages()
-					if (bookmarkEventId)
-						document.querySelector(`#hub-messages [data-message-id="${bookmarkEventId}"]`)
-							?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+					if (bookmarkEventId) await scrollToMessageEventId(bookmarkEventId)
 				})
 				bookmarksHost.appendChild(bookmarkRow)
 			}

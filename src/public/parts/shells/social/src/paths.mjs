@@ -38,7 +38,7 @@ export function timelineSnapshotPath(username, entityHash) {
  * @returns {string} GSH vault 状态
  */
 export function vaultStatePath(username, entityHash) {
-	return `${timelineDir(username, entityHash)}/vault_gsh.json`
+	return `${timelineDir(username, entityHash)}/vault_master_key.json`
 }
 
 /**

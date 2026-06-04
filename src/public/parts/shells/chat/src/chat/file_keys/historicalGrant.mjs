@@ -3,7 +3,7 @@
  */
 import { Buffer } from 'node:buffer'
 
-import { decryptH, encryptHForMember } from '../../../../../../../scripts/p2p/gsh.mjs'
+import { unwrapMasterKeyForMember, wrapMasterKeyForMember } from '../../../../../../../scripts/p2p/key_crypto.mjs'
 import { isHex64, normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { resolveLocalEventSigner } from '../dag/localSigner.mjs'
 
@@ -23,7 +23,7 @@ export async function buildFileKeyGrant(username, groupId, recipientEdPubKeyHex)
 	const data = await loadFileMasterKeys(username, groupId)
 	const generations = (data.generations || []).map(entry => ({
 		gen: entry.gen,
-		encryptedKey: encryptHForMember(entry.fileMasterKey, recipient),
+		encryptedKey: wrapMasterKeyForMember(entry.fileMasterKey, recipient),
 	}))
 	return { generations }
 }
@@ -50,7 +50,7 @@ export async function applyFileKeyGrant(username, groupId, grant) {
 		const gen = Number(row?.gen)
 		const encrypted = row?.encryptedKey
 		if (!Number.isFinite(gen) || gen < 0 || !encrypted) continue
-		const keyHex = decryptH(encrypted, signer.secretKey)
+		const keyHex = unwrapMasterKeyForMember(encrypted, signer.secretKey)
 		if (!keyHex || !isHex64(keyHex)) continue
 		await appendFileMasterKey(username, groupId, Math.floor(gen), keyHex)
 		imported++

@@ -1,4 +1,4 @@
-/** @type {Map<string, { getGroupFileMasterKey?: (replicaUsername: string, groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultH?: (replicaUsername: string, entityHash: string) => Promise<Buffer | string | null> }>} */
+/** @type {Map<string, { getGroupFileMasterKey?: (replicaUsername: string, groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultMasterKey?: (replicaUsername: string, entityHash: string) => Promise<Buffer | string | null> }>} */
 const transferDepsByOwner = new Map()
 
 /** @type {Map<string, (replicaUsername: string, manifest: import('./manifest.mjs').FileManifest) => Promise<Buffer | null>>} */
@@ -6,7 +6,7 @@ const dagPlaintextReadersByOwner = new Map()
 
 /**
  * @param {string} ownerId 注册方
- * @param {{ getGroupFileMasterKey?: (replicaUsername: string, groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultH?: (replicaUsername: string, entityHash: string) => Promise<Buffer | string | null> }} deps 密钥源
+ * @param {{ getGroupFileMasterKey?: (replicaUsername: string, groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultMasterKey?: (replicaUsername: string, entityHash: string) => Promise<Buffer | string | null> }} deps 密钥源
  * @returns {void}
  */
 export function registerTransferKeyDeps(ownerId, deps) {
@@ -41,18 +41,18 @@ export function clearTransferKeyRegistry() {
 }
 
 /**
- * @returns {{ getGroupFileMasterKey?: (replicaUsername: string, groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultH?: (replicaUsername: string, entityHash: string) => Promise<Buffer | string | null> }} 聚合后的依赖
+ * @returns {{ getGroupFileMasterKey?: (replicaUsername: string, groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>, getVaultMasterKey?: (replicaUsername: string, entityHash: string) => Promise<Buffer | string | null> }} 聚合后的依赖
  */
 export function resolveTransferKeyDeps() {
 	/** @type {((replicaUsername: string, groupId: string, keyGeneration?: number) => Promise<Buffer | string | null>) | undefined} */
 	let getGroupFileMasterKey
 	/** @type {((replicaUsername: string, entityHash: string) => Promise<Buffer | string | null>) | undefined} */
-	let getVaultH
+	let getVaultMasterKey
 	for (const deps of transferDepsByOwner.values()) {
 		if (deps.getGroupFileMasterKey) getGroupFileMasterKey = deps.getGroupFileMasterKey
-		if (deps.getVaultH) getVaultH = deps.getVaultH
+		if (deps.getVaultMasterKey) getVaultMasterKey = deps.getVaultMasterKey
 	}
-	return { getGroupFileMasterKey, getVaultH }
+	return { getGroupFileMasterKey, getVaultMasterKey }
 }
 
 /**

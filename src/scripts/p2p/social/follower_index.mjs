@@ -5,6 +5,7 @@ import { createLruMap } from '../../memo.mjs'
 import { writeJsonAtomic } from '../dag/storage.mjs'
 import { resolveOperatorEntityHash } from '../entity/replica.mjs'
 import { parseEntityHash } from '../entity_id.mjs'
+import { withAsyncMutex } from '../utils/async_mutex.mjs'
 
 import { getFollowingScanProvider, getReplicaUsernamesProvider } from './follower_index_registry.mjs'
 
@@ -14,8 +15,16 @@ const BUCKET_HEX_PREFIX_LEN = 2
 /** @type {ReturnType<typeof createLruMap<string, string[]>>} */
 const followerEntryCache = createLruMap(FOLLOWER_ENTRY_CACHE_MAX)
 
-/** @type {Map<string, Promise<void>>} */
-const mutationChainsByTarget = new Map()
+/**
+ * @param {string} target targetEntityHash
+ * @param {() => Promise<void>} task 突变
+ * @returns {Promise<void>}
+ */
+function queueFollowerIndexMutation(target, task) {
+	return withAsyncMutex(`follower-index:${target}`, () => task().catch(err => {
+		console.error('follower_index: mutation failed', err)
+	}))
+}
 
 /**
  * @returns {string} follower 索引根目录
@@ -121,24 +130,6 @@ async function writeFollowerEntry(target, followers) {
 		followerEntryCache.touch(target, list)
 	}
 	await writeFollowerBucket(bucketId, bucket)
-}
-
-/**
- * 按 target 串行化索引突变，避免同桶 JSON 并发覆盖；不同 target 可并行。
- * @param {string} target 128 hex
- * @param {() => Promise<void>} task 突变任务
- * @returns {Promise<void>}
- */
-function queueFollowerIndexMutation(target, task) {
-	const prev = mutationChainsByTarget.get(target) || Promise.resolve()
-	const run = prev.catch(() => { }).then(task)
-	const final = run.catch(err => { console.error('follower_index: mutation failed', err) })
-	mutationChainsByTarget.set(target, final)
-	final.finally(() => {
-		if (mutationChainsByTarget.get(target) === final)
-			mutationChainsByTarget.delete(target)
-	})
-	return run
 }
 
 /**

@@ -300,7 +300,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 		const content = { targetPubKeyHash }
 
 		if (action === 'kick') {
-			const { generateKeyRotationNonce, deriveNextFileMasterKey } = await import('../../../../../../../scripts/p2p/gsh.mjs')
+			const { generateKeyRotationNonce, deriveNextFileMasterKey } = await import('../../../../../../../scripts/p2p/key_crypto.mjs')
 			const { appendFileMasterKey } = await import('../../chat/file_keys/store.mjs')
 			const keyEntry = await getCurrentFileMasterKey(username, groupId)
 			if (keyEntry) {
@@ -339,7 +339,7 @@ export function registerGovernanceRoutes(router, authenticate) {
 		if (!isDmPair && !perms[PERMISSIONS.ADMIN] && !perms[PERMISSIONS.MANAGE_ROLES])
 			return res.status(403).json({ error: 'key_rotate requires ADMIN or MANAGE_ROLES' })
 
-		const { generateKeyRotationNonce, deriveNextFileMasterKey } = await import('../../../../../../../scripts/p2p/gsh.mjs')
+		const { generateKeyRotationNonce, deriveNextFileMasterKey } = await import('../../../../../../../scripts/p2p/key_crypto.mjs')
 		const { appendFileMasterKey } = await import('../../chat/file_keys/store.mjs')
 
 		const keyEntry = await getCurrentFileMasterKey(username, groupId)
