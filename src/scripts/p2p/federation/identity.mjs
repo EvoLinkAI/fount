@@ -17,7 +17,7 @@ export function ensureFederationDefaults(username) {
 	ensureNodeIdentityPubKey(username)
 	ensureNodeSeed(username)
 	const data = loadData(username, 'federation') || {}
-	if (!data.mailbox || typeof data.mailbox !== 'object') {
+	if (!data.mailbox) {
 		data.mailbox = normalizeMailboxSettings({})
 		saveData(username, 'federation')
 	}
@@ -97,7 +97,7 @@ export function saveFederationSettings(username, patch) {
 		if (normalized.length >= 16)
 			assignShellData(username, 'chat', 'dmIntro', { nonce: normalized, rotatedAt: Date.now() })
 	}
-	if (patch.mailbox && typeof patch.mailbox === 'object')
+	if (patch.mailbox)
 		data.mailbox = normalizeMailboxSettings({ ...data.mailbox, ...patch.mailbox })
 	saveData(username, 'federation')
 	events.emit('federation-settings-changed', { username })

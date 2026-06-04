@@ -3,7 +3,7 @@
  * 【职责】解析消息 `content_ref` 外链 blob：拉取、SHA-256 校验并解码 UTF-8 展示文本。
  * 【原理】storage.getChunk(locator) → hash 比对 → TextDecoder；批量 resolveContentRefsInMessageLines 标注 mismatch。
  * 【数据结构】status: ok|hash_mismatch|unavailable；content_ref { storageLocator, contentHash, alg }。
- * 【关联】storage.mjs、Hub messageRender；与 GSH 密文互斥时跳过。
+ * 【关联】storage.mjs、Hub messageRender。
  */
 import { createHash } from 'node:crypto'
 
@@ -59,7 +59,6 @@ export async function resolveContentRefsInMessageLines(username, lines) {
 		if (line.type !== 'message') return line
 		const content = line.content || {}
 		if (!content.content_ref) return line
-		if (content.gsh?.scheme === 'gsh') return line
 		if (content.e2e?.encrypted === true) return line
 
 		const res = await resolveMessageContentRef(username, content)

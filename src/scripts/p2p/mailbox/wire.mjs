@@ -15,7 +15,7 @@ export function attachMailboxWire(username, wire) {
 	wire.on('mailbox_put', (payload, peerId) => {
 		const put = parseMailboxPut(payload)
 		if (!put) return
-		void ingestMailboxPut(username, put, peerId).catch(err => console.error('mailbox: put ingest failed', err))
+		void ingestMailboxPut(username, put).catch(err => console.error('mailbox: put ingest failed', err))
 	})
 
 	wire.on('mailbox_want', (payload, peerId) => {
@@ -29,8 +29,7 @@ export function attachMailboxWire(username, wire) {
 		}, peerId).catch(err => console.error('mailbox: want failed', err))
 	})
 
-	wire.on('mailbox_give', (payload, peerId) => {
-		void peerId
+	wire.on('mailbox_give', payload => {
 		const give = parseMailboxGive(payload)
 		if (!give) return
 		void ingestMailboxGive(username, give).catch(err => console.error('mailbox: give ingest failed', err))

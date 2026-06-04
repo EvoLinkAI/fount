@@ -97,10 +97,9 @@ function getBlocklistIndex(username) {
  * @returns {{ blocked: Array<{ scope: BlockScope, value: string, groupId?: string }> }} 规范化拉黑表
  */
 export function normalizeBlocklist(raw) {
-	const entries = Array.isArray(raw?.blocked) ? raw.blocked : []
 	/** @type {Array<{ scope: BlockScope, value: string, groupId?: string }>} */
 	const blocked = []
-	for (const entry of entries) {
+	for (const entry of raw?.blocked || []) {
 		const scope = String(entry?.scope || '').trim().toLowerCase()
 		const value = String(entry?.value || '').trim().toLowerCase()
 		const groupId = String(entry.groupId || '').trim()
@@ -323,6 +322,7 @@ export function addGroupBlockedPeers(username, groupId, entries) {
 }
 
 /**
- *
+ * @param {string} username replica 登录名
+ * @returns {void}
  */
 export { invalidateBlocklistIndex }

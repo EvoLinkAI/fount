@@ -100,6 +100,14 @@ function reduceUnfollow(state, event) {
 	return state
 }
 
+/**
+ * @param {object} state 折叠状态
+ * @returns {object} 原样返回
+ */
+function reduceNoop(state) {
+	return state
+}
+
 /** @type {Record<string, (state: object, event: object) => object>} */
 export const SOCIAL_TIMELINE_REDUCERS = {
 	social_meta: reduceSocialMeta,
@@ -111,8 +119,8 @@ export const SOCIAL_TIMELINE_REDUCERS = {
 	follow: reduceFollow,
 	unfollow: reduceUnfollow,
 	state_summary: reduceSocialMeta,
-	file_share: (state, _event) => state,
-	follow_approve: (state, _event) => state,
+	file_share: reduceNoop,
+	follow_approve: reduceNoop,
 }
 
 /**

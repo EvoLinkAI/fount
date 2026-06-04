@@ -102,7 +102,7 @@ export async function applyPullInner(username, groupId, inner, opts = {}) {
 		/** @type {Record<string, object>} */
 		const mergedSeals = { ...local.seals }
 		for (const [channelId, remoteSeal] of Object.entries(inner.archiveManifest.seals || {})) {
-			if (!remoteSeal || typeof remoteSeal !== 'object') continue
+			if (!isPlainObject(remoteSeal)) continue
 			const localSeal = local.seals?.[channelId] || null
 			if (await assertArchiveSealChainValid(username, groupId, channelId, remoteSeal, localSeal))
 				mergedSeals[channelId] = remoteSeal
@@ -118,7 +118,7 @@ export async function applyPullInner(username, groupId, inner, opts = {}) {
 			monthDigests: (() => {
 				const merged = { ...local.monthDigests }
 				for (const [ch, months] of Object.entries(inner.archiveManifest.monthDigests || {})) {
-					if (!months || typeof months !== 'object') continue
+					if (!isPlainObject(months)) continue
 					merged[ch] = { ...merged[ch], ...months }
 				}
 				return merged

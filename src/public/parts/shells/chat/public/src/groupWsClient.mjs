@@ -63,7 +63,7 @@ export function stopGeneration(target) {
 	sendWebsocketMessage({
 		type: 'stop_generation',
 		payload: {
-			messageId: payload.messageId || payload.dagEventId,
+			messageId: payload.messageId || undefined,
 			dagEventId: payload.dagEventId || undefined,
 		},
 	})

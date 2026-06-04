@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto'
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 
 import { getEntityProfile } from './feed.mjs'
-import { maybeDecryptPostContent } from './vault_crypto/vault.mjs'
 import { savedPostsPath } from './paths.mjs'
 import { getTimelineMaterialized } from './timeline/materialize.mjs'
+import { maybeDecryptPostContent } from './vault_crypto/vault.mjs'
 
 const DEFAULT_SAVED = { folders: {}, unfiled: [] }
 
@@ -100,18 +100,17 @@ export async function addSavedPost(username, postRef, folderId = null) {
 		postId: String(postRef.postId),
 	}
 	/**
-	 * 收藏列表中是否已存在该引用。
-	 * @param {object[]} rows 帖子引用数组
-	 * @returns {boolean} 是否已存在
+	 *
+	 * @param rows
 	 */
-	const exists = (rows) => rows.some(row =>
-		row.entityHash === ref.entityHash && row.postId === ref.postId)
 	if (folderId) {
 		data.folders[folderId] ??= { name: folderId, posts: [] }
-		if (!exists(data.folders[folderId].posts))
+		if (!data.folders[folderId].posts.some(row =>
+			row.entityHash === ref.entityHash && row.postId === ref.postId))
 			data.folders[folderId].posts.push(ref)
 	}
-	else if (!exists(data.unfiled))
+	else if (!data.unfiled.some(row =>
+		row.entityHash === ref.entityHash && row.postId === ref.postId))
 		data.unfiled.push(ref)
 	return saveSavedPosts(username, data)
 }
@@ -140,22 +139,21 @@ export async function removeSavedPost(username, postRef, folderId = undefined) {
 	const data = await loadSavedPosts(username)
 	const entityHash = String(postRef.entityHash).toLowerCase()
 	const postId = String(postRef.postId)
-	/**
-	 * 从引用列表中过滤掉指定帖子。
-	 * @param {object[]} rows 帖子引用
-	 * @returns {object[]} 过滤后
-	 */
-	const without = rows => rows.filter(row =>
-		!(row.entityHash === entityHash && row.postId === postId))
 
 	if (folderId) {
 		const folder = data.folders[folderId]
-		if (folder) folder.posts = without(folder.posts)
+		if (folder) 
+			folder.posts = folder.posts.filter(row =>
+				!(row.entityHash === entityHash && row.postId === postId))
+		
 	}
 	else {
-		data.unfiled = without(data.unfiled)
-		for (const folder of Object.values(data.folders))
-			folder.posts = without(folder.posts)
+		data.unfiled = data.unfiled.filter(row =>
+			!(row.entityHash === entityHash && row.postId === postId))
+		for (const folder of Object.values(data.folders)) 
+			folder.posts = folder.posts.filter(row =>
+				!(row.entityHash === entityHash && row.postId === postId))
+		
 	}
 	return saveSavedPosts(username, data)
 }
@@ -185,19 +183,11 @@ export async function deleteSavedFolder(username, folderId) {
 	const data = await loadSavedPosts(username)
 	const folder = data.folders[String(folderId)]
 	if (!folder) return data
-	/**
-	 * 将引用加入未归档列表（去重）。
-	 * @param {object[]} rows 帖子引用
-	 * @param {object} ref 待加入引用
-	 * @returns {void}
-	 */
-	const pushUnfiled = (rows, ref) => {
-		if (rows.some(row => row.entityHash === ref.entityHash && row.postId === ref.postId))
-			return
-		rows.push(ref)
+	for (const ref of folder.posts) {
+		if (data.unfiled.some(row => row.entityHash === ref.entityHash && row.postId === ref.postId))
+			continue
+		data.unfiled.push(ref)
 	}
-	for (const ref of folder.posts)
-		pushUnfiled(data.unfiled, ref)
 	delete data.folders[String(folderId)]
 	return saveSavedPosts(username, data)
 }

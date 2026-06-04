@@ -114,8 +114,8 @@ export async function decryptEventContent(username, groupId, channelId, content)
 		return { ok: true, content: JSON.parse(decryptedText) }
 	}
 	catch {
-		const fallback = decryptedText ? { type: 'text', content: decryptedText } : null
-		return { ok: true, content: fallback }
+		recordPendingChannelDecrypt(username, groupId, gen)
+		return { ok: false, generation: gen, content: null }
 	}
 }
 

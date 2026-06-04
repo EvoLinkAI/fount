@@ -6,8 +6,8 @@ import { projectFollowerIndexFromTimelineEvent } from '../../../../../../scripts
 import { SOCIAL_TIMELINE_EVENT_TYPES } from '../../../../../../scripts/p2p/social_namespace.mjs'
 import { verifyTimelineRemoteSignature } from '../../../../../../scripts/p2p/timeline/verify_remote.mjs'
 import { loadFollowing } from '../following.mjs'
-import { tryImportFollowApproveVault } from '../vault_crypto/followApproveImport.mjs'
 import { timelineEventsPath } from '../paths.mjs'
+import { tryImportFollowApproveVault } from '../vault_crypto/followApproveImport.mjs'
 
 
 import { canonicalizeSignedTimelineEvent } from './canonicalizeEvent.mjs'
@@ -84,7 +84,7 @@ export async function syncTimelineForEntity(username, entityHash) {
 				}
 
 		imported += roundImported
-		if (roundImported === 0) break
+		if (!roundImported) break
 	}
 
 	const { reprocessFollowApproveVaults } = await import('../vault_crypto/followApproveImport.mjs')

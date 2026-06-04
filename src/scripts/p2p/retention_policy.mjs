@@ -104,23 +104,3 @@ export function computeRetentionKeepIds(order, byId, opts) {
 
 	return keep
 }
-
-/**
- * 计算保留窗口起始下标（兼容旧调用；基于 `computeRetentionKeepIds`）。
- * @param {string[]} order 拓扑序
- * @param {Map<string, object>} byId 事件表
- * @param {{ maxDepth: number, cutoffWall: number, checkpointTipId?: string, branchTipId?: string }} opts 参数
- * @returns {number} `order` 切片起点
- */
-export function retentionStartIndex(order, byId, opts) {
-	const keep = computeRetentionKeepIds(order, byId, {
-		maxDepth: opts.maxDepth,
-		cutoffWall: opts.cutoffWall,
-		anchorTypes: PERMISSION_ANCHOR_TYPES,
-		checkpointTipId: opts.checkpointTipId,
-		branchTipId: opts.branchTipId,
-	})
-	for (let index = 0; index < order.length; index++)
-		if (keep.has(order[index])) return index
-	return order.length
-}

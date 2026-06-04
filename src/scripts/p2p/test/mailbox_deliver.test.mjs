@@ -11,7 +11,7 @@ Deno.test('dispatchMailboxRecordsToConsumers merges consumer ids', async () => {
 	const username = 'test-user'
 	/** @type {string[]} */
 	let seen = []
-	registerMailboxConsumer('test/a', 'chat', async (_u, records) => {
+	registerMailboxConsumer('test/a', 'chat', async (username, records) => {
 		seen = records.map(r => r.id)
 		return ['a1']
 	})

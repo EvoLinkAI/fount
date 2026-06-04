@@ -104,10 +104,10 @@ export async function loadGroupPickerOptions(appContext) {
 		}
 		select.classList.remove('hidden')
 		for (const row of groups) {
-			const groupId = String(row.groupId || row.id || '').trim()
+			const groupId = String(row.groupId || '').trim()
 			if (!groupId) continue
 			const channelId = String(row.defaultChannelId || 'default').trim() || 'default'
-			const title = String(row.name || row.discoveryTitle || row.title || groupId).trim()
+			const title = String(row.name || groupId).trim()
 			const option = document.createElement('option')
 			option.value = `${groupId}\t${channelId}`
 			option.textContent = `${title} (#${groupId}/${channelId})`

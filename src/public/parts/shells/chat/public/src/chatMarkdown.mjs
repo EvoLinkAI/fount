@@ -33,7 +33,7 @@ export async function expandInlineEmojiTokens(text, resolveEmojiUrl) {
  * @param {string} text 原始文本
  * @returns {string} 展开群/频道链接后的文本
  */
-export { expandChannelLinksInText as expandInlineChannelLinks } from './lib/expandChannelLinks.mjs'
+export { expandChannelLinksInText } from './lib/expandChannelLinks.mjs'
 
 /**
  * 聊天消息 Markdown 预处理（表情 URL 展开）。

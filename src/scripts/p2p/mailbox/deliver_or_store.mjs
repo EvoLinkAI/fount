@@ -63,10 +63,9 @@ export async function publishMailboxRecord(username, toPubKeyHash, record, toNod
 /**
  * @param {string} username replica
  * @param {object} put 入站 mailbox_put
- * @param {string} [fromPeerId] 来源 peer
  * @returns {Promise<void>}
  */
-export async function ingestMailboxPut(username, put, fromPeerId = '') {
+export async function ingestMailboxPut(username, put) {
 	const routing = getMailboxRoutingSettings(username)
 	const { record } = put
 	if (!record?.envelope || !record?.toPubKeyHash) return
@@ -82,7 +81,6 @@ export async function ingestMailboxPut(username, put, fromPeerId = '') {
 		},
 		hop: hop + 1,
 	})
-	void fromPeerId
 }
 
 /**

@@ -48,7 +48,7 @@ export function mintStreamingViewToken(username, groupId, channelId, ttlMs = DEF
  * @returns {boolean} 是否在有效期内且签名正确
  */
 export function verifyStreamingViewToken(token, username, groupId, channelId, H = null) {
-	if (!H || !token || typeof token !== 'string') return false
+	if (!H || !token) return false
 	const parts = token.split('.')
 	if (parts.length !== 3) return false
 	const [sessionId, expStr, mac] = parts

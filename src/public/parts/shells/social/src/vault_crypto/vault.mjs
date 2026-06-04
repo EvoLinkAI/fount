@@ -20,7 +20,7 @@ export async function loadVaultMasterKey(username, entityHash) {
 	try {
 		const raw = JSON.parse(await readFile(vaultStatePath(username, entityHash), 'utf8'))
 		return {
-			masterKey: String(raw.masterKey || raw.H || ''),
+			masterKey: String(raw.masterKey || ''),
 			generation: Number(raw.generation) || 0,
 		}
 	}

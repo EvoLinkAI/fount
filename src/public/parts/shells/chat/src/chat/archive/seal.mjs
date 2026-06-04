@@ -130,9 +130,10 @@ export async function assertArchiveSealChainValid(username, groupId, channelId, 
 	if (!seal) return true
 	if (String(seal.channelId || '') !== channelId) return false
 	if (!await validateArchiveSealForGroup(username, groupId, seal)) return false
-	if (seal.prevSealHash == null) return true
+	const prev = String(seal.prevSealHash || '').trim().toLowerCase()
+	if (!isHex64(prev)) return false
 	const expectedPrev = computePrevSealHashFromStoredSeal(localSeal || null)
-	return String(seal.prevSealHash || '').trim().toLowerCase() === expectedPrev
+	return prev === expectedPrev
 }
 
 /**

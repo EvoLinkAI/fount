@@ -29,12 +29,21 @@ export function takePartitionBridgeSlot(key) {
 }
 
 /**
+ * @param {unknown} payload 桥接 action 载荷
+ * @param {string} actionName Trystero action
+ * @returns {string} 出站 dedupe id
+ */
+function buildPartitionBridgeDedupeId(payload, actionName) {
+	return createHash('sha256').update(JSON.stringify({ payload, action: actionName }), 'utf8').digest('hex')
+}
+
+/**
  * @param {object} envelope 桥接载荷
- * @returns {string} 去重 id
+ * @returns {string | null} 入站 dedupe id；缺字段为 null
  */
 export function partitionBridgeDedupeId(envelope) {
-	if (envelope?.dedupeId) return String(envelope.dedupeId)
-	return createHash('sha256').update(JSON.stringify(envelope?.payload ?? envelope), 'utf8').digest('hex')
+	if (!envelope?.dedupeId) return null
+	return String(envelope.dedupeId)
 }
 
 /**
@@ -53,7 +62,7 @@ export function buildPartitionBridgeEnvelope(opts) {
 		actionName: opts.actionName,
 		payload: opts.payload,
 		ttl: Math.max(0, Number(opts.ttl ?? DEFAULT_BRIDGE_TTL)),
-		dedupeId: partitionBridgeDedupeId({ payload: opts.payload, action: opts.actionName }),
+		dedupeId: buildPartitionBridgeDedupeId(opts.payload, opts.actionName),
 	}
 }
 

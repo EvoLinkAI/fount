@@ -68,7 +68,7 @@ export function reactionsForMessage(overlay, eventId) {
  * @returns {Promise<object>} PostSnapshot
  */
 export async function buildPostSnapshotFromRow(row, state, username, groupId) {
-	const eventId = String(row.eventId || row.id).trim()
+	const eventId = String(row.eventId).trim()
 	const channelId = String(row.channelId || 'default').trim()
 	const display = await resolveDisplaySnapshot(state, row, username, groupId)
 	const content = channelMessageContentObject({

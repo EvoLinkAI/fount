@@ -17,9 +17,7 @@ export const ARCHIVE_QUORUM_PEER_MIN = 2
  * @returns {(username: string, peerNodeHash: string, groupId: string) => number} 评分函数
  */
 function makeReputationScoreFn(repFile) {
-	return function reputationScore(_username, peerNodeHash, groupId) {
-		return pickNodeScoreFromReputation(repFile, peerNodeHash, groupId)
-	}
+	return (username, peerNodeHash, groupId) => pickNodeScoreFromReputation(repFile, peerNodeHash, groupId)
 }
 
 /**

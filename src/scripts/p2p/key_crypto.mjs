@@ -67,16 +67,6 @@ function toHBuf(H) {
 // ─── 密钥推导 ─────────────────────────────────────────────────────────────────
 
 /**
- * 推导广播频道消息加密密钥：`KDF(H, "broadcast", channelId)`（§11.1）
- * @param {string | Buffer} H 群秘密（hex 或 Buffer）
- * @param {string} channelId 频道 ID
- * @returns {Buffer} 32 字节 AES-256 密钥
- */
-export function deriveChannelKey(H, channelId) {
-	return kdf(toHBuf(H), 'broadcast', String(channelId))
-}
-
-/**
  * 推导群内两两直连额外隔离密钥：`KDF(H, "dm", sorted(a,b).join(":"))`（§11.1）
  * @param {string | Buffer} H 群秘密
  * @param {string} pubKeyHashA 第一方 pubKeyHash
@@ -298,30 +288,6 @@ export function decryptUtf8ForMember(encrypted, myEdPrivKeySeed) {
 		const ciphertext = Buffer.from(encrypted.ciphertext, 'base64')
 		const authTag = Buffer.from(encrypted.authTag, 'base64')
 		const decipher = createDecipheriv('aes-256-gcm', wrapKey, iv)
-		decipher.setAuthTag(authTag)
-		return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
-	}
-	catch { return null }
-}
-
-// ─── 遗留 GSH 广播消息解密（频道消息已迁移至 ckg）────────────────────────────
-
-/**
- * 解密 GSH 广播消息。
- *
- * @param {{ scheme: string, iv: string, ciphertext: string, authTag: string }} stored GSH 密文；若 `scheme` 不是 `'gsh'` 则返回 null
- * @param {string | Buffer} H 对应 generation 的群秘密
- * @param {string} channelId 频道 ID
- * @returns {string | null} 明文；解密失败或无权限返回 null
- */
-export function decryptMessage(stored, H, channelId) {
-	if (!stored || stored.scheme !== 'gsh') return null
-	try {
-		const key = deriveChannelKey(H, channelId)
-		const iv = Buffer.from(stored.iv, 'base64')
-		const ciphertext = Buffer.from(stored.ciphertext, 'base64')
-		const authTag = Buffer.from(stored.authTag, 'base64')
-		const decipher = createDecipheriv('aes-256-gcm', key, iv)
 		decipher.setAuthTag(authTag)
 		return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8')
 	}

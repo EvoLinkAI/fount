@@ -2,8 +2,9 @@ import { Buffer } from 'node:buffer'
 
 import { publicKeyFromSeed } from '../../../../../../scripts/p2p/crypto.mjs'
 import { getFederationIdentitySecret } from '../../../../../../scripts/p2p/federation/identity.mjs'
-import { unwrapMasterKeyForMember } from '../../../../../../scripts/p2p/key_crypto.mjs'
 import { normalizeHex64, isHex64 } from '../../../../../../scripts/p2p/hexIds.mjs'
+import { unwrapMasterKeyForMember } from '../../../../../../scripts/p2p/key_crypto.mjs'
+import { isPlainObject } from '../../../../../../scripts/p2p/wire_ingress.mjs'
 
 import { saveVaultMasterKey } from './vault.mjs'
 
@@ -18,7 +19,7 @@ export async function tryImportFollowApproveVault(username, entityHash, event) {
 	if (event?.type !== 'follow_approve') return false
 	const encrypted = event.content?.encrypted_H
 	const targetPubKeyHex = normalizeHex64(event.content?.targetPubKeyHex)
-	if (!encrypted || typeof encrypted !== 'object' || !targetPubKeyHex) return false
+	if (!isPlainObject(encrypted) || !targetPubKeyHex) return false
 
 	const secretHex = getFederationIdentitySecret(username)
 	if (!secretHex || secretHex.length !== 64) return false

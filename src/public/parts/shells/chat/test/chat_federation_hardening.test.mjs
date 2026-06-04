@@ -25,8 +25,8 @@ import {
 	resolveMessageRateLimits,
 } from '../../../../../scripts/p2p/message_rate_limit.mjs'
 import { PERMISSIONS } from '../../../../../scripts/p2p/permissions.mjs'
-import { retentionStartIndex } from '../../../../../scripts/p2p/retention_policy.mjs'
 import { findStaleUnreachableChannels } from '../src/chat/channel/gc.mjs'
+import { parseFedArchiveMonthResponse, parseFedArchiveMonthWant } from '../src/chat/federation/archiveMonthWire.mjs'
 import {
 	parseJoinSnapshotRequest,
 	parseJoinSnapshotResponse,
@@ -43,7 +43,6 @@ import {
 	validatePullAttestationForGroup,
 	verifyPullAttestation,
 } from '../src/chat/federation/pullAttestation.mjs'
-import { parseFedArchiveMonthResponse, parseFedArchiveMonthWant } from '../src/chat/federation/archiveMonthWire.mjs'
 import { wrapPullResponseInner, unwrapPullResponseEnvelope } from '../src/chat/federation/pullResponse.mjs'
 import { parseGossipRequest } from '../src/chat/federation/wireSchemas.mjs'
 
@@ -85,16 +84,6 @@ Deno.test('hasBypassRateLimit respects BYPASS_RATE_LIMIT permission', () => {
 		channels: { default: {} },
 	}
 	assertEquals(memberChannelPermissions(state, sender, 'default')[PERMISSIONS.BYPASS_RATE_LIMIT], true)
-})
-
-Deno.test('retentionStartIndex depth keeps ancestor chain on linear DAG', () => {
-	const order = ['e1', 'e2', 'e3', 'e4']
-	const byId = new Map(order.map((id, i) => [
-		id,
-		{ id, prev_event_ids: i ? [order[i - 1]] : [], hlc: { wall: i * 1000, logical: 0 } },
-	]))
-	const start = retentionStartIndex(order, byId, { maxDepth: 2, cutoffWall: 0, branchTipId: 'e4' })
-	assertEquals(start, 0)
 })
 
 Deno.test('joinSnapshot wire parse', () => {

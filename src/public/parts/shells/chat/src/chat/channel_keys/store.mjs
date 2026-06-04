@@ -4,6 +4,7 @@ import { dirname } from 'node:path'
 import { unwrapChannelKey } from '../../../../../../../scripts/p2p/channel_crypto.mjs'
 import { normalizeHex64 } from '../../../../../../../scripts/p2p/hexIds.mjs'
 import { withAsyncMutex } from '../../../../../../../scripts/p2p/utils/async_mutex.mjs'
+import { isPlainObject } from '../../../../../../../scripts/p2p/wire_ingress.mjs'
 import { readLocalSignerSeed } from '../dag/localSigner.mjs'
 import { channelKeysPath } from '../lib/paths.mjs'
 
@@ -127,7 +128,7 @@ export async function applyChannelKeyRotateEvent(username, groupId, event, selfP
 	const channelId = String(event.content?.channelId || '').trim()
 	const generation = Number(event.content?.generation)
 	const wraps = event.content?.wraps
-	if (!channelId || !Number.isFinite(generation) || !wraps || typeof wraps !== 'object') return false
+	if (!channelId || !Number.isFinite(generation) || !wraps) return false
 	const self = normalizeHex64(selfPubKeyHash)
 	const wrap = wraps[self]
 	if (!wrap) return false
@@ -148,7 +149,7 @@ export async function applyChannelKeyRotateEvent(username, groupId, event, selfP
  * @returns {Promise<number>} 成功导入的频道数
  */
 export async function applyChannelKeyWrapsFromPull(username, groupId, wrapsByChannel, selfPubKeyHash) {
-	if (!wrapsByChannel || typeof wrapsByChannel !== 'object') return 0
+	if (!isPlainObject(wrapsByChannel)) return 0
 	let imported = 0
 	for (const [channelId, row] of Object.entries(wrapsByChannel)) {
 		/** @type {Array<{ generation?: number, wrap?: object }>} */

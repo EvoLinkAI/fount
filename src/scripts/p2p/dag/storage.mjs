@@ -13,7 +13,7 @@ import { createInterface } from 'node:readline'
 export async function readJsonl(filePath, options = {}) {
 	try {
 		const text = await readFile(filePath, 'utf8')
-		const sanitize = typeof options.sanitize === 'function' ? options.sanitize : row => row
+		const sanitize = options.sanitize ?? (row => row)
 		return text.split('\n').filter(Boolean).map(line => sanitize(JSON.parse(line)))
 	}
 	catch {
@@ -28,7 +28,7 @@ export async function readJsonl(filePath, options = {}) {
  * @returns {AsyncGenerator<object>} 逐行事件
  */
 export async function* readJsonlStream(filePath, options = {}) {
-	const sanitize = typeof options.sanitize === 'function' ? options.sanitize : row => row
+	const sanitize = options.sanitize ?? (row => row)
 	let input
 	try {
 		input = createReadStream(filePath, { encoding: 'utf8' })
